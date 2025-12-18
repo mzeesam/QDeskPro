@@ -108,3 +108,11 @@ secrets.json
 # Publish output
 publish/
 out/
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+logs/
