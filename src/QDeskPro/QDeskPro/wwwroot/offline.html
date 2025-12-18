@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QDeskPro - Offline</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Inter', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+            background-color: #FAFAFA;
+            color: #424242;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 24px;
+            text-align: center;
+        }
+        .offline-icon {
+            width: 120px;
+            height: 120px;
+            margin-bottom: 24px;
+            background-color: #1976D2;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .offline-icon svg {
+            width: 60px;
+            height: 60px;
+            fill: white;
+        }
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: #1976D2;
+            margin-bottom: 16px;
+        }
+        p {
+            font-size: 1rem;
+            color: #757575;
+            max-width: 400px;
+            line-height: 1.5;
+            margin-bottom: 24px;
+        }
+        .retry-btn {
+            background-color: #1976D2;
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            font-size: 1rem;
+            font-weight: 500;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        .retry-btn:hover {
+            background-color: #1565C0;
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M23.64 7c-.45-.34-4.93-4-11.64-4-1.5 0-2.89.19-4.15.48L18.18 13.8 23.64 7zm-6.6 8.22L3.27 1.44 2 2.72l2.05 2.06C1.91 5.76.59 6.82.36 7l11.63 14.49.01.01.01-.01 3.9-4.86 3.32 3.32 1.27-1.27-3.46-3.46z"/>
+        </svg>
+    </div>
+    <h1>You're Offline</h1>
+    <p>QDeskPro requires an internet connection. Please check your connection and try again.</p>
+    <button class="retry-btn" onclick="window.location.reload()">Try Again</button>
+</body>
+</html>
