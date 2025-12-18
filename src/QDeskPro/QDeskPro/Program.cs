@@ -83,8 +83,18 @@ try
 
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
         ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
-    builder.Services.AddDbContext<AppDbContext>(options =>
-        options.UseSqlServer(connectionString));
+    
+    // Use SQLite in development, SQL Server in production
+    if (builder.Environment.IsDevelopment())
+    {
+        builder.Services.AddDbContext<AppDbContext>(options =>
+            options.UseSqlite(connectionString));
+    }
+    else
+    {
+        builder.Services.AddDbContext<AppDbContext>(options =>
+            options.UseSqlServer(connectionString));
+    }
     builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
     builder.Services.AddIdentityCore<ApplicationUser>(options =>
