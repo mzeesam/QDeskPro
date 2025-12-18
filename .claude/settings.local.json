@@ -7,7 +7,9 @@
       "Bash(winget install:*)",
       "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" auth status)",
       "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" auth login --web --git-protocol https)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" repo create QDeskPro --public --description \"Quarry Management System - Modern Blazor web application for quarry sales management built on .NET 10\" --source \"c:\\\\Users\\\\Admin\\\\OneDrive\\\\repos\\\\QDeskPro\" --remote origin --push)"
     ]
   }
 }
