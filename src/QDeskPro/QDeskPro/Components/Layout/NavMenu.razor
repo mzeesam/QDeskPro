@@ -1,0 +1,43 @@
+@using MudBlazor
+
+<MudNavMenu>
+    <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Home</MudNavLink>
+    
+    <AuthorizeView Roles="Administrator">
+        <MudNavGroup Title="Administration" Icon="@Icons.Material.Filled.AdminPanelSettings" Expanded="false">
+            <MudNavLink Href="admin/managers" Icon="@Icons.Material.Filled.SupervisorAccount">Managers</MudNavLink>
+            <MudNavLink Href="admin/quarries" Icon="@Icons.Material.Filled.Terrain">All Quarries</MudNavLink>
+            <MudNavLink Href="reports" Icon="@Icons.Material.Filled.Assessment">Reports</MudNavLink>
+        </MudNavGroup>
+    </AuthorizeView>
+
+    <AuthorizeView Roles="Manager">
+        <MudNavLink Href="dashboard" Icon="@Icons.Material.Filled.Dashboard">Analytics</MudNavLink>
+        <MudNavLink Href="quarries" Icon="@Icons.Material.Filled.Terrain">My Quarries</MudNavLink>
+        <MudNavLink Href="users" Icon="@Icons.Material.Filled.People">Users</MudNavLink>
+        <MudNavLink Href="reports" Icon="@Icons.Material.Filled.Assessment">Reports</MudNavLink>
+        <MudNavGroup Title="Master Data" Icon="@Icons.Material.Filled.Settings" Expanded="false">
+            <MudNavLink Href="master-data/products" Icon="@Icons.Material.Filled.Inventory">Products</MudNavLink>
+            <MudNavLink Href="master-data/layers" Icon="@Icons.Material.Filled.Layers">Layers</MudNavLink>
+            <MudNavLink Href="master-data/brokers" Icon="@Icons.Material.Filled.Groups">Brokers</MudNavLink>
+            <MudNavLink Href="master-data/prices" Icon="@Icons.Material.Filled.AttachMoney">Prices</MudNavLink>
+        </MudNavGroup>
+    </AuthorizeView>
+
+    <AuthorizeView Roles="Clerk">
+        <MudNavLink Href="clerk/dashboard" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+        <MudNavLink Href="clerk/sales/new" Icon="@Icons.Material.Filled.AddShoppingCart">New Sale</MudNavLink>
+        <MudNavLink Href="clerk/expenses" Icon="@Icons.Material.Filled.Receipt">Expenses</MudNavLink>
+        <MudNavLink Href="clerk/banking" Icon="@Icons.Material.Filled.AccountBalance">Banking</MudNavLink>
+        <MudNavLink Href="clerk/fuel" Icon="@Icons.Material.Filled.LocalGasStation">Fuel Usage</MudNavLink>
+        <MudNavLink Href="clerk/reports" Icon="@Icons.Material.Filled.Assessment">Reports</MudNavLink>
+    </AuthorizeView>
+
+    <AuthorizeView>
+        <NotAuthorized>
+            <MudNavLink Href="Account/Login" Icon="@Icons.Material.Filled.Login">Login</MudNavLink>
+            <MudNavLink Href="Account/Register" Icon="@Icons.Material.Filled.PersonAdd">Register</MudNavLink>
+        </NotAuthorized>
+    </AuthorizeView>
+</MudNavMenu>
+

@@ -1,0 +1,59 @@
+@using MudBlazor
+
+<MudThemeProvider Theme="@QDeskTheme" IsDarkMode="@_isDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<Router AppAssembly="typeof(Program).Assembly" AdditionalAssemblies="new[] { typeof(Client._Imports).Assembly }" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                <RedirectToLogin />
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>
+
+@code {
+    private bool _isDarkMode = false;
+
+    /// <summary>
+    /// Custom MudBlazor theme for QDeskPro
+    /// </summary>
+    public static MudTheme QDeskTheme = new MudTheme
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#1976D2",           // Deep Blue - primary actions
+            Secondary = "#424242",          // Dark Grey - secondary elements
+            Tertiary = "#4CAF50",           // Green - success states
+            Info = "#2196F3",               // Light Blue - informational
+            Success = "#4CAF50",            // Green - success
+            Warning = "#FF9800",            // Orange - warnings
+            Error = "#F44336",              // Red - errors, unpaid items
+            Background = "#FAFAFA",         // Light grey background
+            Surface = "#FFFFFF",            // White cards/surfaces
+            AppbarBackground = "#1976D2",   // Primary blue appbar
+            AppbarText = "#FFFFFF",
+            DrawerBackground = "#FFFFFF",
+            DrawerText = "#424242",
+            DrawerIcon = "#757575",
+        },
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#90CAF9",            // Light Blue for dark mode
+            Secondary = "#BDBDBD",
+            Tertiary = "#81C784",
+            Background = "#121212",
+            Surface = "#1E1E1E",
+            AppbarBackground = "#1E1E1E",
+        },
+        LayoutProperties = new LayoutProperties
+        {
+            DefaultBorderRadius = "8px",    // Rounded corners
+            AppbarHeight = "64px",
+        },
+    };
+}
