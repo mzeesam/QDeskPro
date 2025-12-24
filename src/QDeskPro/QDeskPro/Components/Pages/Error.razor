@@ -1,36 +1,221 @@
-﻿@page "/Error"
+@page "/Error"
 @using System.Diagnostics
+@using MudBlazor
 
-<PageTitle>Error</PageTitle>
+<PageTitle>Error - QDeskPro</PageTitle>
 
-<h1 class="text-danger">Error.</h1>
-<h2 class="text-danger">An error occurred while processing your request.</h2>
+<div class="error-page">
+    <div class="error-background">
+        <div class="error-pattern"></div>
+    </div>
 
-@if (ShowRequestId)
-{
-    <p>
-        <strong>Request ID:</strong> <code>@RequestId</code>
-    </p>
-}
+    <MudContainer MaxWidth="MaxWidth.Small" Class="error-container">
+        <MudPaper Class="error-card" Elevation="0">
+            <div class="error-icon-container">
+                <MudIcon Icon="@Icons.Material.Rounded.Error" Size="Size.Large" />
+            </div>
 
-<h3>Development Mode</h3>
-<p>
-    Swapping to <strong>Development</strong> environment will display more detailed information about the error that occurred.
-</p>
-<p>
-    <strong>The Development environment shouldn't be enabled for deployed applications.</strong>
-    It can result in displaying sensitive information from exceptions to end users.
-    For local debugging, enable the <strong>Development</strong> environment by setting the <strong>ASPNETCORE_ENVIRONMENT</strong> environment variable to <strong>Development</strong>
-    and restarting the app.
-</p>
+            <MudText Typo="Typo.h3" Class="error-title">
+                Oops! Something went wrong
+            </MudText>
 
-@code{
+            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="error-description">
+                An unexpected error occurred while processing your request.
+                We apologize for the inconvenience.
+            </MudText>
+
+            @if (ShowRequestId)
+            {
+                <MudPaper Class="error-details" Elevation="0">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.BugReport" Size="Size.Small" Color="Color.Secondary" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Request ID: <code class="request-id">@RequestId</code>
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+            }
+
+            <MudStack Spacing="3" Class="error-actions">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           Href="/"
+                           StartIcon="@Icons.Material.Rounded.Home"
+                           Class="error-button">
+                    Go to Home
+                </MudButton>
+
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           OnClick="@(() => NavigateBack())"
+                           StartIcon="@Icons.Material.Rounded.ArrowBack"
+                           Class="error-button-secondary">
+                    Go Back
+                </MudButton>
+            </MudStack>
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="error-help">
+                Need help?
+                <MudLink Href="mailto:support@qdeskpro.com" Color="Color.Primary">
+                    Contact Support
+                </MudLink>
+            </MudText>
+        </MudPaper>
+    </MudContainer>
+</div>
+
+<style>
+    .error-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        padding: 24px;
+    }
+
+    .error-background {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
+        z-index: -1;
+    }
+
+    .error-pattern {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image:
+            radial-gradient(circle at 20% 80%, rgba(198, 40, 40, 0.05) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(198, 40, 40, 0.03) 0%, transparent 50%);
+    }
+
+    .error-container {
+        display: flex;
+        justify-content: center;
+    }
+
+    .error-card {
+        background: white !important;
+        border-radius: 24px;
+        padding: 48px;
+        text-align: center;
+        max-width: 480px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+    }
+
+    .error-icon-container {
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #FFEBEE 0%, #FFCDD2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 24px;
+        animation: pulse 2s ease-in-out infinite;
+    }
+
+    .error-icon-container .mud-icon-root {
+        font-size: 3rem !important;
+        color: #C62828;
+    }
+
+    @@keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+    }
+
+    .error-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 16px;
+    }
+
+    .error-description {
+        line-height: 1.7;
+        margin-bottom: 24px;
+    }
+
+    .error-details {
+        background: #f5f7fa !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 24px;
+    }
+
+    .request-id {
+        background: #e0e6ed;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-family: monospace;
+        font-size: 0.75rem;
+    }
+
+    .error-actions {
+        margin-bottom: 24px;
+    }
+
+    .error-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+    }
+
+    .error-button-secondary {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        text-transform: none !important;
+    }
+
+    .error-help {
+        margin-top: 24px;
+        padding-top: 24px;
+        border-top: 1px solid #e0e6ed;
+    }
+
+    @@media (max-width: 600px) {
+        .error-card {
+            padding: 32px 24px;
+        }
+
+        .error-icon-container {
+            width: 80px;
+            height: 80px;
+        }
+
+        .error-icon-container .mud-icon-root {
+            font-size: 2.5rem !important;
+        }
+    }
+</style>
+
+@code {
     [CascadingParameter]
     private HttpContext? HttpContext { get; set; }
 
     private string? RequestId { get; set; }
     private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
 
+    [Inject]
+    private NavigationManager NavigationManager { get; set; } = default!;
+
     protected override void OnInitialized() =>
         RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+
+    private void NavigateBack()
+    {
+        // Go back in browser history using JavaScript interop
+        NavigationManager.NavigateTo("/");
+    }
 }

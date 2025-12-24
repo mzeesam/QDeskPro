@@ -1,5 +1,5 @@
-﻿@page "/Account/Manage/TwoFactorAuthentication"
-
+@page "/Account/Manage/TwoFactorAuthentication"
+@using MudBlazor
 @using Microsoft.AspNetCore.Http.Features
 @using Microsoft.AspNetCore.Identity
 @using QDeskPro.Domain.Entities
@@ -8,66 +8,256 @@
 @inject SignInManager<ApplicationUser> SignInManager
 @inject IdentityRedirectManager RedirectManager
 
-<PageTitle>Two-factor authentication (2FA)</PageTitle>
+<PageTitle>Two-Factor Authentication - QDeskPro</PageTitle>
 
-<StatusMessage />
-<h3>Two-factor authentication (2FA)</h3>
-@if (canTrack)
-{
-    if (is2faEnabled)
-    {
-        if (recoveryCodesLeft == 0)
-        {
-            <div class="alert alert-danger">
-                <strong>You have no recovery codes left.</strong>
-                <p>You must <a href="Account/Manage/GenerateRecoveryCodes">generate a new set of recovery codes</a> before you can log in with a recovery code.</p>
+<div class="twofa-manage-page">
+    <MudPaper Class="twofa-card" Elevation="0">
+        <div class="twofa-card-header">
+            <div class="twofa-icon">
+                <MudIcon Icon="@Icons.Material.Rounded.Security" />
             </div>
-        }
-        else if (recoveryCodesLeft == 1)
-        {
-            <div class="alert alert-danger">
-                <strong>You have 1 recovery code left.</strong>
-                <p>You can <a href="Account/Manage/GenerateRecoveryCodes">generate a new set of recovery codes</a>.</p>
-            </div>
-        }
-        else if (recoveryCodesLeft <= 3)
-        {
-            <div class="alert alert-warning">
-                <strong>You have @recoveryCodesLeft recovery codes left.</strong>
-                <p>You should <a href="Account/Manage/GenerateRecoveryCodes">generate a new set of recovery codes</a>.</p>
-            </div>
-        }
+            <MudText Typo="Typo.h5" Class="twofa-title">Two-Factor Authentication</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Add an extra layer of security to your account
+            </MudText>
+        </div>
 
-        if (isMachineRemembered)
-        {
-            <form style="display: inline-block" @formname="forget-browser" @onsubmit="OnSubmitForgetBrowserAsync" method="post">
-                <AntiforgeryToken />
-                <button type="submit" class="btn btn-primary">Forget this browser</button>
-            </form>
-        }
+        <StatusMessage />
 
-        <a href="Account/Manage/Disable2fa" class="btn btn-primary">Disable 2FA</a>
-        <a href="Account/Manage/GenerateRecoveryCodes" class="btn btn-primary">Reset recovery codes</a>
+        @if (canTrack)
+        {
+            @if (is2faEnabled)
+            {
+                <MudPaper Class="status-section enabled" Elevation="0">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.VerifiedUser" Color="Color.Success" />
+                        <div>
+                            <MudText Typo="Typo.body1" Class="font-weight-semibold">2FA is Enabled</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                Your account has enhanced security
+                            </MudText>
+                        </div>
+                    </MudStack>
+                </MudPaper>
+
+                @if (recoveryCodesLeft == 0)
+                {
+                    <MudAlert Severity="Severity.Error" Class="my-3" Icon="@Icons.Material.Rounded.Error">
+                        <strong>You have no recovery codes left.</strong>
+                        <MudText Typo="Typo.body2">
+                            You must <MudLink Href="Account/Manage/GenerateRecoveryCodes" Color="Color.Error">generate a new set of recovery codes</MudLink> before you can log in with a recovery code.
+                        </MudText>
+                    </MudAlert>
+                }
+                else if (recoveryCodesLeft == 1)
+                {
+                    <MudAlert Severity="Severity.Error" Class="my-3" Icon="@Icons.Material.Rounded.Warning">
+                        <strong>You have 1 recovery code left.</strong>
+                        <MudText Typo="Typo.body2">
+                            You can <MudLink Href="Account/Manage/GenerateRecoveryCodes" Color="Color.Error">generate a new set of recovery codes</MudLink>.
+                        </MudText>
+                    </MudAlert>
+                }
+                else if (recoveryCodesLeft <= 3)
+                {
+                    <MudAlert Severity="Severity.Warning" Class="my-3" Icon="@Icons.Material.Rounded.Warning">
+                        <strong>You have @recoveryCodesLeft recovery codes left.</strong>
+                        <MudText Typo="Typo.body2">
+                            You should <MudLink Href="Account/Manage/GenerateRecoveryCodes" Color="Color.Warning">generate a new set of recovery codes</MudLink>.
+                        </MudText>
+                    </MudAlert>
+                }
+
+                <MudStack Spacing="2" Class="mt-4">
+                    @if (isMachineRemembered)
+                    {
+                        <form @formname="forget-browser" @onsubmit="OnSubmitForgetBrowserAsync" method="post">
+                            <AntiforgeryToken />
+                            <MudButton ButtonType="ButtonType.Submit"
+                                       Variant="Variant.Outlined"
+                                       Color="Color.Default"
+                                       FullWidth="true"
+                                       StartIcon="@Icons.Material.Rounded.DevicesOther"
+                                       Class="action-button">
+                                Forget This Browser
+                            </MudButton>
+                        </form>
+                    }
+
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Warning"
+                               FullWidth="true"
+                               Href="Account/Manage/Disable2fa"
+                               StartIcon="@Icons.Material.Rounded.NoEncryption"
+                               Class="action-button">
+                        Disable 2FA
+                    </MudButton>
+
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               FullWidth="true"
+                               Href="Account/Manage/GenerateRecoveryCodes"
+                               StartIcon="@Icons.Material.Rounded.Refresh"
+                               Class="action-button">
+                        Reset Recovery Codes
+                    </MudButton>
+                </MudStack>
+            }
+            else
+            {
+                <MudPaper Class="status-section disabled" Elevation="0">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.Shield" Color="Color.Warning" />
+                        <div>
+                            <MudText Typo="Typo.body1" Class="font-weight-semibold">2FA is Not Enabled</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                Add 2FA to improve your account security
+                            </MudText>
+                        </div>
+                    </MudStack>
+                </MudPaper>
+            }
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.h6" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Rounded.PhoneAndroid" Class="mr-2" />
+                Authenticator App
+            </MudText>
+
+            @if (!hasAuthenticator)
+            {
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           FullWidth="true"
+                           Href="Account/Manage/EnableAuthenticator"
+                           StartIcon="@Icons.Material.Rounded.AddCircle"
+                           Class="auth-button">
+                    Add Authenticator App
+                </MudButton>
+            }
+            else
+            {
+                <MudStack Spacing="2">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               FullWidth="true"
+                               Href="Account/Manage/EnableAuthenticator"
+                               StartIcon="@Icons.Material.Rounded.Settings"
+                               Class="auth-button">
+                        Configure Authenticator App
+                    </MudButton>
+
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Error"
+                               FullWidth="true"
+                               Href="Account/Manage/ResetAuthenticator"
+                               StartIcon="@Icons.Material.Rounded.RestartAlt"
+                               Class="action-button">
+                        Reset Authenticator App
+                    </MudButton>
+                </MudStack>
+            }
+
+            <MudPaper Class="twofa-info" Elevation="0">
+                <MudText Typo="Typo.body2" Class="font-weight-semibold mb-2">What is 2FA?</MudText>
+                <MudStack Spacing="1">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.Shield" Size="Size.Small" Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Extra security layer for your account</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.Pin" Size="Size.Small" Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Requires a code from your phone to sign in</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.PhoneAndroid" Size="Size.Small" Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Works with Google Authenticator, Microsoft Authenticator, etc.</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Error" Icon="@Icons.Material.Rounded.Cookie">
+                <strong>Privacy and cookie policy have not been accepted.</strong>
+                <MudText Typo="Typo.body2">
+                    You must accept the policy before you can enable two factor authentication.
+                </MudText>
+            </MudAlert>
+        }
+    </MudPaper>
+</div>
+
+<style>
+    .twofa-manage-page {
+        max-width: 500px;
     }
 
-    <h4>Authenticator app</h4>
-    @if (!hasAuthenticator)
-    {
-        <a href="Account/Manage/EnableAuthenticator" class="btn btn-primary">Add authenticator app</a>
+    .twofa-card {
+        background: white !important;
+        border-radius: 20px;
+        padding: 32px;
+        border: 1px solid #e0e6ed;
     }
-    else
-    {
-        <a href="Account/Manage/EnableAuthenticator" class="btn btn-primary">Set up authenticator app</a>
-        <a href="Account/Manage/ResetAuthenticator" class="btn btn-primary">Reset authenticator app</a>
+
+    .twofa-card-header {
+        text-align: center;
+        margin-bottom: 28px;
     }
-}
-else
-{
-    <div class="alert alert-danger">
-        <strong>Privacy and cookie policy have not been accepted.</strong>
-        <p>You must accept the policy before you can enable two factor authentication.</p>
-    </div>
-}
+
+    .twofa-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+        color: white;
+        box-shadow: 0 6px 24px rgba(21, 101, 192, 0.3);
+    }
+
+    .twofa-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 8px;
+    }
+
+    .status-section {
+        border-radius: 12px;
+        padding: 16px;
+    }
+
+    .status-section.enabled {
+        background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%) !important;
+    }
+
+    .status-section.disabled {
+        background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%) !important;
+    }
+
+    .auth-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+    }
+
+    .action-button {
+        border-radius: 12px !important;
+        padding: 10px 20px !important;
+        text-transform: none !important;
+    }
+
+    .twofa-info {
+        background: #f5f7fa !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 24px;
+    }
+</style>
 
 @code {
     private bool canTrack;

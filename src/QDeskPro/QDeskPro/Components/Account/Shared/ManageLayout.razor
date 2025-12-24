@@ -1,17 +1,113 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 @layout QDeskPro.Components.Layout.MainLayout
+@using MudBlazor
 
-<h1>Manage your account</h1>
-
-<div>
-    <h2>Change your account settings</h2>
-    <hr />
-    <div class="row">
-        <div class="col-lg-3">
-            <ManageNavMenu />
-        </div>
-        <div class="col-lg-9">
-            @Body
-        </div>
+<div class="manage-page">
+    @* Page Header *@
+    <div class="manage-header">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+            <div class="manage-header-icon">
+                <MudIcon Icon="@Icons.Material.Rounded.ManageAccounts" Size="Size.Large" />
+            </div>
+            <div>
+                <MudText Typo="Typo.h4" Class="manage-title">Account Settings</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Manage your profile and security preferences</MudText>
+            </div>
+        </MudStack>
     </div>
+
+    <MudGrid Spacing="4">
+        @* Sidebar Navigation *@
+        <MudItem xs="12" md="3">
+            <MudPaper Class="manage-sidebar" Elevation="0">
+                <ManageNavMenu />
+            </MudPaper>
+        </MudItem>
+
+        @* Main Content *@
+        <MudItem xs="12" md="9">
+            <MudPaper Class="manage-content" Elevation="0">
+                @Body
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
 </div>
+
+<style>
+    .manage-page {
+        animation: fadeInUp 0.4s ease-out;
+    }
+
+    @@keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(12px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .manage-header {
+        margin-bottom: 32px;
+        padding-bottom: 24px;
+        border-bottom: 1px solid #e0e6ed;
+    }
+
+    .manage-header-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        box-shadow: 0 8px 24px rgba(21, 101, 192, 0.25);
+    }
+
+    .manage-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+    }
+
+    .manage-sidebar {
+        background: white !important;
+        border-radius: 16px;
+        padding: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+        position: sticky;
+        top: 84px;
+    }
+
+    .manage-content {
+        background: white !important;
+        border-radius: 16px;
+        padding: 32px;
+        min-height: 400px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    }
+
+    @@media (max-width: 960px) {
+        .manage-sidebar {
+            position: relative;
+            top: 0;
+        }
+
+        .manage-content {
+            padding: 24px;
+        }
+    }
+
+    @@media (max-width: 600px) {
+        .manage-header-icon {
+            width: 52px;
+            height: 52px;
+        }
+
+        .manage-content {
+            padding: 20px;
+        }
+    }
+</style>

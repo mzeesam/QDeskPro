@@ -1,7 +1,194 @@
-﻿@page "/Account/InvalidUser"
+@page "/Account/InvalidUser"
+@using MudBlazor
 
-<PageTitle>Invalid user</PageTitle>
+<PageTitle>Invalid User - QDeskPro</PageTitle>
 
-<h3>Invalid user</h3>
+<div class="invalid-user-page">
+    <div class="invalid-user-background">
+        <div class="invalid-user-pattern"></div>
+    </div>
 
-<StatusMessage />
+    <MudContainer MaxWidth="MaxWidth.Small" Class="invalid-user-container">
+        <MudPaper Class="invalid-user-card" Elevation="0">
+            <div class="invalid-user-icon-container">
+                <MudIcon Icon="@Icons.Material.Rounded.PersonOff" Size="Size.Large" />
+            </div>
+
+            <MudText Typo="Typo.h3" Class="invalid-user-title">
+                Invalid User
+            </MudText>
+
+            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="invalid-user-description">
+                We couldn't find the user account you're looking for.
+                This may happen if the account has been deleted or never existed.
+            </MudText>
+
+            <MudPaper Class="invalid-user-info" Elevation="0">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="font-weight-semibold">
+                        What you can do:
+                    </MudText>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.PersonAdd" Size="Size.Small" Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Create a new account if you don't have one
+                        </MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.Login" Size="Size.Small" Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Try logging in with a different account
+                        </MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.Support" Size="Size.Small" Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Contact support if you believe this is an error
+                        </MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+
+            <MudStack Spacing="3" Class="invalid-user-actions">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           Href="Account/Register"
+                           StartIcon="@Icons.Material.Rounded.PersonAdd"
+                           Class="invalid-user-button">
+                    Create New Account
+                </MudButton>
+
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           Href="Account/Login"
+                           StartIcon="@Icons.Material.Rounded.Login"
+                           Class="invalid-user-button-secondary">
+                    Back to Login
+                </MudButton>
+            </MudStack>
+        </MudPaper>
+    </MudContainer>
+</div>
+
+<style>
+    .invalid-user-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        padding: 24px;
+    }
+
+    .invalid-user-background {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
+        z-index: -1;
+    }
+
+    .invalid-user-pattern {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image:
+            radial-gradient(circle at 30% 70%, rgba(244, 67, 54, 0.08) 0%, transparent 50%),
+            radial-gradient(circle at 70% 30%, rgba(244, 67, 54, 0.05) 0%, transparent 50%);
+    }
+
+    .invalid-user-container {
+        display: flex;
+        justify-content: center;
+    }
+
+    .invalid-user-card {
+        background: white !important;
+        border-radius: 24px;
+        padding: 48px;
+        text-align: center;
+        max-width: 480px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+    }
+
+    .invalid-user-icon-container {
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #FFEBEE 0%, #FFCDD2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 24px;
+        animation: userFade 2s ease-in-out infinite;
+    }
+
+    .invalid-user-icon-container .mud-icon-root {
+        font-size: 3rem !important;
+        color: #C62828;
+    }
+
+    @@keyframes userFade {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.7; transform: scale(0.98); }
+    }
+
+    .invalid-user-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 16px;
+    }
+
+    .invalid-user-description {
+        line-height: 1.7;
+        margin-bottom: 24px;
+    }
+
+    .invalid-user-info {
+        background: #f5f7fa !important;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 24px;
+        text-align: left;
+    }
+
+    .invalid-user-actions {
+        margin-top: 8px;
+    }
+
+    .invalid-user-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+    }
+
+    .invalid-user-button-secondary {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        text-transform: none !important;
+    }
+
+    @@media (max-width: 600px) {
+        .invalid-user-card {
+            padding: 32px 24px;
+        }
+
+        .invalid-user-icon-container {
+            width: 80px;
+            height: 80px;
+        }
+
+        .invalid-user-icon-container .mud-icon-root {
+            font-size: 2.5rem !important;
+        }
+    }
+</style>

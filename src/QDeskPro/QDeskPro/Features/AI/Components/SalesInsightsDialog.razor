@@ -1,0 +1,293 @@
+@using QDeskPro.Features.AI.Services
+@using QDeskPro.Features.Dashboard.Services
+@using MudBlazor
+@inject ISalesAnalyticsService AnalyticsService
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudAvatar Color="Color.Success" Size="Size.Small">
+                <MudIcon Icon="@Icons.Material.Filled.Insights" Size="Size.Small" />
+            </MudAvatar>
+            <MudText Typo="Typo.h6">AI Sales Insights</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudStack AlignItems="AlignItems.Center" Spacing="3" Class="py-8">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+                <MudText Typo="Typo.body1">Analyzing your sales data...</MudText>
+                <MudText Typo="Typo.caption" Class="text-muted">This may take a few seconds</MudText>
+            </MudStack>
+        }
+        else if (_result?.Success == true)
+        {
+            @* Alerts Section *@
+            @if (_result.Alerts.Any())
+            {
+                <MudText Typo="Typo.subtitle1" Class="font-weight-bold mb-2">Alerts</MudText>
+                <MudStack Spacing="2" Class="mb-4">
+                    @foreach (var alert in _result.Alerts)
+                    {
+                        <MudAlert Severity="@GetAlertSeverity(alert.Severity)" Dense="true">
+                            <strong>@alert.Title:</strong> @alert.Message
+                        </MudAlert>
+                    }
+                </MudStack>
+            }
+
+            @* Performance Summary *@
+            <MudText Typo="Typo.subtitle1" Class="font-weight-bold mb-2">Performance Summary</MudText>
+            <MudGrid Spacing="2" Class="mb-4">
+                <MudItem xs="6" sm="3">
+                    <MudPaper Elevation="0" Class="pa-3 rounded-lg text-center insight-metric">
+                        <MudText Typo="Typo.caption" Class="text-muted">Revenue</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-bold">
+                            KES @_result.Stats?.TotalRevenue.ToString("N0")
+                        </MudText>
+                        <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@GetChangeIcon(_result.RevenueChange)"
+                                     Size="Size.Small"
+                                     Color="@GetChangeColor(_result.RevenueChange)" />
+                            <MudText Typo="Typo.caption" Color="@GetChangeColor(_result.RevenueChange)">
+                                @FormatChange(_result.RevenueChange)
+                            </MudText>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Elevation="0" Class="pa-3 rounded-lg text-center insight-metric">
+                        <MudText Typo="Typo.caption" Class="text-muted">Orders</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-bold">@_result.Stats?.TotalOrders</MudText>
+                        <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@GetChangeIcon(_result.OrdersChange)"
+                                     Size="Size.Small"
+                                     Color="@GetChangeColor(_result.OrdersChange)" />
+                            <MudText Typo="Typo.caption" Color="@GetChangeColor(_result.OrdersChange)">
+                                @FormatChange(_result.OrdersChange)
+                            </MudText>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Elevation="0" Class="pa-3 rounded-lg text-center insight-metric">
+                        <MudText Typo="Typo.caption" Class="text-muted">Quantity</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-bold">@_result.Stats?.TotalQuantity.ToString("N0")</MudText>
+                        <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@GetChangeIcon(_result.QuantityChange)"
+                                     Size="Size.Small"
+                                     Color="@GetChangeColor(_result.QuantityChange)" />
+                            <MudText Typo="Typo.caption" Color="@GetChangeColor(_result.QuantityChange)">
+                                @FormatChange(_result.QuantityChange)
+                            </MudText>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Elevation="0" Class="pa-3 rounded-lg text-center insight-metric">
+                        <MudText Typo="Typo.caption" Class="text-muted">Profit Margin</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-bold" Color="@GetMarginColor(_result.Stats?.ProfitMargin ?? 0)">
+                            @_result.Stats?.ProfitMargin.ToString("F1")%
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="@GetChangeColor(_result.ProfitMarginChange)">
+                            @FormatChange(_result.ProfitMarginChange, true)
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* AI Insights *@
+            <MudText Typo="Typo.subtitle1" Class="font-weight-bold mb-2">AI Analysis</MudText>
+            <MudStack Spacing="2" Class="mb-4">
+                @foreach (var insight in _result.Insights)
+                {
+                    <MudPaper Elevation="0" Class="@($"pa-3 rounded-lg insight-card {GetInsightClass(insight.Type)}")">
+                        <MudStack Row="true" AlignItems="AlignItems.Start" Spacing="2">
+                            <MudIcon Icon="@GetInsightIcon(insight.Type)"
+                                     Color="@GetInsightColor(insight.Type)"
+                                     Size="Size.Small" />
+                            <div>
+                                <MudText Typo="Typo.subtitle2" Class="font-weight-bold">@insight.Title</MudText>
+                                <MudText Typo="Typo.body2">@insight.Description</MudText>
+                            </div>
+                        </MudStack>
+                    </MudPaper>
+                }
+            </MudStack>
+
+            @* Top Products *@
+            @if (_result.TopProducts.Any())
+            {
+                <MudText Typo="Typo.subtitle1" Class="font-weight-bold mb-2">Top Products</MudText>
+                <MudSimpleTable Dense="true" Hover="true" Class="mb-4">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th style="text-align: right">Quantity</th>
+                            <th style="text-align: right">Revenue</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var product in _result.TopProducts)
+                        {
+                            <tr>
+                                <td>@product.ProductName</td>
+                                <td style="text-align: right">@product.Quantity.ToString("N0")</td>
+                                <td style="text-align: right">KES @product.Revenue.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+
+            <MudText Typo="Typo.caption" Class="text-muted text-center">
+                Generated at @_result.GeneratedAt.ToLocalTime().ToString("g")
+            </MudText>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Error">
+                @(_result?.Error ?? "Failed to generate insights. Please try again.")
+            </MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Close</MudButton>
+        <MudButton Color="Color.Primary" OnClick="RefreshAsync" Disabled="@_loading">
+            <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Class="mr-1" />
+            Refresh
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    .insight-metric {
+        background-color: var(--mud-palette-background);
+        border: 1px solid var(--mud-palette-lines-default);
+    }
+
+    .insight-card {
+        border: 1px solid var(--mud-palette-lines-default);
+    }
+
+    .insight-card.positive {
+        background: linear-gradient(90deg, rgba(76, 175, 80, 0.08) 0%, transparent 100%);
+        border-left: 3px solid var(--mud-palette-success);
+    }
+
+    .insight-card.negative {
+        background: linear-gradient(90deg, rgba(244, 67, 54, 0.08) 0%, transparent 100%);
+        border-left: 3px solid var(--mud-palette-error);
+    }
+
+    .insight-card.warning {
+        background: linear-gradient(90deg, rgba(255, 152, 0, 0.08) 0%, transparent 100%);
+        border-left: 3px solid var(--mud-palette-warning);
+    }
+
+    .insight-card.neutral {
+        background-color: var(--mud-palette-background);
+        border-left: 3px solid var(--mud-palette-info);
+    }
+</style>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string? QuarryId { get; set; }
+
+    [Parameter]
+    public DateTime FromDate { get; set; }
+
+    [Parameter]
+    public DateTime ToDate { get; set; }
+
+    private SalesInsightsResult? _result;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInsightsAsync();
+    }
+
+    private async Task LoadInsightsAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _result = await AnalyticsService.GetSalesInsightsAsync(QuarryId, FromDate, ToDate);
+        }
+        catch (Exception)
+        {
+            _result = new SalesInsightsResult { Success = false, Error = "An error occurred while generating insights" };
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        await LoadInsightsAsync();
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private Severity GetAlertSeverity(string severity) => severity switch
+    {
+        "error" => Severity.Error,
+        "warning" => Severity.Warning,
+        _ => Severity.Info
+    };
+
+    private string GetChangeIcon(double change) =>
+        change >= 0 ? Icons.Material.Filled.TrendingUp : Icons.Material.Filled.TrendingDown;
+
+    private Color GetChangeColor(double change) =>
+        change >= 0 ? Color.Success : Color.Error;
+
+    private Color GetMarginColor(double margin) => margin switch
+    {
+        >= 40 => Color.Success,
+        >= 20 => Color.Info,
+        >= 10 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private string FormatChange(double change, bool isPoints = false)
+    {
+        var sign = change >= 0 ? "+" : "";
+        return isPoints ? $"{sign}{change:F1}pts" : $"{sign}{change:F1}%";
+    }
+
+    private string GetInsightIcon(string type) => type switch
+    {
+        "positive" => Icons.Material.Filled.CheckCircle,
+        "negative" => Icons.Material.Filled.Warning,
+        "warning" => Icons.Material.Filled.Info,
+        _ => Icons.Material.Filled.Lightbulb
+    };
+
+    private Color GetInsightColor(string type) => type switch
+    {
+        "positive" => Color.Success,
+        "negative" => Color.Error,
+        "warning" => Color.Warning,
+        _ => Color.Info
+    };
+
+    private string GetInsightClass(string type) => type switch
+    {
+        "positive" => "positive",
+        "negative" => "negative",
+        "warning" => "warning",
+        _ => "neutral"
+    };
+}

@@ -7,15 +7,26 @@ using QDeskPro.Domain.Entities;
 
 namespace QDeskPro.Components.Account;
 
-// This is a server-side AuthenticationStateProvider that revalidates the security stamp for the connected user
-// every 30 minutes an interactive circuit is connected.
+/// <summary>
+/// Server-side AuthenticationStateProvider that revalidates the security stamp for the connected user
+/// at regular intervals while an interactive circuit is connected.
+///
+/// Revalidation ensures:
+/// - Password changes are detected and user is logged out
+/// - Role/permission changes take effect
+/// - Account lockouts are enforced
+///
+/// For financial applications like QDeskPro, a shorter interval (10 min) provides better security.
+/// </summary>
 internal sealed class IdentityRevalidatingAuthenticationStateProvider(
         ILoggerFactory loggerFactory,
         IServiceScopeFactory scopeFactory,
         IOptions<IdentityOptions> options)
     : RevalidatingServerAuthenticationStateProvider(loggerFactory)
 {
-    protected override TimeSpan RevalidationInterval => TimeSpan.FromMinutes(30);
+    // Reduced from 30 minutes to 10 minutes for better security
+    // This is important for financial apps where permission changes should take effect quickly
+    protected override TimeSpan RevalidationInterval => TimeSpan.FromMinutes(10);
 
     protected override async Task<bool> ValidateAuthenticationStateAsync(
         AuthenticationState authenticationState, CancellationToken cancellationToken)

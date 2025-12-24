@@ -1,5 +1,5 @@
-﻿@page "/Account/Manage/DeletePersonalData"
-
+@page "/Account/Manage/DeletePersonalData"
+@using MudBlazor
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Identity
 @using QDeskPro.Domain.Entities
@@ -9,38 +9,171 @@
 @inject IdentityRedirectManager RedirectManager
 @inject ILogger<DeletePersonalData> Logger
 
-<PageTitle>Delete Personal Data</PageTitle>
+<PageTitle>Delete Personal Data - QDeskPro</PageTitle>
 
-<StatusMessage Message="@message" />
-
-<h3>Delete Personal Data</h3>
-
-<div class="alert alert-warning" role="alert">
-    <p>
-        <strong>Deleting this data will permanently remove your account, and this cannot be recovered.</strong>
-    </p>
-</div>
-
-<div>
-    <EditForm Model="Input" FormName="delete-user" OnValidSubmit="OnValidSubmitAsync" method="post">
-        <DataAnnotationsValidator />
-        <ValidationSummary class="text-danger" role="alert" />
-        @if (requirePassword)
-        {
-            <div class="form-floating mb-3">
-                <InputText type="password" @bind-Value="Input.Password" id="Input.Password" class="form-control" autocomplete="current-password" aria-required="true" placeholder="Please enter your password." />
-                <label for="Input.Password" class="form-label">Password</label>
-                <ValidationMessage For="() => Input.Password" class="text-danger" />
+<div class="delete-data-page">
+    <MudPaper Class="delete-card" Elevation="0">
+        <div class="delete-card-header">
+            <div class="delete-icon">
+                <MudIcon Icon="@Icons.Material.Rounded.DeleteForever" />
             </div>
-        }
-        <button class="w-100 btn btn-lg btn-danger" type="submit">Delete data and close my account</button>
-    </EditForm>
+            <MudText Typo="Typo.h5" Class="delete-title">Delete Account</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Permanently remove your account and all data
+            </MudText>
+        </div>
+
+        <StatusMessage Message="@message" />
+
+        <MudAlert Severity="Severity.Error" Class="mb-4" Icon="@Icons.Material.Rounded.Warning">
+            <MudText Typo="Typo.body1" Class="font-weight-semibold">This action cannot be undone</MudText>
+            <MudText Typo="Typo.body2">
+                Deleting your account will permanently remove all your personal data, including your profile,
+                preferences, and any associated records. This action is irreversible.
+            </MudText>
+        </MudAlert>
+
+        <MudPaper Class="delete-warning-list" Elevation="0">
+            <MudText Typo="Typo.body2" Class="font-weight-semibold mb-2">What will be deleted:</MudText>
+            <MudStack Spacing="1">
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Color="Color.Error" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Your profile information</MudText>
+                </MudStack>
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Color="Color.Error" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Account settings and preferences</MudText>
+                </MudStack>
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Color="Color.Error" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">All associated data records</MudText>
+                </MudStack>
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Color="Color.Error" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">External login associations</MudText>
+                </MudStack>
+            </MudStack>
+        </MudPaper>
+
+        <MudDivider Class="my-4" />
+
+        <EditForm Model="Input" FormName="delete-user" OnValidSubmit="OnValidSubmitAsync" method="post" Enhance>
+            <DataAnnotationsValidator />
+
+            <MudStack Spacing="3">
+                @if (requirePassword)
+                {
+                    <MudTextField @bind-Value="Input.Password"
+                                  Label="Confirm Your Password"
+                                  Variant="Variant.Outlined"
+                                  InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@(_showPassword ? Icons.Material.Rounded.VisibilityOff : Icons.Material.Rounded.Visibility)"
+                                  AdornmentColor="Color.Default"
+                                  OnAdornmentClick="() => _showPassword = !_showPassword"
+                                  autocomplete="current-password"
+                                  Required="true"
+                                  RequiredError="Password is required to delete your account"
+                                  HelperText="Enter your password to confirm deletion"
+                                  Class="delete-input" />
+                }
+
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Color="Color.Error"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           StartIcon="@Icons.Material.Rounded.DeleteForever"
+                           Class="delete-button">
+                    Delete My Account Permanently
+                </MudButton>
+
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           Href="Account/Manage"
+                           StartIcon="@Icons.Material.Rounded.ArrowBack"
+                           Class="cancel-button">
+                    Cancel - Keep My Account
+                </MudButton>
+            </MudStack>
+        </EditForm>
+    </MudPaper>
 </div>
+
+<style>
+    .delete-data-page {
+        max-width: 500px;
+    }
+
+    .delete-card {
+        background: white !important;
+        border-radius: 20px;
+        padding: 32px;
+        border: 1px solid #e0e6ed;
+    }
+
+    .delete-card-header {
+        text-align: center;
+        margin-bottom: 28px;
+    }
+
+    .delete-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #EF5350 0%, #C62828 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+        color: white;
+        box-shadow: 0 6px 24px rgba(198, 40, 40, 0.3);
+        animation: warningPulse 2s ease-in-out infinite;
+    }
+
+    @@keyframes warningPulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 6px 24px rgba(198, 40, 40, 0.3); }
+        50% { transform: scale(1.05); box-shadow: 0 8px 32px rgba(198, 40, 40, 0.4); }
+    }
+
+    .delete-title {
+        font-weight: 700 !important;
+        color: #C62828;
+        margin-bottom: 8px;
+    }
+
+    .delete-warning-list {
+        background: #FFEBEE !important;
+        border-radius: 12px;
+        padding: 16px;
+        border: 1px solid rgba(198, 40, 40, 0.2);
+    }
+
+    .delete-input .mud-input-outlined-border {
+        border-radius: 12px !important;
+    }
+
+    .delete-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+    }
+
+    .cancel-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        text-transform: none !important;
+    }
+</style>
 
 @code {
     private string? message;
     private ApplicationUser? user;
     private bool requirePassword;
+    private bool _showPassword = false;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;

@@ -22,6 +22,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<DailyNote> DailyNotes { get; set; } = null!;
     public DbSet<UserQuarry> UserQuarries { get; set; } = null!;
 
+    // AI-related DbSets
+    public DbSet<AIConversation> AIConversations { get; set; } = null!;
+    public DbSet<AIMessage> AIMessages { get; set; } = null!;
+
+    // Authentication DbSets
+    public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -47,11 +54,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.LayerLevel).IsRequired().HasMaxLength(100);
-            
+
             entity.HasOne(e => e.Quarry)
                 .WithMany(q => q.Layers)
                 .HasForeignKey(e => e.QuarryId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Restrict); // Changed to Restrict to avoid cascade cycles
 
             entity.HasIndex(e => e.QuarryId);
         });
@@ -67,16 +74,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
         builder.Entity<ProductPrice>(entity =>
         {
             entity.HasKey(e => e.Id);
-            
+
             entity.HasOne(e => e.Product)
                 .WithMany(p => p.Prices)
                 .HasForeignKey(e => e.ProductId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.Quarry)
                 .WithMany(q => q.ProductPrices)
                 .HasForeignKey(e => e.QuarryId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasIndex(e => new { e.ProductId, e.QuarryId });
         });
@@ -86,11 +93,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.BrokerName).IsRequired().HasMaxLength(200);
-            
+
             entity.HasOne(e => e.Quarry)
                 .WithMany(q => q.Brokers)
                 .HasForeignKey(e => e.quarryId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasIndex(e => e.quarryId);
         });
@@ -183,18 +190,78 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
         builder.Entity<UserQuarry>(entity =>
         {
             entity.HasKey(e => e.Id);
-            
+
             entity.HasOne(e => e.User)
                 .WithMany(u => u.QuarryAssignments)
                 .HasForeignKey(e => e.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.Quarry)
                 .WithMany(q => q.UserQuarries)
                 .HasForeignKey(e => e.QuarryId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasIndex(e => new { e.UserId, e.QuarryId }).IsUnique();
+        });
+
+        // AIConversation configuration
+        builder.Entity<AIConversation>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.ChatType).HasMaxLength(50);
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Quarry)
+                .WithMany()
+                .HasForeignKey(e => e.QuarryId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.LastMessageAt);
+        });
+
+        // AIMessage configuration
+        builder.Entity<AIMessage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Role).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Content).IsRequired();
+            entity.Property(e => e.ToolName).HasMaxLength(100);
+
+            entity.HasOne(e => e.Conversation)
+                .WithMany(c => c.Messages)
+                .HasForeignKey(e => e.AIConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.AIConversationId);
+            entity.HasIndex(e => e.Timestamp);
+        });
+
+        // RefreshToken configuration
+        builder.Entity<RefreshToken>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Token).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.UserId).IsRequired();
+            entity.Property(e => e.DeviceInfo).HasMaxLength(500);
+            entity.Property(e => e.IpAddress).HasMaxLength(45); // IPv6 max length
+
+            // User relationship
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Indexes for performance
+            entity.HasIndex(e => e.Token).IsUnique();
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.ExpiresAt);
+            entity.HasIndex(e => new { e.UserId, e.IsRevoked, e.ExpiresAt });
         });
     }
 

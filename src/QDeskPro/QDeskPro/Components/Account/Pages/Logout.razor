@@ -1,0 +1,146 @@
+@page "/Account/Logout"
+@rendermode InteractiveServer
+
+@using Microsoft.AspNetCore.Components.Authorization
+@using QDeskPro.Shared.Services
+
+@inject AuthenticationStateProvider AuthStateProvider
+@inject LocalStorageService LocalStorage
+@inject NavigationManager NavigationManager
+@inject ILogger<Logout> Logger
+
+<PageTitle>Logging Out - QDeskPro</PageTitle>
+
+<div class="logout-page">
+    <div class="logout-container">
+        <div class="logout-content">
+            @if (isLoggingOut)
+            {
+                <div class="spinner-container">
+                    <div class="spinner"></div>
+                </div>
+                <h2>Logging out...</h2>
+                <p>Please wait while we sign you out.</p>
+            }
+            else
+            {
+                <svg xmlns="http://www.w3.org/2000/svg" height="48" viewBox="0 -960 960 960" width="48" fill="currentColor" class="success-icon">
+                    <path d="m382-354 339-339q12-12 28.5-12t28.5 12q12 12 12 28.5T778-636L410-268q-12-12-28-12t-28-12L182-440q-12-12-11.5-28.5T183-497q12-12 28.5-12t28.5 12l142 143Z"/>
+                </svg>
+                <h2>Logged Out</h2>
+                <p>You have been successfully signed out.</p>
+                <a href="/Account/Login" class="login-link">Sign In Again</a>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .logout-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        padding: 20px;
+    }
+
+    .logout-container {
+        background: white;
+        border-radius: 24px;
+        padding: 48px;
+        text-align: center;
+        max-width: 400px;
+        width: 100%;
+        box-shadow: 0 25px 80px rgba(0, 0, 0, 0.3);
+    }
+
+    .logout-content h2 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 16px 0 8px 0;
+    }
+
+    .logout-content p {
+        color: #546E7A;
+        margin-bottom: 24px;
+    }
+
+    .spinner-container {
+        margin-bottom: 24px;
+    }
+
+    .spinner {
+        width: 48px;
+        height: 48px;
+        border: 4px solid rgba(21, 101, 192, 0.2);
+        border-top-color: #1565C0;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .success-icon {
+        color: #4CAF50;
+        margin-bottom: 16px;
+    }
+
+    .login-link {
+        display: inline-block;
+        padding: 12px 32px;
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        color: white;
+        text-decoration: none;
+        border-radius: 12px;
+        font-weight: 600;
+        box-shadow: 0 4px 16px rgba(21, 101, 192, 0.3);
+        transition: all 0.2s ease;
+    }
+
+    .login-link:hover {
+        box-shadow: 0 6px 24px rgba(21, 101, 192, 0.4);
+        transform: translateY(-1px);
+    }
+</style>
+
+@code {
+    private bool isLoggingOut = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Clear all auth data from localStorage
+            await LocalStorage.RemoveItemAsync("authToken");
+            await LocalStorage.RemoveItemAsync("userEmail");
+            await LocalStorage.RemoveItemAsync("userFullName");
+            await LocalStorage.RemoveItemAsync("userRole");
+            await LocalStorage.RemoveItemAsync("userQuarryId");
+
+            // Update authentication state
+            if (AuthStateProvider is CustomAuthenticationStateProvider customAuthProvider)
+            {
+                await customAuthProvider.MarkUserAsLoggedOut();
+            }
+
+            Logger.LogInformation("User logged out successfully");
+
+            // Small delay to show the logout process
+            await Task.Delay(500);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during logout");
+        }
+        finally
+        {
+            isLoggingOut = false;
+            StateHasChanged();
+        }
+    }
+}

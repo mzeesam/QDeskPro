@@ -1,5 +1,5 @@
-﻿@page "/Account/Manage/ResetAuthenticator"
-
+@page "/Account/Manage/ResetAuthenticator"
+@using MudBlazor
 @using Microsoft.AspNetCore.Identity
 @using QDeskPro.Domain.Entities
 
@@ -8,26 +8,170 @@
 @inject IdentityRedirectManager RedirectManager
 @inject ILogger<ResetAuthenticator> Logger
 
-<PageTitle>Reset authenticator key</PageTitle>
+<PageTitle>Reset Authenticator Key - QDeskPro</PageTitle>
 
-<StatusMessage />
-<h3>Reset authenticator key</h3>
-<div class="alert alert-warning" role="alert">
-    <p>
-        <span class="glyphicon glyphicon-warning-sign"></span>
-        <strong>If you reset your authenticator key your authenticator app will not work until you reconfigure it.</strong>
-    </p>
-    <p>
-        This process disables 2FA until you verify your authenticator app.
-        If you do not complete your authenticator app configuration you may lose access to your account.
-    </p>
+<div class="reset-auth-page">
+    <MudPaper Class="reset-card" Elevation="0">
+        <div class="reset-card-header">
+            <div class="reset-icon">
+                <MudIcon Icon="@Icons.Material.Rounded.RestartAlt" />
+            </div>
+            <MudText Typo="Typo.h5" Class="reset-title">Reset Authenticator</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Generate a new authenticator key
+            </MudText>
+        </div>
+
+        <StatusMessage />
+
+        <MudAlert Severity="Severity.Error" Class="mb-4" Icon="@Icons.Material.Rounded.Warning">
+            <MudText Typo="Typo.body1" Class="font-weight-semibold">This is a Critical Action</MudText>
+            <MudText Typo="Typo.body2">
+                If you reset your authenticator key, your current authenticator app will stop working immediately.
+            </MudText>
+        </MudAlert>
+
+        <MudPaper Class="warning-section" Elevation="0">
+            <MudStack Spacing="2">
+                <MudText Typo="Typo.body2" Class="font-weight-semibold">What happens when you reset:</MudText>
+                <MudStack Spacing="1">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                        <MudIcon Icon="@Icons.Material.Rounded.Block" Size="Size.Small" Color="Color.Error" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Your current authenticator app will no longer work
+                        </MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                        <MudIcon Icon="@Icons.Material.Rounded.NoEncryption" Size="Size.Small" Color="Color.Warning" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            2FA will be disabled until you reconfigure it
+                        </MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                        <MudIcon Icon="@Icons.Material.Rounded.PhoneAndroid" Size="Size.Small" Color="Color.Info" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            You'll need to set up your authenticator app again
+                        </MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                        <MudIcon Icon="@Icons.Material.Rounded.ErrorOutline" Size="Size.Small" Color="Color.Error" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            If you don't complete setup, you may lose account access
+                        </MudText>
+                    </MudStack>
+                </MudStack>
+            </MudStack>
+        </MudPaper>
+
+        <MudDivider Class="my-4" />
+
+        <form @formname="reset-authenticator" @onsubmit="OnSubmitAsync" method="post">
+            <AntiforgeryToken />
+            <MudStack Spacing="2">
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Color="Color.Error"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           StartIcon="@Icons.Material.Rounded.RestartAlt"
+                           Class="reset-button">
+                    Reset Authenticator Key
+                </MudButton>
+
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           Href="Account/Manage/TwoFactorAuthentication"
+                           StartIcon="@Icons.Material.Rounded.ArrowBack"
+                           Class="cancel-button">
+                    Cancel - Keep Current Key
+                </MudButton>
+            </MudStack>
+        </form>
+
+        <MudPaper Class="help-section" Elevation="0">
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                <MudIcon Icon="@Icons.Material.Rounded.Lightbulb" Size="Size.Small" Color="Color.Warning" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    <strong>Tip:</strong> Only reset your authenticator key if you've lost access to your
+                    authenticator app or want to switch to a different device.
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    </MudPaper>
 </div>
-<div>
-    <form @formname="reset-authenticator" @onsubmit="OnSubmitAsync" method="post">
-        <AntiforgeryToken />
-        <button class="btn btn-danger" type="submit">Reset authenticator key</button>
-    </form>
-</div>
+
+<style>
+    .reset-auth-page {
+        max-width: 500px;
+    }
+
+    .reset-card {
+        background: white !important;
+        border-radius: 20px;
+        padding: 32px;
+        border: 1px solid #e0e6ed;
+    }
+
+    .reset-card-header {
+        text-align: center;
+        margin-bottom: 28px;
+    }
+
+    .reset-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #EF5350 0%, #C62828 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+        color: white;
+        box-shadow: 0 6px 24px rgba(198, 40, 40, 0.3);
+        animation: rotateIcon 3s ease-in-out infinite;
+    }
+
+    @@keyframes rotateIcon {
+        0%, 100% { transform: rotate(0deg); }
+        25% { transform: rotate(-10deg); }
+        75% { transform: rotate(10deg); }
+    }
+
+    .reset-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 8px;
+    }
+
+    .warning-section {
+        background: #FFEBEE !important;
+        border-radius: 12px;
+        padding: 16px;
+        border: 1px solid rgba(198, 40, 40, 0.2);
+    }
+
+    .reset-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+    }
+
+    .cancel-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        text-transform: none !important;
+    }
+
+    .help-section {
+        background: #FFF8E1 !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 24px;
+    }
+</style>
 
 @code {
     [CascadingParameter]

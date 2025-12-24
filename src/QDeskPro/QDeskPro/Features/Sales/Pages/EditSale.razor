@@ -1,0 +1,530 @@
+@page "/clerk/sales/edit/{Id}"
+@using Microsoft.AspNetCore.Authorization
+@using QDeskPro.Features.Sales.Services
+@using QDeskPro.Features.Admin.Services
+@using QDeskPro.Domain.Services
+@using QDeskPro.Domain.Entities
+@attribute [Authorize(Roles = "Clerk")]
+@rendermode InteractiveServer
+@inject SaleService SaleService
+@inject SaleCalculationService CalculationService
+@inject UserService UserService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+@inject IDialogService DialogService
+
+<PageTitle>Edit Sale - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="py-4">
+    <MudText Typo="Typo.h4" Class="font-weight-bold mb-4">
+        <MudIcon Icon="@Icons.Material.Rounded.Edit" Class="mr-2" />
+        Edit Sale
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_sale == null)
+    {
+        <MudAlert Severity="Severity.Error">Sale not found or you don't have permission to edit it.</MudAlert>
+    }
+    else
+    {
+        <MudForm @ref="_form" @bind-IsValid="_isValid">
+            <MudPaper Class="pa-4 mb-4" Elevation="0">
+                <MudGrid>
+                    @* Product Selection *@
+                    <MudItem xs="12" sm="6">
+                        <MudSelect T="string"
+                                   Value="_sale.ProductId"
+                                   ValueChanged="OnProductChanged"
+                                   Label="Product"
+                                   Variant="Variant.Outlined"
+                                   AnchorOrigin="Origin.BottomCenter"
+                                   Required="true"
+                                   RequiredError="Please specify product">
+                            <MudSelectItem Value="@("")">-- Select Product --</MudSelectItem>
+                            @foreach (var product in _products)
+                            {
+                                <MudSelectItem Value="@product.Id">@product.ProductName</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    @* Layer Selection *@
+                    <MudItem xs="12" sm="6">
+                        <MudSelect @bind-Value="_sale.LayerId"
+                                   Label="Layer"
+                                   Variant="Variant.Outlined"
+                                   AnchorOrigin="Origin.BottomCenter"
+                                   Required="true"
+                                   RequiredError="Please specify layer">
+                            <MudSelectItem Value="@("")">-- Select Layer --</MudSelectItem>
+                            @foreach (var layer in _layers)
+                            {
+                                <MudSelectItem Value="@layer.Id">@layer.LayerLevel</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    @* Vehicle Registration *@
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_sale.VehicleRegistration"
+                                      Label="Vehicle Registration"
+                                      Variant="Variant.Outlined"
+                                      Required="true"
+                                      RequiredError="Please provide the vehicle registration details"
+                                      MaxLength="90" />
+                    </MudItem>
+
+                    @* Sale Date *@
+                    <MudItem xs="12" sm="6">
+                        <MudDatePicker @bind-Date="_saleDate"
+                                       Label="Sale Date"
+                                       Variant="Variant.Outlined"
+                                       Required="true"
+                                       MaxDate="@DateTime.Today"
+                                       MinDate="@DateTime.Today.AddDays(-14)"
+                                       DateFormat="dd/MM/yyyy" />
+                    </MudItem>
+
+                    @* Sale Time *@
+                    <MudItem xs="12" sm="6">
+                        <MudTimePicker @bind-Time="_saleTime"
+                                       Label="Sale Time"
+                                       Variant="Variant.Outlined"
+                                       Required="true"
+                                       TimeFormat="HH:mm" />
+                    </MudItem>
+
+                    @* Quantity *@
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField Value="_sale.Quantity"
+                                         Label="Quantity"
+                                         Variant="Variant.Outlined"
+                                         Min="1"
+                                         Required="true"
+                                         RequiredError="Cannot proceed if quantity not provided"
+                                         ValueChanged="@((double val) => { _sale.Quantity = val; CalculateOrderSummary(); })" />
+                    </MudItem>
+
+                    @* Price Per Unit *@
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField Value="_sale.PricePerUnit"
+                                         Label="Price Per Unit"
+                                         Variant="Variant.Outlined"
+                                         Min="0"
+                                         Required="true"
+                                         RequiredError="Cannot proceed if price not provided"
+                                         ValueChanged="@((double val) => { _sale.PricePerUnit = val; CalculateOrderSummary(); })"
+                                         Adornment="Adornment.Start"
+                                         AdornmentText="KES" />
+                    </MudItem>
+
+                    @* Broker Selection *@
+                    <MudItem xs="12" sm="6">
+                        <MudSelect @bind-Value="_sale.BrokerId"
+                                   Label="Broker (Optional)"
+                                   Variant="Variant.Outlined"
+                                   AnchorOrigin="Origin.BottomCenter"
+                                   Clearable="true">
+                            <MudSelectItem Value="@((string?)null)">-- No Broker --</MudSelectItem>
+                            @foreach (var broker in _brokers)
+                            {
+                                <MudSelectItem Value="@broker.Id">@broker.BrokerName</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    @* Commission Per Unit *@
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField Value="_sale.CommissionPerUnit"
+                                         Label="Commission Per Unit"
+                                         Variant="Variant.Outlined"
+                                         Min="0"
+                                         ValueChanged="@((double val) => { _sale.CommissionPerUnit = val; CalculateOrderSummary(); })"
+                                         Adornment="Adornment.Start"
+                                         AdornmentText="KES"
+                                         Disabled="@(string.IsNullOrWhiteSpace(_sale.BrokerId))" />
+                    </MudItem>
+
+                    @* Payment Mode *@
+                    <MudItem xs="12" sm="6">
+                        <MudSelect @bind-Value="_sale.PaymentMode"
+                                   Label="Payment Mode"
+                                   Variant="Variant.Outlined"
+                                   Required="true"
+                                   RequiredError="Payment Mode is required">
+                            <MudSelectItem Value="@("Cash")">Cash</MudSelectItem>
+                            <MudSelectItem Value="@("MPESA")">MPESA</MudSelectItem>
+                            <MudSelectItem Value="@("Bank Transfer")">Bank Transfer</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+
+                    @* Payment Status *@
+                    <MudItem xs="12" sm="6">
+                        <MudSelect @bind-Value="_sale.PaymentStatus"
+                                   Label="Payment Status"
+                                   Variant="Variant.Outlined"
+                                   Required="true"
+                                   RequiredError="Payment Status is required">
+                            <MudSelectItem Value="@("Paid")">Paid</MudSelectItem>
+                            <MudSelectItem Value="@("Not Paid")">Not Paid</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+
+                    @* Payment Reference *@
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_sale.PaymentReference"
+                                      Label="Payment Reference (Optional)"
+                                      Variant="Variant.Outlined"
+                                      Lines="2" />
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            @* Client Details - Expandable Section *@
+            <MudExpansionPanels Class="mb-4">
+                <MudExpansionPanel Text="Client Details (Optional)" Icon="@Icons.Material.Rounded.Person">
+                    <MudGrid Class="pt-2">
+                        <MudItem xs="12">
+                            <MudTextField @bind-Value="_sale.ClientName"
+                                          Label="Client Name"
+                                          Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudTextField @bind-Value="_sale.ClientPhone"
+                                          Label="Phone Number"
+                                          Variant="Variant.Outlined"
+                                          InputType="InputType.Telephone" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudAutocomplete @bind-Value="_sale.Destination"
+                                             Label="Destination"
+                                             SearchFunc="SearchCounties"
+                                             Variant="Variant.Outlined"
+                                             Clearable="true" />
+                        </MudItem>
+                    </MudGrid>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+
+            @* Order Summary *@
+            <MudPaper Class="pa-4 mb-4 order-summary-card" Elevation="0">
+                <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">Order Summary</MudText>
+                <MudStack Spacing="2">
+                    <div class="d-flex justify-space-between">
+                        <MudText>Total Amount</MudText>
+                        <MudText Typo="Typo.body1" Class="font-weight-medium">KES @_calculations.GrossAmount.ToString("N1")</MudText>
+                    </div>
+                    <div class="d-flex justify-space-between">
+                        <MudText Color="Color.Secondary">Commission</MudText>
+                        <MudText Color="Color.Secondary">- KES @_calculations.Commission.ToString("N1")</MudText>
+                    </div>
+                    <div class="d-flex justify-space-between">
+                        <MudText Color="Color.Secondary">Loaders Fee</MudText>
+                        <MudText Color="Color.Secondary">- KES @_calculations.LoadersFee.ToString("N1")</MudText>
+                    </div>
+                    @if (_landRateVisible && _calculations.LandRateFee > 0)
+                    {
+                        <div class="d-flex justify-space-between">
+                            <MudText Color="Color.Secondary">Land Rate Fee</MudText>
+                            <MudText Color="Color.Secondary">- KES @_calculations.LandRateFee.ToString("N1")</MudText>
+                        </div>
+                    }
+                    <MudDivider Class="my-2" />
+                    <div class="d-flex justify-space-between">
+                        <MudText Typo="Typo.h6">Net Amount</MudText>
+                        <MudText Typo="Typo.h6" Color="Color.Primary" Class="font-weight-bold" Style="text-decoration: underline;">
+                            KES @_calculations.NetAmount.ToString("N1")
+                        </MudText>
+                    </div>
+                </MudStack>
+            </MudPaper>
+
+            @* Action Buttons *@
+            <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mt-4">
+                <MudButton Variant="Variant.Text"
+                           OnClick="Cancel"
+                           Disabled="_processing">
+                    Cancel
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="@(!_isValid || _processing)"
+                           OnClick="SubmitSale"
+                           Class="touch-target">
+                    @if (_processing)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Update Sale
+                </MudButton>
+            </MudStack>
+        </MudForm>
+    }
+</MudContainer>
+
+<style>
+    .order-summary-card {
+        border-radius: 16px;
+        border: 2px solid #1976D2;
+        background: linear-gradient(135deg, rgba(25, 118, 210, 0.05) 0%, rgba(25, 118, 210, 0.02) 100%);
+    }
+
+    .touch-target {
+        min-height: 44px;
+        min-width: 44px;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public string Id { get; set; } = "";
+
+    private MudForm? _form;
+    private bool _isValid = false;
+    private bool _loading = true;
+    private bool _processing = false;
+    private string _userId = "";
+    private string _userFullName = "";
+    private string _quarryId = "";
+    private bool _landRateVisible = true;
+
+    private Sale? _sale;
+    private DateTime? _saleDate;
+    private TimeSpan? _saleTime;
+
+    private List<Product> _products = new();
+    private List<Layer> _layers = new();
+    private List<Broker> _brokers = new();
+    private Quarry? _quarry;
+    private SaleCalculationResult _calculations = new();
+
+    // Kenya counties for destination dropdown
+    private static readonly string[] KenyaCounties = new[]
+    {
+        "Baringo", "Bomet", "Bungoma", "Busia", "Elgeyo-Marakwet",
+        "Embu", "Garissa", "Homa Bay", "Isiolo", "Kajiado",
+        "Kakamega", "Kericho", "Kiambu", "Kilifi", "Kirinyaga",
+        "Kisii", "Kisumu", "Kitui", "Kwale", "Laikipia",
+        "Lamu", "Machakos", "Makueni", "Mandera", "Marsabit",
+        "Meru", "Migori", "Mombasa", "Murang'a", "Nairobi",
+        "Nakuru", "Nandi", "Narok", "Nyamira", "Nyandarua",
+        "Nyeri", "Samburu", "Siaya", "Taita-Taveta", "Tana River",
+        "Tharaka-Nithi", "Trans-Nzoia", "Turkana", "Uasin Gishu",
+        "Vihiga", "Wajir", "West Pokot"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get user info from auth state
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+
+                // Get user's quarry context from database
+                var userContext = await UserService.GetUserQuarryContextAsync(_userId);
+
+                if (userContext != null)
+                {
+                    _userFullName = userContext.UserFullName;
+                    _quarryId = userContext.QuarryId;
+                    _quarry = userContext.Quarry;
+
+                    // Load master data
+                    _products = await SaleService.GetProductsAsync();
+                    _layers = await SaleService.GetLayersForQuarryAsync(_quarryId);
+                    _brokers = await SaleService.GetBrokersForQuarryAsync(_quarryId);
+
+                    // Load the sale
+                    _sale = await SaleService.GetSaleByIdAsync(Id);
+
+                    if (_sale != null)
+                    {
+                        // Verify this sale belongs to this clerk
+                        if (_sale.ApplicationUserId != _userId)
+                        {
+                            Snackbar.Add("You don't have permission to edit this sale.", Severity.Error);
+                            _sale = null;
+                        }
+                        else
+                        {
+                            // Extract date and time from SaleDate
+                            if (_sale.SaleDate.HasValue)
+                            {
+                                _saleDate = _sale.SaleDate.Value.Date;
+                                _saleTime = _sale.SaleDate.Value.TimeOfDay;
+                            }
+                            else
+                            {
+                                _saleDate = DateTime.Today;
+                                _saleTime = DateTime.Now.TimeOfDay;
+                            }
+
+                            // Calculate initial summary
+                            CalculateOrderSummary();
+                        }
+                    }
+                    else
+                    {
+                        Snackbar.Add("Sale not found.", Severity.Error);
+                    }
+
+                    // Check if land rate is visible
+                    _landRateVisible = _quarry?.LandRateFee > 0;
+                }
+                else
+                {
+                    Snackbar.Add("No quarry assigned to your account. Please contact your manager.", Severity.Warning);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading sale: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnProductChanged(string productId)
+    {
+        if (_sale == null) return;
+
+        // Update the sale's product ID
+        _sale.ProductId = productId;
+
+        if (!string.IsNullOrWhiteSpace(productId) && !string.IsNullOrWhiteSpace(_quarryId))
+        {
+            try
+            {
+                // Auto-load price for this product at this quarry
+                var productPrice = await SaleService.GetProductPriceAsync(productId, _quarryId);
+                if (productPrice != null)
+                {
+                    _sale.PricePerUnit = productPrice.Price;
+                }
+                else
+                {
+                    _sale.PricePerUnit = 0;
+                }
+
+                // Trigger order summary recalculation
+                CalculateOrderSummary();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error loading product price: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private void CalculateOrderSummary()
+    {
+        if (_sale == null) return;
+
+        // Sync sale date and time
+        if (_saleDate.HasValue && _saleTime.HasValue)
+        {
+            _sale.SaleDate = _saleDate.Value.Date.Add(_saleTime.Value);
+        }
+        else if (_saleDate.HasValue)
+        {
+            _sale.SaleDate = _saleDate.Value;
+        }
+
+        // Get selected product name for land rate calculation
+        var selectedProduct = _products.FirstOrDefault(p => p.Id == _sale.ProductId);
+        var productName = selectedProduct?.ProductName ?? "";
+
+        // Calculate all amounts
+        _calculations = CalculationService.CalculateAll(
+            _sale.Quantity,
+            _sale.PricePerUnit,
+            _sale.CommissionPerUnit,
+            productName,
+            _quarry?.LoadersFee,
+            _quarry?.LandRateFee,
+            _quarry?.RejectsFee
+        );
+
+        StateHasChanged();
+    }
+
+    private async Task SubmitSale()
+    {
+        if (_sale == null) return;
+
+        // Sync sale date and time
+        if (_saleDate.HasValue && _saleTime.HasValue)
+        {
+            _sale.SaleDate = _saleDate.Value.Date.Add(_saleTime.Value);
+        }
+        else if (_saleDate.HasValue)
+        {
+            _sale.SaleDate = _saleDate.Value;
+        }
+
+        // Show confirmation dialog
+        var selectedProduct = _products.FirstOrDefault(p => p.Id == _sale.ProductId);
+        var confirmMessage = $"Update '{_sale.VehicleRegistration} - {selectedProduct?.ProductName}' {_sale.Quantity:N0} pieces?";
+
+        var result = await DialogService.ShowMessageBox(
+            "Confirm Update",
+            confirmMessage,
+            yesText: "Update", cancelText: "Cancel");
+
+        if (result != true)
+            return;
+
+        _processing = true;
+        try
+        {
+            var (success, message) = await SaleService.UpdateSaleAsync(_sale, _userId);
+
+            if (success)
+            {
+                Snackbar.Add(message, Severity.Success);
+                // Navigate back to sales list
+                NavigationManager.NavigateTo("/clerk/sales");
+            }
+            else
+            {
+                Snackbar.Add(message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error updating sale: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        NavigationManager.NavigateTo("/clerk/sales");
+    }
+
+    private async Task<IEnumerable<string>> SearchCounties(string value, CancellationToken token)
+    {
+        await Task.Delay(5, token); // Small delay for responsiveness
+
+        if (string.IsNullOrWhiteSpace(value))
+            return KenyaCounties;
+
+        return KenyaCounties.Where(c => c.Contains(value, StringComparison.OrdinalIgnoreCase));
+    }
+}

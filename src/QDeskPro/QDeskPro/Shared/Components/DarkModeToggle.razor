@@ -1,0 +1,82 @@
+@using MudBlazor
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+
+<MudTooltip Text="@(_isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode")">
+    <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Rounded.LightMode : Icons.Material.Rounded.DarkMode)"
+                   Color="Color.Inherit"
+                   OnClick="ToggleDarkMode"
+                   Class="qdp-theme-toggle"
+                   aria-label="Toggle dark mode" />
+</MudTooltip>
+
+@code {
+    [Parameter]
+    public EventCallback<bool> OnThemeChanged { get; set; }
+
+    private bool _isDarkMode = false;
+    private const string DARK_MODE_KEY = "qdp_dark_mode";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load saved preference from localStorage
+        try
+        {
+            var savedPreference = await JSRuntime.InvokeAsync<string>("localStorage.getItem", DARK_MODE_KEY);
+            if (!string.IsNullOrEmpty(savedPreference))
+            {
+                _isDarkMode = bool.Parse(savedPreference);
+                await OnThemeChanged.InvokeAsync(_isDarkMode);
+            }
+        }
+        catch
+        {
+            // Fallback to light mode if localStorage fails
+            _isDarkMode = false;
+        }
+    }
+
+    private async Task ToggleDarkMode()
+    {
+        _isDarkMode = !_isDarkMode;
+
+        // Save preference to localStorage
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", DARK_MODE_KEY, _isDarkMode.ToString());
+        }
+        catch
+        {
+            // Silently fail if localStorage is unavailable
+        }
+
+        // Notify parent component of theme change
+        await OnThemeChanged.InvokeAsync(_isDarkMode);
+    }
+
+    public async Task SetDarkMode(bool enabled)
+    {
+        if (_isDarkMode != enabled)
+        {
+            _isDarkMode = enabled;
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", DARK_MODE_KEY, _isDarkMode.ToString());
+            await OnThemeChanged.InvokeAsync(_isDarkMode);
+            StateHasChanged();
+        }
+    }
+}
+
+<style>
+    .qdp-theme-toggle {
+        transition: transform 0.3s ease, background-color 0.2s ease;
+    }
+
+    .qdp-theme-toggle:hover {
+        transform: rotate(20deg);
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .qdp-theme-toggle:active {
+        transform: rotate(0deg) scale(0.95);
+    }
+</style>

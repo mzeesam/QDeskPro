@@ -1,0 +1,230 @@
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Domain.Services.AI
+@using System.Security.Claims
+@inject IChatCompletionService ChatService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+
+<MudPaper Elevation="0" Class="ai-widget rounded-lg">
+    @* Widget Header *@
+    <div class="widget-header pa-3 d-flex align-center justify-space-between">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudAvatar Color="Color.Primary" Size="Size.Small">
+                <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" />
+            </MudAvatar>
+            <MudText Typo="Typo.subtitle1" Class="font-weight-medium">QDeskPro AI</MudText>
+        </MudStack>
+        <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
+                       Size="Size.Small"
+                       OnClick="OpenFullChat"
+                       Title="Open full chat" />
+    </div>
+
+    <MudDivider />
+
+    @* Quick Suggestions *@
+    <div class="pa-3">
+        <MudText Typo="Typo.caption" Class="text-muted mb-2">Quick Questions</MudText>
+        <MudStack Spacing="1">
+            @foreach (var suggestion in _suggestions)
+            {
+                <MudButton Variant="Variant.Text"
+                           Size="Size.Small"
+                           FullWidth="true"
+                           Class="text-left justify-start"
+                           StartIcon="@Icons.Material.Filled.QuestionAnswer"
+                           OnClick="() => AskQuestionAsync(suggestion)">
+                    @suggestion
+                </MudButton>
+            }
+        </MudStack>
+    </div>
+
+    <MudDivider />
+
+    @* Mini Chat Area *@
+    <div class="chat-area pa-3" style="min-height: 150px; max-height: 250px; overflow-y: auto;">
+        @if (_messages.Count > 0)
+        {
+            @foreach (var message in _messages.TakeLast(4))
+            {
+                <div class="mini-message mb-2 @(message.Role == "user" ? "text-right" : "")">
+                    <MudText Typo="Typo.caption" Class="@(message.Role == "user" ? "text-primary" : "text-secondary")">
+                        @(message.Role == "user" ? "You" : "AI")
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="text-truncate-2">
+                        @message.Content
+                    </MudText>
+                </div>
+            }
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="text-muted text-center py-4">
+                Ask me anything about your sales!
+            </MudText>
+        }
+
+        @if (_isProcessing)
+        {
+            <div class="d-flex align-center gap-2 mt-2">
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                <MudText Typo="Typo.caption">Thinking...</MudText>
+            </div>
+        }
+    </div>
+
+    @* Quick Input *@
+    <div class="pa-3">
+        <MudStack Row="true" Spacing="1">
+            <MudTextField @bind-Value="_inputMessage"
+                          Placeholder="Ask a quick question..."
+                          Variant="Variant.Outlined"
+                          Size="Size.Small"
+                          FullWidth="true"
+                          Immediate="true"
+                          OnKeyDown="HandleKeyDownAsync"
+                          Disabled="@_isProcessing" />
+            <MudIconButton Icon="@Icons.Material.Filled.Send"
+                           Color="Color.Primary"
+                           Size="Size.Small"
+                           Disabled="@(string.IsNullOrWhiteSpace(_inputMessage) || _isProcessing)"
+                           OnClick="SendMessageAsync" />
+        </MudStack>
+    </div>
+</MudPaper>
+
+<style>
+    .ai-widget {
+        background-color: var(--mud-palette-surface);
+        border: 1px solid var(--mud-palette-lines-default);
+    }
+
+    .widget-header {
+        background-color: var(--mud-palette-primary-lighten);
+    }
+
+    .text-truncate-2 {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public string? QuarryId { get; set; }
+
+    private string _userId = string.Empty;
+    private string _inputMessage = string.Empty;
+    private bool _isProcessing = false;
+    private string? _conversationId;
+    private List<AIMessage> _messages = new();
+
+    private readonly string[] _suggestions = new[]
+    {
+        "What were today's sales?",
+        "Any unpaid orders?",
+        "Show today's expenses"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+
+        if (string.IsNullOrEmpty(QuarryId))
+        {
+            QuarryId = authState.User.FindFirst("QuarryId")?.Value;
+        }
+    }
+
+    private void OpenFullChat()
+    {
+        if (!string.IsNullOrEmpty(_conversationId))
+        {
+            Navigation.NavigateTo($"/ai-chat/{_conversationId}");
+        }
+        else
+        {
+            Navigation.NavigateTo("/ai-chat");
+        }
+    }
+
+    private async Task AskQuestionAsync(string question)
+    {
+        _inputMessage = question;
+        await SendMessageAsync();
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendMessageAsync();
+        }
+    }
+
+    private async Task SendMessageAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_inputMessage) || _isProcessing)
+            return;
+
+        var message = _inputMessage.Trim();
+        _inputMessage = string.Empty;
+        _isProcessing = true;
+
+        try
+        {
+            // Create conversation if needed
+            if (string.IsNullOrEmpty(_conversationId))
+            {
+                var conversation = await ChatService.CreateConversationAsync(_userId, QuarryId, "sales");
+                _conversationId = conversation.Id;
+            }
+
+            // Add user message
+            _messages.Add(new AIMessage
+            {
+                Id = Guid.NewGuid().ToString(),
+                Role = "user",
+                Content = message,
+                Timestamp = DateTime.UtcNow
+            });
+            StateHasChanged();
+
+            // Send to AI
+            var response = await ChatService.SendMessageAsync(
+                _conversationId,
+                message,
+                _userId,
+                QuarryId);
+
+            if (response.Success)
+            {
+                _messages.Add(new AIMessage
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Role = "assistant",
+                    Content = response.Message,
+                    TokensUsed = response.TokensUsed,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+            else
+            {
+                Snackbar.Add($"AI Error: {response.Error}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to send message: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+}

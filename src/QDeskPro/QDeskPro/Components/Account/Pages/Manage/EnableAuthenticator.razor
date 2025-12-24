@@ -1,5 +1,5 @@
-﻿@page "/Account/Manage/EnableAuthenticator"
-
+@page "/Account/Manage/EnableAuthenticator"
+@using MudBlazor
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
 @using System.Text
@@ -12,7 +12,7 @@
 @inject IdentityRedirectManager RedirectManager
 @inject ILogger<EnableAuthenticator> Logger
 
-<PageTitle>Configure authenticator app</PageTitle>
+<PageTitle>Configure Authenticator App - QDeskPro</PageTitle>
 
 @if (recoveryCodes is not null)
 {
@@ -20,50 +20,241 @@
 }
 else
 {
-    <StatusMessage Message="@message" />
-    <h3>Configure authenticator app</h3>
-    <div>
-        <p>To use an authenticator app go through the following steps:</p>
-        <ol class="list">
-            <li>
-                <p>
-                    Download a two-factor authenticator app like Microsoft Authenticator for
-                    <a href="https://go.microsoft.com/fwlink/?Linkid=825072">Android</a> and
-                    <a href="https://go.microsoft.com/fwlink/?Linkid=825073">iOS</a> or
-                    Google Authenticator for
-                    <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2&amp;hl=en">Android</a> and
-                    <a href="https://itunes.apple.com/us/app/google-authenticator/id388497605?mt=8">iOS</a>.
-                </p>
-            </li>
-            <li>
-                <p>Scan the QR Code or enter this key <kbd>@sharedKey</kbd> into your two factor authenticator app. Spaces and casing do not matter.</p>
-                <div class="alert alert-info">Learn how to <a href="https://go.microsoft.com/fwlink/?Linkid=852423">enable QR code generation</a>.</div>
-                <div></div>
-                <div data-url="@authenticatorUri"></div>
-            </li>
-            <li>
-                <p>
-                    Once you have scanned the QR code or input the key above, your two factor authentication app will provide you
-                    with a unique code. Enter the code in the confirmation box below.
-                </p>
-                <div class="row">
-                    <div class="col-xl-6">
-                        <EditForm Model="Input" FormName="send-code" OnValidSubmit="OnValidSubmitAsync" method="post">
-                            <DataAnnotationsValidator />
-                            <div class="form-floating mb-3">
-                                <InputText @bind-Value="Input.Code" id="Input.Code" class="form-control" autocomplete="off" placeholder="Enter the code" />
-                                <label for="Input.Code" class="control-label form-label">Verification Code</label>
-                                <ValidationMessage For="() => Input.Code" class="text-danger" />
-                            </div>
-                            <button type="submit" class="w-100 btn btn-lg btn-primary">Verify</button>
-                            <ValidationSummary class="text-danger" role="alert" />
-                        </EditForm>
-                    </div>
+    <div class="enable-auth-page">
+        <MudPaper Class="auth-card" Elevation="0">
+            <div class="auth-card-header">
+                <div class="auth-icon">
+                    <MudIcon Icon="@Icons.Material.Rounded.QrCode2" />
                 </div>
-            </li>
-        </ol>
+                <MudText Typo="Typo.h5" Class="auth-title">Configure Authenticator</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Set up two-factor authentication with your phone
+                </MudText>
+            </div>
+
+            <StatusMessage Message="@message" />
+
+            <MudStepper @bind-ActiveIndex="_activeStep" Vertical="true" Class="auth-stepper">
+                <MudStep Title="Get an Authenticator App">
+                    <MudPaper Class="step-content" Elevation="0">
+                        <MudText Typo="Typo.body2" Class="mb-3">
+                            Download a two-factor authenticator app on your mobile device:
+                        </MudText>
+                        <MudStack Spacing="2">
+                            <MudPaper Class="app-option" Elevation="0">
+                                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Rounded.Security" Color="Color.Primary" />
+                                    <div>
+                                        <MudText Typo="Typo.body2" Class="font-weight-semibold">Microsoft Authenticator</MudText>
+                                        <MudStack Row="true" Spacing="1">
+                                            <MudLink Href="https://go.microsoft.com/fwlink/?Linkid=825072" Target="_blank" Color="Color.Primary">Android</MudLink>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">|</MudText>
+                                            <MudLink Href="https://go.microsoft.com/fwlink/?Linkid=825073" Target="_blank" Color="Color.Primary">iOS</MudLink>
+                                        </MudStack>
+                                    </div>
+                                </MudStack>
+                            </MudPaper>
+                            <MudPaper Class="app-option" Elevation="0">
+                                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Rounded.Verified" Color="Color.Success" />
+                                    <div>
+                                        <MudText Typo="Typo.body2" Class="font-weight-semibold">Google Authenticator</MudText>
+                                        <MudStack Row="true" Spacing="1">
+                                            <MudLink Href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2&hl=en" Target="_blank" Color="Color.Primary">Android</MudLink>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">|</MudText>
+                                            <MudLink Href="https://itunes.apple.com/us/app/google-authenticator/id388497605?mt=8" Target="_blank" Color="Color.Primary">iOS</MudLink>
+                                        </MudStack>
+                                    </div>
+                                </MudStack>
+                            </MudPaper>
+                        </MudStack>
+                    </MudPaper>
+                </MudStep>
+
+                <MudStep Title="Scan the QR Code">
+                    <MudPaper Class="step-content" Elevation="0">
+                        <MudText Typo="Typo.body2" Class="mb-3">
+                            Scan the QR code below with your authenticator app, or manually enter the secret key.
+                        </MudText>
+
+                        <MudPaper Class="qr-placeholder" Elevation="0">
+                            <MudIcon Icon="@Icons.Material.Rounded.QrCode2" Size="Size.Large" Color="Color.Primary" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                                QR Code would appear here
+                            </MudText>
+                            <div data-url="@authenticatorUri"></div>
+                        </MudPaper>
+
+                        <MudPaper Class="secret-key-section" Elevation="0">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">
+                                Or enter this key manually:
+                            </MudText>
+                            <MudText Typo="Typo.body1" Class="secret-key">@sharedKey</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Spaces and casing do not matter
+                            </MudText>
+                        </MudPaper>
+                    </MudPaper>
+                </MudStep>
+
+                <MudStep Title="Verify Setup">
+                    <MudPaper Class="step-content" Elevation="0">
+                        <MudText Typo="Typo.body2" Class="mb-3">
+                            Enter the 6-digit code shown in your authenticator app to complete setup.
+                        </MudText>
+
+                        <EditForm Model="Input" FormName="send-code" OnValidSubmit="OnValidSubmitAsync" method="post" Enhance>
+                            <DataAnnotationsValidator />
+
+                            <MudStack Spacing="3">
+                                <MudTextField @bind-Value="Input.Code"
+                                              Label="Verification Code"
+                                              Variant="Variant.Outlined"
+                                              InputType="InputType.Text"
+                                              Adornment="Adornment.Start"
+                                              AdornmentIcon="@Icons.Material.Rounded.Pin"
+                                              AdornmentColor="Color.Primary"
+                                              autocomplete="off"
+                                              Placeholder="Enter 6-digit code"
+                                              MaxLength="7"
+                                              Class="code-input" />
+
+                                <MudButton ButtonType="ButtonType.Submit"
+                                           Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           Size="Size.Large"
+                                           FullWidth="true"
+                                           StartIcon="@Icons.Material.Rounded.CheckCircle"
+                                           Class="verify-button">
+                                    Verify & Enable 2FA
+                                </MudButton>
+                            </MudStack>
+                        </EditForm>
+                    </MudPaper>
+                </MudStep>
+            </MudStepper>
+
+            <MudPaper Class="help-section" Elevation="0">
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                    <MudIcon Icon="@Icons.Material.Rounded.Help" Size="Size.Small" Color="Color.Info" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Having trouble? Make sure your phone's time is synchronized correctly, as authenticator
+                        apps use time-based codes.
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+        </MudPaper>
     </div>
 }
+
+<style>
+    .enable-auth-page {
+        max-width: 550px;
+    }
+
+    .auth-card {
+        background: white !important;
+        border-radius: 20px;
+        padding: 32px;
+        border: 1px solid #e0e6ed;
+    }
+
+    .auth-card-header {
+        text-align: center;
+        margin-bottom: 28px;
+    }
+
+    .auth-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+        color: white;
+        box-shadow: 0 6px 24px rgba(21, 101, 192, 0.3);
+    }
+
+    .auth-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 8px;
+    }
+
+    .auth-stepper {
+        margin-top: 24px;
+    }
+
+    .step-content {
+        background: #f8fafc !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 12px;
+    }
+
+    .app-option {
+        background: white !important;
+        border-radius: 8px;
+        padding: 12px;
+        border: 1px solid #e0e6ed;
+    }
+
+    .qr-placeholder {
+        background: #f5f7fa !important;
+        border-radius: 12px;
+        padding: 32px;
+        text-align: center;
+        border: 2px dashed #e0e6ed;
+        margin-bottom: 16px;
+    }
+
+    .secret-key-section {
+        background: #E3F2FD !important;
+        border-radius: 12px;
+        padding: 16px;
+        text-align: center;
+    }
+
+    .secret-key {
+        font-family: 'Roboto Mono', monospace;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1565C0;
+        letter-spacing: 2px;
+        background: white;
+        padding: 8px 16px;
+        border-radius: 8px;
+        display: inline-block;
+        margin: 8px 0;
+    }
+
+    .code-input .mud-input-outlined-border {
+        border-radius: 12px !important;
+    }
+
+    .code-input input {
+        font-family: 'Roboto Mono', monospace;
+        font-size: 1.25rem;
+        letter-spacing: 4px;
+        text-align: center;
+    }
+
+    .verify-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+    }
+
+    .help-section {
+        background: #FFF8E1 !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 24px;
+    }
+</style>
 
 @code {
     private const string AuthenticatorUriFormat = "otpauth://totp/{0}:{1}?secret={2}&issuer={0}&digits=6";
@@ -73,6 +264,7 @@ else
     private string? sharedKey;
     private string? authenticatorUri;
     private IEnumerable<string>? recoveryCodes;
+    private int _activeStep = 0;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;

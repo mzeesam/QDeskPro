@@ -1,8 +1,196 @@
-﻿@page "/Account/Lockout"
+@page "/Account/Lockout"
+@using MudBlazor
 
-<PageTitle>Locked out</PageTitle>
+<PageTitle>Account Locked - QDeskPro</PageTitle>
 
-<header>
-    <h1 class="text-danger">Locked out</h1>
-    <p class="text-danger" role="alert">This account has been locked out, please try again later.</p>
-</header>
+<div class="lockout-page">
+    <div class="lockout-background">
+        <div class="lockout-pattern"></div>
+    </div>
+
+    <MudContainer MaxWidth="MaxWidth.Small" Class="lockout-container">
+        <MudPaper Class="lockout-card" Elevation="0">
+            <div class="lockout-icon-container">
+                <MudIcon Icon="@Icons.Material.Rounded.Lock" Size="Size.Large" />
+            </div>
+
+            <MudText Typo="Typo.h3" Class="lockout-title">
+                Account Locked
+            </MudText>
+
+            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="lockout-description">
+                Your account has been temporarily locked due to multiple failed login attempts.
+                This is a security measure to protect your account.
+            </MudText>
+
+            <MudPaper Class="lockout-info" Elevation="0">
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@Icons.Material.Rounded.Schedule" Size="Size.Small" Color="Color.Warning" />
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Please try again after a short waiting period
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+
+            <MudStack Spacing="3" Class="lockout-actions">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           Href="Account/Login"
+                           StartIcon="@Icons.Material.Rounded.Login"
+                           Class="lockout-button">
+                    Try Again
+                </MudButton>
+
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           Href="Account/ForgotPassword"
+                           StartIcon="@Icons.Material.Rounded.LockReset"
+                           Class="lockout-button-secondary">
+                    Reset Password
+                </MudButton>
+            </MudStack>
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="lockout-help">
+                Need immediate access?
+                <MudLink Href="mailto:support@qdeskpro.com" Color="Color.Primary">
+                    Contact Support
+                </MudLink>
+            </MudText>
+        </MudPaper>
+    </MudContainer>
+</div>
+
+<style>
+    .lockout-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        padding: 24px;
+    }
+
+    .lockout-background {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
+        z-index: -1;
+    }
+
+    .lockout-pattern {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image:
+            radial-gradient(circle at 30% 70%, rgba(255, 152, 0, 0.08) 0%, transparent 50%),
+            radial-gradient(circle at 70% 30%, rgba(255, 152, 0, 0.05) 0%, transparent 50%);
+    }
+
+    .lockout-container {
+        display: flex;
+        justify-content: center;
+    }
+
+    .lockout-card {
+        background: white !important;
+        border-radius: 24px;
+        padding: 48px;
+        text-align: center;
+        max-width: 480px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+    }
+
+    .lockout-icon-container {
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 24px;
+        animation: lockPulse 2s ease-in-out infinite;
+    }
+
+    .lockout-icon-container .mud-icon-root {
+        font-size: 3rem !important;
+        color: #E65100;
+    }
+
+    @@keyframes lockPulse {
+        0%, 100% {
+            transform: scale(1);
+            box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.4);
+        }
+        50% {
+            transform: scale(1.02);
+            box-shadow: 0 0 0 15px rgba(255, 152, 0, 0);
+        }
+    }
+
+    .lockout-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 16px;
+    }
+
+    .lockout-description {
+        line-height: 1.7;
+        margin-bottom: 24px;
+    }
+
+    .lockout-info {
+        background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%) !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 24px;
+        border: 1px solid rgba(255, 152, 0, 0.2);
+    }
+
+    .lockout-actions {
+        margin-bottom: 24px;
+    }
+
+    .lockout-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+    }
+
+    .lockout-button-secondary {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        text-transform: none !important;
+    }
+
+    .lockout-help {
+        margin-top: 24px;
+        padding-top: 24px;
+        border-top: 1px solid #e0e6ed;
+    }
+
+    @@media (max-width: 600px) {
+        .lockout-card {
+            padding: 32px 24px;
+        }
+
+        .lockout-icon-container {
+            width: 80px;
+            height: 80px;
+        }
+
+        .lockout-icon-container .mud-icon-root {
+            font-size: 2.5rem !important;
+        }
+    }
+</style>

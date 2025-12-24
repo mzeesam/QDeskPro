@@ -1,0 +1,413 @@
+@page "/manager/prices"
+@page "/admin/prices"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.MasterData.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject MasterDataService MasterDataService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Product Prices - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudStack Spacing="3">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4">Product Prices</MudText>
+        </MudStack>
+
+        <MudAlert Severity="Severity.Info" Dense="true">
+            Set the selling price for each product at your quarry. These prices will be used when recording sales.
+        </MudAlert>
+
+        @* Quarry Selector *@
+        <MudPaper Class="pa-4">
+            <MudGrid>
+                <MudItem xs="12" sm="8">
+                    <MudSelect T="string"
+                              @bind-Value="_selectedQuarryId"
+                              Label="Select Quarry"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Terrain"
+                              OnValueChanged="OnQuarryChangedAsync">
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4" Class="d-flex align-end">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.Add"
+                              OnClick="OpenAddDialog"
+                              FullWidth="true"
+                              Disabled="@(string.IsNullOrEmpty(_selectedQuarryId) || _userRole == "Administrator")">
+                        Set Price
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @if (string.IsNullOrEmpty(_selectedQuarryId))
+        {
+            <MudAlert Severity="Severity.Info">
+                Please select a quarry to view and manage product prices.
+            </MudAlert>
+        }
+        else
+        {
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+
+            <MudTable Items="_productPrices"
+                     Hover="true"
+                     Breakpoint="Breakpoint.Sm"
+                     Dense="true"
+                     Loading="_loading"
+                     LoadingProgressColor="Color.Primary">
+                <HeaderContent>
+                    <MudTh>Product</MudTh>
+                    <MudTh Style="text-align: right">Price per Unit</MudTh>
+                    <MudTh>Last Updated</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Product">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Category" Color="Color.Primary" Size="Size.Small" />
+                            <MudText>@context.Product?.ProductName</MudText>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Price" Style="text-align: right">
+                        <MudText Typo="Typo.body1" Color="Color.Success">
+                            <strong>KES @context.Price.ToString("N2")</strong>
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Updated">
+                        @if (context.DateModified.HasValue)
+                        {
+                            <MudText Typo="Typo.caption">@context.DateModified.Value.ToString("dd MMM yyyy HH:mm")</MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption">@context.DateCreated.ToString("dd MMM yyyy HH:mm")</MudText>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudStack Row="true" Spacing="1">
+                            @if (_userRole == "Manager" && _canEditCurrentQuarry)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                              Size="Size.Small"
+                                              Color="Color.Primary"
+                                              OnClick="@(() => OpenEditDialog(context))" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                              Size="Size.Small"
+                                              Color="Color.Error"
+                                              OnClick="@(() => DeletePriceAsync(context))" />
+                            }
+                        </MudStack>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Align="Align.Center" Class="pa-4">
+                        @if (_userRole == "Manager" && _canEditCurrentQuarry)
+                        {
+                            <span>No prices set for this quarry. Click "Set Price" to add product pricing.</span>
+                        }
+                        else
+                        {
+                            <span>No prices set for this quarry.</span>
+                        }
+                    </MudText>
+                </NoRecordsContent>
+            </MudTable>
+
+            @* Show products without prices *@
+            @if (_productsWithoutPrices.Any() && _userRole == "Manager" && _canEditCurrentQuarry)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true">
+                    <strong>Products without prices:</strong> @string.Join(", ", _productsWithoutPrices.Select(p => p.ProductName))
+                </MudAlert>
+            }
+        }
+    </MudStack>
+</MudContainer>
+
+@* Add/Edit Dialog *@
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(_isEditing ? "Update Price" : "Set Product Price")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formValid">
+            <MudStack Spacing="3">
+                @if (!_isEditing)
+                {
+                    <MudSelect T="string"
+                              @bind-Value="_selectedProductId"
+                              Label="Select Product"
+                              Variant="Variant.Outlined"
+                              Required="true"
+                              RequiredError="Please select a product">
+                        @foreach (var product in _availableProducts)
+                        {
+                            <MudSelectItem T="string" Value="@product.Id">@product.ProductName</MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+                else
+                {
+                    <MudTextField Value="@_selectedProductName"
+                                 Label="Product"
+                                 Variant="Variant.Outlined"
+                                 ReadOnly="true"
+                                 Adornment="Adornment.Start"
+                                 AdornmentIcon="@Icons.Material.Filled.Category" />
+                }
+
+                <MudNumericField @bind-Value="_editPrice"
+                                Label="Price per Unit"
+                                Variant="Variant.Outlined"
+                                Min="0.01"
+                                Required="true"
+                                RequiredError="Price is required"
+                                Adornment="Adornment.Start"
+                                AdornmentText="KES"
+                                HelperText="Enter the selling price per unit" />
+            </MudStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                  Color="Color.Primary"
+                  Disabled="@(!_formValid || _saving)"
+                  OnClick="SavePriceAsync">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @(_isEditing ? "Update" : "Set Price")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Quarry> _quarries = new();
+    private List<ProductPrice> _productPrices = new();
+    private List<Product> _allProducts = new();
+    private List<Product> _availableProducts = new();
+    private List<Product> _productsWithoutPrices = new();
+    private string? _selectedQuarryId;
+    private string? _selectedProductId;
+    private string? _selectedProductPriceId;
+    private string _selectedProductName = string.Empty;
+    private double _editPrice = 0;
+    private bool _loading = false;
+    private bool _dialogVisible = false;
+    private bool _isEditing = false;
+    private bool _formValid = false;
+    private bool _saving = false;
+    private bool _canEditCurrentQuarry = false;
+    private string? _userId;
+    private string _userRole = string.Empty;
+    private MudForm? _form;
+
+    private readonly DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseButton = true
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+
+        await LoadProductsAsync();
+        await LoadQuarriesAsync();
+    }
+
+    private async Task LoadProductsAsync()
+    {
+        try
+        {
+            _allProducts = await MasterDataService.GetAllProductsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading products: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadQuarriesAsync()
+    {
+        try
+        {
+            if (_userRole == "Administrator")
+            {
+                _quarries = await MasterDataService.GetAllQuarriesAsync();
+            }
+            else if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
+            {
+                _quarries = await MasterDataService.GetQuarriesForManagerAsync(_userId);
+            }
+
+            // Auto-select first quarry if available
+            if (_quarries.Any() && string.IsNullOrEmpty(_selectedQuarryId))
+            {
+                _selectedQuarryId = _quarries.First().Id;
+                await LoadPricesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OnQuarryChangedAsync(string? quarryId)
+    {
+        _selectedQuarryId = quarryId;
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            await LoadPricesAsync();
+        }
+    }
+
+    private async Task LoadPricesAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId)) return;
+
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Check if user can edit this quarry
+            if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
+            {
+                _canEditCurrentQuarry = await MasterDataService.UserHasQuarryAccessAsync(_userId, _selectedQuarryId, false);
+            }
+            else
+            {
+                _canEditCurrentQuarry = false;
+            }
+
+            _productPrices = await MasterDataService.GetProductPricesForQuarryAsync(_selectedQuarryId);
+
+            // Find products without prices
+            var productIdsWithPrices = _productPrices.Select(pp => pp.ProductId).ToHashSet();
+            _productsWithoutPrices = _allProducts.Where(p => !productIdsWithPrices.Contains(p.Id)).ToList();
+            _availableProducts = _productsWithoutPrices;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading prices: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenAddDialog()
+    {
+        _selectedProductId = null;
+        _editPrice = 0;
+        _isEditing = false;
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(ProductPrice productPrice)
+    {
+        _selectedProductId = productPrice.ProductId;
+        _selectedProductName = productPrice.Product?.ProductName ?? string.Empty;
+        _selectedProductPriceId = productPrice.Id;
+        _editPrice = productPrice.Price;
+        _isEditing = true;
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+        _selectedProductId = null;
+        _selectedProductName = string.Empty;
+        _editPrice = 0;
+        _isEditing = false;
+    }
+
+    private async Task SavePriceAsync()
+    {
+        if (!_formValid || string.IsNullOrEmpty(_selectedQuarryId) || string.IsNullOrEmpty(_selectedProductId)) return;
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await MasterDataService.UpsertProductPriceAsync(_selectedProductId, _selectedQuarryId, _editPrice, _userId!);
+            if (result.Success)
+            {
+                Snackbar.Add(result.Message, Severity.Success);
+                CloseDialog();
+                await LoadPricesAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving price: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeletePriceAsync(ProductPrice productPrice)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Delete Price",
+            $"Are you sure you want to delete the price for '{productPrice.Product?.ProductName}'?",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var result = await MasterDataService.DeleteProductPriceAsync(productPrice.Id, _userId!);
+            if (result.Success)
+            {
+                Snackbar.Add(result.Message, Severity.Success);
+                await LoadPricesAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+    }
+}

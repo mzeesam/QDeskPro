@@ -1,5 +1,5 @@
-﻿@page "/Account/LoginWithRecoveryCode"
-
+@page "/Account/LoginWithRecoveryCode"
+@using MudBlazor
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Identity
 @using QDeskPro.Domain.Entities
@@ -9,29 +9,251 @@
 @inject IdentityRedirectManager RedirectManager
 @inject ILogger<LoginWithRecoveryCode> Logger
 
-<PageTitle>Recovery code verification</PageTitle>
+<PageTitle>Recovery Code Login - QDeskPro</PageTitle>
 
-<h1>Recovery code verification</h1>
-<hr />
-<StatusMessage Message="@message" />
-<p>
-    You have requested to log in with a recovery code. This login will not be remembered until you provide
-    an authenticator app code at log in or disable 2FA and log in again.
-</p>
-<div class="row">
-    <div class="col-md-4">
-        <EditForm Model="Input" FormName="login-with-recovery-code" OnValidSubmit="OnValidSubmitAsync" method="post">
-            <DataAnnotationsValidator />
-            <ValidationSummary class="text-danger" role="alert" />
-            <div class="form-floating mb-3">
-                <InputText @bind-Value="Input.RecoveryCode" id="Input.RecoveryCode" class="form-control" autocomplete="off" placeholder="RecoveryCode" />
-                <label for="Input.RecoveryCode" class="form-label">Recovery Code</label>
-                <ValidationMessage For="() => Input.RecoveryCode" class="text-danger" />
-            </div>
-            <button type="submit" class="w-100 btn btn-lg btn-primary">Log in</button>
-        </EditForm>
+<div class="recovery-page">
+    <div class="recovery-background">
+        <div class="recovery-pattern"></div>
     </div>
+
+    <MudContainer MaxWidth="MaxWidth.Small" Class="recovery-container">
+        <MudPaper Class="recovery-card" Elevation="0">
+            <div class="recovery-header">
+                <div class="recovery-icon">
+                    <MudIcon Icon="@Icons.Material.Rounded.Key" Size="Size.Large" />
+                </div>
+                <MudText Typo="Typo.h4" Class="recovery-title">Recovery Code</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Use one of your backup recovery codes to sign in
+                </MudText>
+            </div>
+
+            <MudPaper Class="recovery-notice" Elevation="0">
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                    <MudIcon Icon="@Icons.Material.Rounded.Info" Size="Size.Small" Color="Color.Warning" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        This login will not be remembered until you provide an authenticator app code
+                        at log in or disable 2FA and log in again.
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+
+            <div class="recovery-form-container">
+                <StatusMessage Message="@message" />
+
+                <EditForm Model="Input" FormName="login-with-recovery-code" OnValidSubmit="OnValidSubmitAsync" method="post" Enhance>
+                    <DataAnnotationsValidator />
+
+                    <MudStack Spacing="3">
+                        <MudTextField @bind-Value="Input.RecoveryCode"
+                                      Label="Recovery Code"
+                                      Variant="Variant.Outlined"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Rounded.VpnKey"
+                                      AdornmentColor="Color.Primary"
+                                      autocomplete="off"
+                                      Required="true"
+                                      RequiredError="Recovery code is required"
+                                      HelperText="Enter one of your saved recovery codes"
+                                      Class="recovery-input code-input" />
+
+                        <MudButton ButtonType="ButtonType.Submit"
+                                   Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Size="Size.Large"
+                                   FullWidth="true"
+                                   Class="recovery-button"
+                                   StartIcon="@Icons.Material.Rounded.Login">
+                            Sign In with Recovery Code
+                        </MudButton>
+                    </MudStack>
+                </EditForm>
+
+                <MudPaper Class="recovery-info" Elevation="0">
+                    <MudStack Spacing="2">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="font-weight-semibold">
+                            About recovery codes:
+                        </MudText>
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Size="Size.Small" Color="Color.Success" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Each code can only be used once
+                            </MudText>
+                        </MudStack>
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Rounded.Security" Size="Size.Small" Color="Color.Success" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Generate new codes in account settings
+                            </MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudPaper>
+            </div>
+
+            <div class="recovery-footer">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Have your authenticator app?
+                </MudText>
+                <MudLink Href="Account/LoginWith2fa"
+                         Color="Color.Primary"
+                         Typo="Typo.body2"
+                         Class="font-weight-semibold">
+                    Use authenticator code instead
+                </MudLink>
+            </div>
+        </MudPaper>
+    </MudContainer>
 </div>
+
+<style>
+    .recovery-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+        padding: 24px;
+    }
+
+    .recovery-background {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #5E35B1 0%, #4527A0 50%, #311B92 100%);
+        z-index: -1;
+    }
+
+    .recovery-pattern {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image:
+            radial-gradient(circle at 30% 70%, rgba(255,255,255,0.1) 0%, transparent 50%),
+            radial-gradient(circle at 70% 30%, rgba(255,255,255,0.05) 0%, transparent 50%);
+        animation: patternShimmer 15s ease-in-out infinite;
+    }
+
+    @@keyframes patternShimmer {
+        0%, 100% { opacity: 0.5; }
+        50% { opacity: 1; }
+    }
+
+    .recovery-container {
+        display: flex;
+        justify-content: center;
+    }
+
+    .recovery-card {
+        background: rgba(255, 255, 255, 0.98) !important;
+        border-radius: 24px;
+        padding: 48px;
+        max-width: 450px;
+        width: 100%;
+        box-shadow: 0 25px 80px rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(20px);
+    }
+
+    .recovery-header {
+        text-align: center;
+        margin-bottom: 24px;
+    }
+
+    .recovery-icon {
+        width: 72px;
+        height: 72px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, #5E35B1 0%, #4527A0 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 20px;
+        color: white;
+        box-shadow: 0 8px 32px rgba(94, 53, 177, 0.3);
+        animation: keyRotate 3s ease-in-out infinite;
+    }
+
+    @@keyframes keyRotate {
+        0%, 100% { transform: rotate(-5deg); }
+        50% { transform: rotate(5deg); }
+    }
+
+    .recovery-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 8px;
+    }
+
+    .recovery-notice {
+        background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%) !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 24px;
+        border: 1px solid rgba(255, 152, 0, 0.3);
+    }
+
+    .recovery-form-container {
+        margin-bottom: 24px;
+    }
+
+    .recovery-input .mud-input-outlined-border {
+        border-radius: 12px !important;
+    }
+
+    .code-input input {
+        font-family: 'Roboto Mono', monospace;
+        font-size: 1.1rem !important;
+        letter-spacing: 0.1em;
+    }
+
+    .recovery-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+        letter-spacing: 0.02em;
+        background: linear-gradient(135deg, #5E35B1 0%, #4527A0 100%) !important;
+        box-shadow: 0 4px 16px rgba(94, 53, 177, 0.3) !important;
+        margin-top: 8px;
+    }
+
+    .recovery-button:hover {
+        box-shadow: 0 6px 24px rgba(94, 53, 177, 0.4) !important;
+        transform: translateY(-1px);
+    }
+
+    .recovery-info {
+        background: #f5f7fa !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 24px;
+    }
+
+    .recovery-footer {
+        text-align: center;
+        padding-top: 24px;
+        border-top: 1px solid #e0e6ed;
+    }
+
+    @@media (max-width: 600px) {
+        .recovery-page {
+            padding: 12px;
+        }
+
+        .recovery-card {
+            padding: 32px 24px;
+        }
+
+        .recovery-icon {
+            width: 60px;
+            height: 60px;
+        }
+    }
+</style>
 
 @code {
     private string? message;

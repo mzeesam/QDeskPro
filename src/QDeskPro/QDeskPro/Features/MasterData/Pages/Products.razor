@@ -1,0 +1,146 @@
+@page "/manager/products"
+@page "/admin/products"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.MasterData.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject MasterDataService MasterDataService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Products - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudStack Spacing="3">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4">Products</MudText>
+            <MudChip T="string" Color="Color.Info" Icon="@Icons.Material.Filled.Info">
+                View Only
+            </MudChip>
+        </MudStack>
+
+        <MudAlert Severity="Severity.Info" Dense="true">
+            Products are shared across all quarries. To set prices for products at your quarry, use the <strong>Product Prices</strong> page.
+        </MudAlert>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+
+        <MudTable Items="_products"
+                 Hover="true"
+                 Breakpoint="Breakpoint.Sm"
+                 Dense="true"
+                 Loading="_loading"
+                 LoadingProgressColor="Color.Primary">
+            <HeaderContent>
+                <MudTh>Product Name</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Category" Color="Color.Primary" Size="Size.Small" />
+                        <MudText>@context.ProductName</MudText>
+                    </MudStack>
+                </MudTd>
+                <MudTd DataLabel="Description">
+                    @(string.IsNullOrWhiteSpace(context.Description) ? "-" : context.Description)
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudIconButton Icon="@Icons.Material.Filled.Info"
+                                  Size="Size.Small"
+                                  Color="Color.Info"
+                                  OnClick="@(() => ShowDetails(context))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Align="Align.Center" Class="pa-4">
+                    No products found in the system.
+                </MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudStack>
+</MudContainer>
+
+@* Details Dialog *@
+<MudDialog @bind-Visible="_detailsVisible">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Product Details</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedProduct != null)
+        {
+            <MudStack Spacing="2">
+                <MudText><strong>Product Name:</strong> @_selectedProduct.ProductName</MudText>
+                <MudText><strong>Description:</strong> @(string.IsNullOrWhiteSpace(_selectedProduct.Description) ? "No description" : _selectedProduct.Description)</MudText>
+                <MudDivider />
+                <MudText Typo="Typo.caption" Class="text-muted">
+                    Created: @_selectedProduct.DateCreated.ToString("dd MMM yyyy HH:mm")
+                </MudText>
+                @if (_selectedProduct.DateModified.HasValue)
+                {
+                    <MudText Typo="Typo.caption" Class="text-muted">
+                        Last Modified: @_selectedProduct.DateModified.Value.ToString("dd MMM yyyy HH:mm")
+                    </MudText>
+                }
+            </MudStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _detailsVisible = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Product> _products = new();
+    private Product? _selectedProduct;
+    private bool _loading = true;
+    private bool _detailsVisible = false;
+    private string? _userId;
+    private string _userRole = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+
+        await LoadProductsAsync();
+    }
+
+    private async Task LoadProductsAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _products = await MasterDataService.GetAllProductsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading products: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowDetails(Product product)
+    {
+        _selectedProduct = product;
+        _detailsVisible = true;
+    }
+}

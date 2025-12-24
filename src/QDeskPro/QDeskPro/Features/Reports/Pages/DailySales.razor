@@ -1,0 +1,498 @@
+@page "/manager/daily-sales"
+@page "/admin/daily-sales"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.Reports.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject ExcelExportService ExcelService
+@inject IJSRuntime JS
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Daily Sales - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudText Typo="Typo.h4" Class="mb-4">Daily Sales Report</MudText>
+
+    @* Filters Section *@
+    <MudPaper Class="pa-4 mb-4">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudDatePicker Label="From Date"
+                              @bind-Date="_fromDate"
+                              MaxDate="DateTime.Today"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.CalendarToday" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudDatePicker Label="To Date"
+                              @bind-Date="_toDate"
+                              MaxDate="DateTime.Today"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.CalendarToday" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="string"
+                          @bind-Value="_selectedQuarryId"
+                          Label="Quarry"
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Terrain">
+                    @if (_userRole == "Administrator")
+                    {
+                        <MudSelectItem T="string" Value="@(null)">All Quarries</MudSelectItem>
+                    }
+                    @foreach (var quarry in _quarries)
+                    {
+                        <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="2" Class="d-flex align-end">
+                <MudButton Variant="Variant.Filled"
+                          Color="Color.Primary"
+                          StartIcon="@Icons.Material.Filled.Search"
+                          OnClick="LoadDailySalesAsync"
+                          FullWidth="true"
+                          Disabled="_loading">
+                    @if (_loading)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    }
+                    else
+                    {
+                        <span>Load Data</span>
+                    }
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_dailySummaries.Any())
+    {
+        @* Summary Cards *@
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudAvatar Color="Color.Primary" Size="Size.Large">
+                                <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.caption" Class="text-muted">Total Orders</MudText>
+                                <MudText Typo="Typo.h5">@_totalOrders</MudText>
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudAvatar Color="Color.Success" Size="Size.Large">
+                                <MudIcon Icon="@Icons.Material.Filled.Inventory" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.caption" Class="text-muted">Total Quantity</MudText>
+                                <MudText Typo="Typo.h5">@_totalQuantity.ToString("N0")</MudText>
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudAvatar Color="Color.Info" Size="Size.Large">
+                                <MudIcon Icon="@Icons.Material.Filled.AttachMoney" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.caption" Class="text-muted">Total Revenue</MudText>
+                                <MudText Typo="Typo.h5">KES @_totalRevenue.ToString("N0")</MudText>
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="2">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudAvatar Color="Color.Warning" Size="Size.Large">
+                                <MudIcon Icon="@Icons.Material.Filled.MoneyOff" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.caption" Class="text-muted">Unpaid Orders</MudText>
+                                <MudText Typo="Typo.h5">KES @_totalUnpaid.ToString("N0")</MudText>
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        @* Daily Breakdown Table *@
+        <MudPaper Class="pa-4">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+                <MudText Typo="Typo.h6">Daily Breakdown</MudText>
+                <MudButton Variant="Variant.Filled"
+                          Color="Color.Success"
+                          StartIcon="@Icons.Material.Filled.Download"
+                          OnClick="ExportToExcelAsync"
+                          Disabled="_exporting">
+                    @if (_exporting)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Export to Excel
+                </MudButton>
+            </MudStack>
+
+            <MudTable Items="_dailySummaries"
+                     Hover="true"
+                     Breakpoint="Breakpoint.Sm"
+                     Dense="true"
+                     FixedHeader="true"
+                     Height="500px">
+                <HeaderContent>
+                    <MudTh>Date</MudTh>
+                    <MudTh Style="text-align: right">Orders</MudTh>
+                    <MudTh Style="text-align: right">Quantity</MudTh>
+                    <MudTh Style="text-align: right">Revenue</MudTh>
+                    <MudTh Style="text-align: right">Unpaid</MudTh>
+                    <MudTh Style="text-align: center">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Date">
+                        <MudText Typo="Typo.body2">@context.Date.ToString("ddd, dd MMM yyyy")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Orders" Style="text-align: right">
+                        <MudText Typo="Typo.body2">@context.OrderCount</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Quantity" Style="text-align: right">
+                        <MudText Typo="Typo.body2">@context.TotalQuantity.ToString("N0")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Revenue" Style="text-align: right">
+                        <MudText Typo="Typo.body2" Color="Color.Primary">KES @context.TotalRevenue.ToString("N0")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Unpaid" Style="text-align: right">
+                        <MudText Typo="Typo.body2"
+                                Color="@(context.UnpaidAmount > 0 ? Color.Error : Color.Default)">
+                            KES @context.UnpaidAmount.ToString("N0")
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Actions" Style="text-align: center">
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                      Color="Color.Primary"
+                                      Size="Size.Small"
+                                      OnClick="@(() => ToggleDayDetails(context.Date))"
+                                      Title="View Details" />
+                    </MudTd>
+                </RowTemplate>
+                <FooterContent>
+                    <MudTh Style="font-weight: bold">TOTAL</MudTh>
+                    <MudTh Style="text-align: right; font-weight: bold">@_totalOrders</MudTh>
+                    <MudTh Style="text-align: right; font-weight: bold">@_totalQuantity.ToString("N0")</MudTh>
+                    <MudTh Style="text-align: right; font-weight: bold">KES @_totalRevenue.ToString("N0")</MudTh>
+                    <MudTh Style="text-align: right; font-weight: bold">KES @_totalUnpaid.ToString("N0")</MudTh>
+                    <MudTh></MudTh>
+                </FooterContent>
+            </MudTable>
+        </MudPaper>
+    }
+    else if (!_loading)
+    {
+        <MudPaper Class="pa-8 text-center">
+            <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Color="Color.Default" Class="mb-4" />
+            <MudText Typo="Typo.h6" Color="Color.Default">No sales data found</MudText>
+            <MudText Typo="Typo.body2" Class="mt-2">
+                Select a date range and quarry, then click "Load Data" to view sales.
+            </MudText>
+        </MudPaper>
+    }
+</MudContainer>
+
+@* Sales Details Dialog *@
+<MudDialog @bind-IsVisible="_showDetailsDialog" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            Sales for @_selectedDate?.ToString("dddd, dd MMMM yyyy")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedDateSales.Any())
+        {
+            <MudTable Items="_selectedDateSales"
+                     Hover="true"
+                     Dense="true"
+                     Breakpoint="Breakpoint.Sm">
+                <HeaderContent>
+                    <MudTh>Time</MudTh>
+                    <MudTh>Vehicle</MudTh>
+                    <MudTh>Product</MudTh>
+                    <MudTh Style="text-align: right">Qty</MudTh>
+                    <MudTh Style="text-align: right">Amount</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Time">
+                        <MudText Typo="Typo.body2">@context.SaleDate?.ToString("HH:mm")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Vehicle">
+                        <MudText Typo="Typo.body2">@context.VehicleRegistration</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Product">
+                        <MudText Typo="Typo.body2">@context.Product?.ProductName</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Qty" Style="text-align: right">
+                        <MudText Typo="Typo.body2">@context.Quantity.ToString("N0")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Amount" Style="text-align: right">
+                        <MudText Typo="Typo.body2">KES @context.GrossSaleAmount.ToString("N0")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string"
+                                Size="Size.Small"
+                                Color="@(context.PaymentStatus == "Paid" ? Color.Success : Color.Error)"
+                                Variant="Variant.Filled">
+                            @context.PaymentStatus
+                        </MudChip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else
+        {
+            <MudText>No sales found for this date.</MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _showDetailsDialog = false)" Color="Color.Primary">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private string _userId = string.Empty;
+    private string _userRole = string.Empty;
+    private List<Quarry> _quarries = new();
+    private string? _selectedQuarryId;
+    private DateTime? _fromDate = DateTime.Today.AddDays(-7);
+    private DateTime? _toDate = DateTime.Today;
+
+    private bool _loading = false;
+    private bool _exporting = false;
+    private List<DailySalesSummary> _dailySummaries = new();
+
+    // Totals
+    private int _totalOrders = 0;
+    private double _totalQuantity = 0;
+    private double _totalRevenue = 0;
+    private double _totalUnpaid = 0;
+
+    // Details dialog
+    private bool _showDetailsDialog = false;
+    private DateTime? _selectedDate;
+    private List<Sale> _selectedDateSales = new();
+    private DialogOptions _dialogOptions = new() { MaxWidth = MaxWidth.Large, FullWidth = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState == null) return;
+
+        var authState = await AuthState;
+        var user = authState.User;
+
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+
+        // Load quarries based on role
+        if (_userRole == "Administrator")
+        {
+            _quarries = await DbContext.Quarries
+                .Where(q => q.IsActive)
+                .OrderBy(q => q.QuarryName)
+                .ToListAsync();
+        }
+        else if (_userRole == "Manager")
+        {
+            _quarries = await DbContext.Quarries
+                .Where(q => q.IsActive && q.ManagerId == _userId)
+                .OrderBy(q => q.QuarryName)
+                .ToListAsync();
+
+            // Set default quarry for managers
+            _selectedQuarryId = _quarries.FirstOrDefault()?.Id;
+        }
+
+        // Auto-load data on initialization
+        await LoadDailySalesAsync();
+    }
+
+    private async Task LoadDailySalesAsync()
+    {
+        if (_fromDate == null || _toDate == null)
+        {
+            Snackbar.Add("Please select both From and To dates", Severity.Warning);
+            return;
+        }
+
+        if (_fromDate > _toDate)
+        {
+            Snackbar.Add("From date cannot be after To date", Severity.Warning);
+            return;
+        }
+
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var fromDateOnly = DateOnly.FromDateTime(_fromDate.Value);
+            var toDateOnly = DateOnly.FromDateTime(_toDate.Value);
+
+            // Build query
+            var salesQuery = DbContext.Sales
+                .Include(s => s.Product)
+                .Include(s => s.Clerk)
+                .Where(s => s.IsActive);
+
+            // Filter by quarry if selected
+            if (!string.IsNullOrWhiteSpace(_selectedQuarryId))
+            {
+                salesQuery = salesQuery.Where(s => s.QId == _selectedQuarryId);
+            }
+
+            // Filter by date range
+            var fromStamp = fromDateOnly.ToString("yyyyMMdd");
+            var toStamp = toDateOnly.ToString("yyyyMMdd");
+            salesQuery = salesQuery.Where(s =>
+                string.Compare(s.DateStamp, fromStamp) >= 0 &&
+                string.Compare(s.DateStamp, toStamp) <= 0);
+
+            var sales = await salesQuery.ToListAsync();
+
+            // Group by date and calculate summaries
+            _dailySummaries = sales
+                .GroupBy(s => DateOnly.FromDateTime(s.SaleDate ?? DateTime.MinValue))
+                .Select(g => new DailySalesSummary
+                {
+                    Date = g.Key,
+                    OrderCount = g.Count(),
+                    TotalQuantity = g.Sum(s => s.Quantity),
+                    TotalRevenue = g.Sum(s => s.GrossSaleAmount),
+                    UnpaidAmount = g.Where(s => s.PaymentStatus != "Paid").Sum(s => s.GrossSaleAmount)
+                })
+                .OrderByDescending(d => d.Date)
+                .ToList();
+
+            // Calculate totals
+            _totalOrders = _dailySummaries.Sum(d => d.OrderCount);
+            _totalQuantity = _dailySummaries.Sum(d => d.TotalQuantity);
+            _totalRevenue = _dailySummaries.Sum(d => d.TotalRevenue);
+            _totalUnpaid = _dailySummaries.Sum(d => d.UnpaidAmount);
+
+            if (_dailySummaries.Any())
+            {
+                Snackbar.Add($"Loaded {_dailySummaries.Count} days of sales data", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("No sales found for the selected criteria", Severity.Info);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading sales: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleDayDetails(DateOnly date)
+    {
+        _selectedDate = date.ToDateTime(TimeOnly.MinValue);
+        _showDetailsDialog = true;
+
+        // Load sales for selected date
+        var dateStamp = date.ToString("yyyyMMdd");
+        var query = DbContext.Sales
+            .Include(s => s.Product)
+            .Include(s => s.Clerk)
+            .Where(s => s.IsActive && s.DateStamp == dateStamp);
+
+        if (!string.IsNullOrWhiteSpace(_selectedQuarryId))
+        {
+            query = query.Where(s => s.QId == _selectedQuarryId);
+        }
+
+        _selectedDateSales = await query
+            .OrderBy(s => s.SaleDate)
+            .ToListAsync();
+
+        StateHasChanged();
+    }
+
+    private async Task ExportToExcelAsync()
+    {
+        if (_fromDate == null || _toDate == null)
+        {
+            Snackbar.Add("Please select a date range first", Severity.Warning);
+            return;
+        }
+
+        _exporting = true;
+        StateHasChanged();
+
+        try
+        {
+            // Generate Excel file
+            var excelBytes = await ExcelService.GenerateSalesReportAsync(
+                _selectedQuarryId ?? string.Empty,
+                _fromDate.Value,
+                _toDate.Value,
+                _userRole == "Clerk" ? _userId : null
+            );
+
+            // Convert to base64 and download
+            var base64 = Convert.ToBase64String(excelBytes);
+            var fileName = $"Sales_Report_{_fromDate.Value:yyyyMMdd}_to_{_toDate.Value:yyyyMMdd}.xlsx";
+
+            await JS.InvokeVoidAsync("downloadFile", fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", base64);
+
+            Snackbar.Add("Excel report downloaded successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating Excel report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _exporting = false;
+            StateHasChanged();
+        }
+    }
+
+    private class DailySalesSummary
+    {
+        public DateOnly Date { get; set; }
+        public int OrderCount { get; set; }
+        public double TotalQuantity { get; set; }
+        public double TotalRevenue { get; set; }
+        public double UnpaidAmount { get; set; }
+    }
+}

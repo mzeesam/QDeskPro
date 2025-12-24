@@ -1,5 +1,5 @@
-﻿@page "/Account/Manage/GenerateRecoveryCodes"
-
+@page "/Account/Manage/GenerateRecoveryCodes"
+@using MudBlazor
 @using Microsoft.AspNetCore.Identity
 @using QDeskPro.Domain.Entities
 
@@ -7,7 +7,7 @@
 @inject IdentityRedirectManager RedirectManager
 @inject ILogger<GenerateRecoveryCodes> Logger
 
-<PageTitle>Generate two-factor authentication (2FA) recovery codes</PageTitle>
+<PageTitle>Generate Recovery Codes - QDeskPro</PageTitle>
 
 @if (recoveryCodes is not null)
 {
@@ -15,27 +15,149 @@
 }
 else
 {
-    <h3>Generate two-factor authentication (2FA) recovery codes</h3>
-    <div class="alert alert-warning" role="alert">
-        <p>
-            <span class="glyphicon glyphicon-warning-sign"></span>
-            <strong>Put these codes in a safe place.</strong>
-        </p>
-        <p>
-            If you lose your device and don't have the recovery codes you will lose access to your account.
-        </p>
-        <p>
-            Generating new recovery codes does not change the keys used in authenticator apps. If you wish to change the key
-            used in an authenticator app you should <a href="Account/Manage/ResetAuthenticator">reset your authenticator keys.</a>
-        </p>
-    </div>
-    <div>
-        <form @formname="generate-recovery-codes" @onsubmit="OnSubmitAsync" method="post">
-            <AntiforgeryToken />
-            <button class="btn btn-danger" type="submit">Generate Recovery Codes</button>
-        </form>
+    <div class="generate-codes-page">
+        <MudPaper Class="codes-card" Elevation="0">
+            <div class="codes-card-header">
+                <div class="codes-icon">
+                    <MudIcon Icon="@Icons.Material.Rounded.Key" />
+                </div>
+                <MudText Typo="Typo.h5" Class="codes-title">Generate Recovery Codes</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Create backup codes for account access
+                </MudText>
+            </div>
+
+            <MudAlert Severity="Severity.Warning" Class="mb-4" Icon="@Icons.Material.Rounded.Warning">
+                <MudText Typo="Typo.body1" Class="font-weight-semibold">Keep These Codes Safe</MudText>
+                <MudText Typo="Typo.body2">
+                    Recovery codes are your backup way to access your account if you lose your phone or
+                    can't use your authenticator app.
+                </MudText>
+            </MudAlert>
+
+            <MudPaper Class="warning-section" Elevation="0">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.body2" Class="font-weight-semibold">Important Information:</MudText>
+                    <MudStack Spacing="1">
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                            <MudIcon Icon="@Icons.Material.Rounded.SaveAlt" Size="Size.Small" Color="Color.Primary" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Store these codes in a secure location
+                            </MudText>
+                        </MudStack>
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                            <MudIcon Icon="@Icons.Material.Rounded.LockOpen" Size="Size.Small" Color="Color.Warning" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Each code can only be used once
+                            </MudText>
+                        </MudStack>
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                            <MudIcon Icon="@Icons.Material.Rounded.Replay" Size="Size.Small" Color="Color.Error" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Generating new codes will invalidate old ones
+                            </MudText>
+                        </MudStack>
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                            <MudIcon Icon="@Icons.Material.Rounded.PhoneAndroid" Size="Size.Small" Color="Color.Info" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Authenticator app key remains unchanged
+                            </MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="my-3">
+                To change your authenticator app key,
+                <MudLink Href="Account/Manage/ResetAuthenticator" Color="Color.Primary">reset your authenticator keys</MudLink>.
+            </MudText>
+
+            <MudDivider Class="my-4" />
+
+            <form @formname="generate-recovery-codes" @onsubmit="OnSubmitAsync" method="post">
+                <AntiforgeryToken />
+                <MudStack Spacing="2">
+                    <MudButton ButtonType="ButtonType.Submit"
+                               Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Size="Size.Large"
+                               FullWidth="true"
+                               StartIcon="@Icons.Material.Rounded.Refresh"
+                               Class="generate-button">
+                        Generate New Recovery Codes
+                    </MudButton>
+
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Default"
+                               Size="Size.Large"
+                               FullWidth="true"
+                               Href="Account/Manage/TwoFactorAuthentication"
+                               StartIcon="@Icons.Material.Rounded.ArrowBack"
+                               Class="cancel-button">
+                        Back to 2FA Settings
+                    </MudButton>
+                </MudStack>
+            </form>
+        </MudPaper>
     </div>
 }
+
+<style>
+    .generate-codes-page {
+        max-width: 500px;
+    }
+
+    .codes-card {
+        background: white !important;
+        border-radius: 20px;
+        padding: 32px;
+        border: 1px solid #e0e6ed;
+    }
+
+    .codes-card-header {
+        text-align: center;
+        margin-bottom: 28px;
+    }
+
+    .codes-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #5E35B1 0%, #4527A0 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+        color: white;
+        box-shadow: 0 6px 24px rgba(94, 53, 177, 0.3);
+    }
+
+    .codes-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 8px;
+    }
+
+    .warning-section {
+        background: #FFF3E0 !important;
+        border-radius: 12px;
+        padding: 16px;
+        border: 1px solid rgba(255, 152, 0, 0.2);
+    }
+
+    .generate-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+    }
+
+    .cancel-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        text-transform: none !important;
+    }
+</style>
 
 @code {
     private string? message;

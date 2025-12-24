@@ -1,0 +1,13 @@
+@inherits LayoutComponentBase
+
+@* Account Layout for SSR pages (Login, Register, etc.) - No interactive rendermode, no MudBlazor layout *@
+<div class="account-layout">
+    @Body
+</div>
+
+<style>
+    .account-layout {
+        min-height: 100vh;
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 50%, #1A237E 100%);
+    }
+</style>

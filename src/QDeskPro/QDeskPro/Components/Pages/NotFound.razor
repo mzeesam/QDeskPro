@@ -1,5 +1,196 @@
-﻿@page "/not-found"
-@layout MainLayout
+@page "/not-found"
+@using MudBlazor
 
-<h3>Not Found</h3>
-<p>Sorry, the content you are looking for does not exist.</p>
+<PageTitle>Page Not Found - QDeskPro</PageTitle>
+
+<div class="notfound-page">
+    <MudContainer MaxWidth="MaxWidth.Small" Class="notfound-container">
+        <div class="notfound-illustration">
+            <div class="notfound-number">
+                <span class="digit">4</span>
+                <div class="zero-container">
+                    <MudIcon Icon="@Icons.Material.Rounded.Terrain" Size="Size.Large" Class="terrain-icon" />
+                </div>
+                <span class="digit">4</span>
+            </div>
+        </div>
+
+        <MudText Typo="Typo.h4" Class="notfound-title">
+            Page Not Found
+        </MudText>
+
+        <MudText Typo="Typo.body1" Color="Color.Secondary" Class="notfound-description">
+            Sorry, the page you're looking for doesn't exist or has been moved.
+            Let's get you back on track.
+        </MudText>
+
+        <MudStack Spacing="3" Class="notfound-actions">
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Size="Size.Large"
+                       FullWidth="true"
+                       Href="/"
+                       StartIcon="@Icons.Material.Rounded.Home"
+                       Class="notfound-button">
+                Back to Home
+            </MudButton>
+
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Default"
+                       Size="Size.Large"
+                       FullWidth="true"
+                       StartIcon="@Icons.Material.Rounded.Login"
+                       Class="notfound-button-secondary"
+                       OnClick="NavigateToLogin">
+                Sign In
+            </MudButton>
+        </MudStack>
+
+        <MudStack Row="true" Justify="Justify.Center" Spacing="4" Class="notfound-links">
+            <MudLink Href="/" Color="Color.Secondary" Typo="Typo.body2">
+                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@Icons.Material.Rounded.Dashboard" Size="Size.Small" />
+                    <span>Dashboard</span>
+                </MudStack>
+            </MudLink>
+            <div class="notfound-help-link" @onclick="NavigateToLogin" style="cursor: pointer;">
+                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@Icons.Material.Rounded.Help" Size="Size.Small" Color="Color.Secondary" />
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Help</MudText>
+                </MudStack>
+            </div>
+        </MudStack>
+    </MudContainer>
+</div>
+
+<style>
+    .notfound-page {
+        min-height: calc(100vh - 200px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 48px 24px;
+        text-align: center;
+    }
+
+    .notfound-container {
+        max-width: 480px;
+    }
+
+    .notfound-illustration {
+        margin-bottom: 32px;
+    }
+
+    .notfound-number {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .digit {
+        font-size: 6rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        line-height: 1;
+    }
+
+    .zero-container {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        animation: float 3s ease-in-out infinite;
+        box-shadow: 0 10px 40px rgba(21, 101, 192, 0.3);
+    }
+
+    .terrain-icon {
+        font-size: 3rem !important;
+        color: white;
+    }
+
+    @@keyframes float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
+    }
+
+    .notfound-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 16px;
+    }
+
+    .notfound-description {
+        line-height: 1.7;
+        margin-bottom: 32px;
+    }
+
+    .notfound-actions {
+        margin-bottom: 32px;
+    }
+
+    .notfound-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+        box-shadow: 0 4px 16px rgba(21, 101, 192, 0.3) !important;
+    }
+
+    .notfound-button:hover {
+        box-shadow: 0 6px 24px rgba(21, 101, 192, 0.4) !important;
+        transform: translateY(-1px);
+    }
+
+    .notfound-button-secondary {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        text-transform: none !important;
+    }
+
+    .notfound-links {
+        padding-top: 24px;
+        border-top: 1px solid #e0e6ed;
+    }
+
+    /* Account Links - For SSR pages */
+    .notfound-link,
+    .notfound-help-link {
+        text-decoration: none !important;
+        color: inherit !important;
+    }
+
+    .notfound-help-link:hover {
+        opacity: 0.8;
+    }
+
+    @@media (max-width: 600px) {
+        .digit {
+            font-size: 4rem;
+        }
+
+        .zero-container {
+            width: 70px;
+            height: 70px;
+        }
+
+        .terrain-icon {
+            font-size: 2rem !important;
+        }
+    }
+</style>
+
+@code {
+    [Inject] private NavigationManager NavigationManager { get; set; } = default!;
+
+    private void NavigateToLogin()
+    {
+        NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
+    }
+}

@@ -1,0 +1,541 @@
+@page "/admin/managers"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.Admin.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject UserService UserService
+@inject UserManager<ApplicationUser> UserManager
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
+@attribute [Authorize(Policy = "RequireAdministrator")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Managers - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudStack Spacing="3">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4">Manager Management</MudText>
+            <MudButton Variant="Variant.Filled"
+                      Color="Color.Primary"
+                      StartIcon="@Icons.Material.Filled.Add"
+                      OnClick="OpenAddDialog">
+                New Manager
+            </MudButton>
+        </MudStack>
+
+        <MudAlert Severity="Severity.Info" Dense="true">
+            Managers can create and manage their own quarries and assign clerks to those quarries.
+        </MudAlert>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+
+        <MudTable Items="_managers"
+                 Hover="true"
+                 Breakpoint="Breakpoint.Sm"
+                 Dense="true"
+                 Loading="_loading"
+                 LoadingProgressColor="Color.Primary">
+            <HeaderContent>
+                <MudTh>Full Name</MudTh>
+                <MudTh>Email</MudTh>
+                <MudTh>Position</MudTh>
+                <MudTh>Owned Quarries</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Full Name">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Person" Color="Color.Primary" Size="Size.Small" />
+                        <MudText>@context.FullName</MudText>
+                    </MudStack>
+                </MudTd>
+                <MudTd DataLabel="Email">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" />
+                        <MudText>@context.Email</MudText>
+                    </MudStack>
+                </MudTd>
+                <MudTd DataLabel="Position">
+                    <MudText>@(context.Position ?? "-")</MudText>
+                </MudTd>
+                <MudTd DataLabel="Owned Quarries">
+                    @{
+                        var quarryCount = _managerQuarries.ContainsKey(context.Id) ? _managerQuarries[context.Id].Count : 0;
+                    }
+                    @if (quarryCount > 0)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Text">
+                            @quarryCount quarry@(quarryCount > 1 ? "s" : "")
+                        </MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">No quarries</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Status">
+                    @if (context.IsActive)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">Active</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Text">Inactive</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudStack Row="true" Spacing="1">
+                        @if (_managerQuarries.ContainsKey(context.Id) && _managerQuarries[context.Id].Any())
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                          Size="Size.Small"
+                                          Color="Color.Info"
+                                          OnClick="@(() => ViewQuarries(context))"
+                                          Title="View Quarries" />
+                        }
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                      Size="Size.Small"
+                                      Color="Color.Primary"
+                                      OnClick="@(() => OpenEditDialog(context))"
+                                      Disabled="@(!context.IsActive)" />
+                        <MudIconButton Icon="@Icons.Material.Filled.VpnKey"
+                                      Size="Size.Small"
+                                      Color="Color.Warning"
+                                      OnClick="@(() => ResetPasswordAsync(context))"
+                                      Disabled="@(!context.IsActive)"
+                                      Title="Reset Password" />
+                        @if (context.IsActive)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Block"
+                                          Size="Size.Small"
+                                          Color="Color.Error"
+                                          OnClick="@(() => DeactivateManagerAsync(context))"
+                                          Title="Deactivate" />
+                        }
+                        else
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircle"
+                                          Size="Size.Small"
+                                          Color="Color.Success"
+                                          OnClick="@(() => ReactivateManagerAsync(context))"
+                                          Title="Reactivate" />
+                        }
+                    </MudStack>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Align="Align.Center" Class="pa-4">
+                    No managers found. Click "New Manager" to create one.
+                </MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudStack>
+</MudContainer>
+
+@* Add/Edit Dialog *@
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(_isEditing ? "Edit Manager" : "New Manager")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formValid">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_editModel.FullName"
+                             Label="Full Name"
+                             Variant="Variant.Outlined"
+                             Required="true"
+                             RequiredError="Full name is required" />
+
+                <MudTextField @bind-Value="_editModel.Email"
+                             Label="Email"
+                             Variant="Variant.Outlined"
+                             Required="true"
+                             RequiredError="Email is required"
+                             InputType="InputType.Email"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Email"
+                             Disabled="@_isEditing" />
+
+                <MudTextField @bind-Value="_editModel.Position"
+                             Label="Position"
+                             Variant="Variant.Outlined"
+                             HelperText="Job title or role (optional)"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Work" />
+            </MudStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                  Color="Color.Primary"
+                  Disabled="@(!_formValid || _saving)"
+                  OnClick="SaveManagerAsync">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @(_isEditing ? "Update" : "Create")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* Temporary Password Dialog *@
+<MudDialog @bind-Visible="_passwordDialogVisible" Options="_passwordDialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" />
+            Manager Account Created
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Success">
+                Manager account created successfully for <strong>@_createdUserEmail</strong>
+            </MudAlert>
+
+            <MudPaper Class="pa-4" Elevation="0" Style="background-color: var(--mud-palette-background-grey);">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Temporary Password (copy and send to manager):
+                    </MudText>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudTextField @bind-Value="_temporaryPassword"
+                                     Variant="Variant.Outlined"
+                                     ReadOnly="true"
+                                     Adornment="Adornment.End"
+                                     AdornmentIcon="@Icons.Material.Filled.ContentCopy"
+                                     OnAdornmentClick="CopyPasswordToClipboard"
+                                     HelperText="Click the copy icon to copy password" />
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+
+            <MudAlert Severity="Severity.Warning" Dense="true">
+                <strong>Important:</strong> This password will only be shown once. Make sure to copy and securely send it to the manager.
+            </MudAlert>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Filled"
+                  Color="Color.Primary"
+                  OnClick="ClosePasswordDialog">
+            Done
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* Quarries View Dialog *@
+<MudDialog @bind-Visible="_quarriesDialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            Quarries Owned by @_selectedManager?.FullName
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedManagerQuarries.Any())
+        {
+            <MudList T="string">
+                @foreach (var quarry in _selectedManagerQuarries)
+                {
+                    <MudListItem T="string" Icon="@Icons.Material.Filled.Terrain">
+                        <MudStack>
+                            <MudText Typo="Typo.body1">@quarry.QuarryName</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@quarry.Location</MudText>
+                        </MudStack>
+                    </MudListItem>
+                    <MudDivider />
+                }
+            </MudList>
+        }
+        else
+        {
+            <MudText Align="Align.Center" Class="pa-4">
+                This manager has not created any quarries yet.
+            </MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseQuarriesDialog">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<ApplicationUser> _managers = new();
+    private Dictionary<string, List<Quarry>> _managerQuarries = new();
+    private ApplicationUser _editModel = new();
+    private ApplicationUser? _selectedManager;
+    private List<Quarry> _selectedManagerQuarries = new();
+    private bool _loading = false;
+    private bool _dialogVisible = false;
+    private bool _passwordDialogVisible = false;
+    private bool _quarriesDialogVisible = false;
+    private bool _isEditing = false;
+    private bool _formValid = false;
+    private bool _saving = false;
+    private string? _userId;
+    private string _temporaryPassword = string.Empty;
+    private string _createdUserEmail = string.Empty;
+    private MudForm? _form;
+
+    private readonly DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseButton = true
+    };
+
+    private readonly DialogOptions _passwordDialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseButton = false
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        await LoadManagersAsync();
+    }
+
+    private async Task LoadManagersAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _managers = await UserService.GetManagersAsync();
+
+            // Load owned quarries for each manager
+            _managerQuarries.Clear();
+            foreach (var manager in _managers)
+            {
+                var quarries = await DbContext.Quarries
+                    .Where(q => q.ManagerId == manager.Id && q.IsActive)
+                    .OrderBy(q => q.QuarryName)
+                    .ToListAsync();
+
+                _managerQuarries[manager.Id] = quarries;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading managers: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenAddDialog()
+    {
+        _editModel = new ApplicationUser();
+        _isEditing = false;
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(ApplicationUser manager)
+    {
+        _editModel = new ApplicationUser
+        {
+            Id = manager.Id,
+            FullName = manager.FullName,
+            Email = manager.Email,
+            Position = manager.Position
+        };
+        _isEditing = true;
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+        _editModel = new();
+        _isEditing = false;
+    }
+
+    private async Task SaveManagerAsync()
+    {
+        if (!_formValid) return;
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            if (_isEditing)
+            {
+                var result = await UserService.UpdateUserAsync(_editModel.Id!, _editModel.FullName!, _editModel.Position, _userId!);
+                if (result.Success)
+                {
+                    Snackbar.Add(result.Message, Severity.Success);
+                    CloseDialog();
+                    await LoadManagersAsync();
+                }
+                else
+                {
+                    Snackbar.Add(result.Message, Severity.Error);
+                }
+            }
+            else
+            {
+                var result = await UserService.CreateManagerAsync(
+                    _editModel.FullName!,
+                    _editModel.Email!,
+                    _editModel.Position,
+                    _userId!);
+
+                if (result.Success)
+                {
+                    _createdUserEmail = _editModel.Email!;
+                    _temporaryPassword = result.TempPassword!;
+
+                    CloseDialog();
+                    await LoadManagersAsync();
+
+                    // Show password dialog
+                    _passwordDialogVisible = true;
+                }
+                else
+                {
+                    Snackbar.Add(result.Message, Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving manager: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeactivateManagerAsync(ApplicationUser manager)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Deactivate Manager",
+            $"Are you sure you want to deactivate '{manager.FullName}'? They will no longer be able to log in.",
+            yesText: "Deactivate",
+            cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var result = await UserService.DeactivateUserAsync(manager.Id, _userId!);
+            if (result.Success)
+            {
+                Snackbar.Add(result.Message, Severity.Success);
+                await LoadManagersAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+    }
+
+    private async Task ReactivateManagerAsync(ApplicationUser manager)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Reactivate Manager",
+            $"Are you sure you want to reactivate '{manager.FullName}'? They will be able to log in again.",
+            yesText: "Reactivate",
+            cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var result = await UserService.ReactivateUserAsync(manager.Id, _userId!);
+            if (result.Success)
+            {
+                Snackbar.Add(result.Message, Severity.Success);
+                await LoadManagersAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+    }
+
+    private async Task ResetPasswordAsync(ApplicationUser manager)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Reset Password",
+            $"Generate a new temporary password for '{manager.FullName}'?",
+            yesText: "Reset",
+            cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var result = await UserService.ResetPasswordAsync(manager.Id, _userId!);
+            if (result.Success)
+            {
+                _createdUserEmail = manager.Email!;
+                _temporaryPassword = result.TempPassword!;
+                _passwordDialogVisible = true;
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+    }
+
+    private void ViewQuarries(ApplicationUser manager)
+    {
+        _selectedManager = manager;
+        _selectedManagerQuarries = _managerQuarries.ContainsKey(manager.Id)
+            ? _managerQuarries[manager.Id]
+            : new List<Quarry>();
+        _quarriesDialogVisible = true;
+    }
+
+    private void CloseQuarriesDialog()
+    {
+        _quarriesDialogVisible = false;
+        _selectedManager = null;
+        _selectedManagerQuarries = new();
+    }
+
+    private void ClosePasswordDialog()
+    {
+        _passwordDialogVisible = false;
+        _temporaryPassword = string.Empty;
+        _createdUserEmail = string.Empty;
+    }
+
+    private async Task CopyPasswordToClipboard()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _temporaryPassword);
+            Snackbar.Add("Password copied to clipboard", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy password. Please copy it manually.", Severity.Warning);
+        }
+    }
+}

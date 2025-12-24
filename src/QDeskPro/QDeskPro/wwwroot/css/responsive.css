@@ -1,0 +1,483 @@
+/**
+ * QDeskPro - Mobile-First Responsive Styles
+ *
+ * Breakpoints:
+ * - Base: < 600px (Mobile)
+ * - sm: >= 600px (Tablet Portrait)
+ * - md: >= 960px (Tablet Landscape / Small Desktop)
+ * - lg: >= 1280px (Desktop)
+ * - xl: >= 1920px (Large Desktop)
+ */
+
+/* ==================================
+   1. BASE STYLES (Mobile < 600px)
+   ================================== */
+
+/* Container spacing for mobile */
+.clerk-container,
+.manager-container {
+    padding: 12px;
+    max-width: 100%;
+}
+
+/* Touch-friendly targets - minimum 44x44px for all interactive elements */
+.touch-target,
+.mud-button-root,
+.mud-icon-button,
+.mud-list-item {
+    min-height: 44px !important;
+    min-width: 44px !important;
+}
+
+/* Forms on mobile */
+.mud-input-root,
+.mud-select,
+.mud-picker {
+    margin-bottom: 12px !important;
+}
+
+/* Cards with mobile spacing */
+.summary-card,
+.qdp-card {
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    margin-bottom: 16px;
+    transition: box-shadow 0.2s ease;
+}
+
+.summary-card:hover,
+.qdp-card:hover {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+}
+
+/* Table responsiveness - horizontal scroll on mobile */
+.mud-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* FAB positioning (desktop fallback) */
+.fab-container {
+    position: fixed;
+    bottom: 24px;
+    right: 16px;
+    z-index: 1000;
+}
+
+/* Hide sidebar drawer on mobile for Clerks */
+@media (max-width: 959px) {
+    body.clerk-view .mud-drawer {
+        display: none !important;
+    }
+
+    /* Adjust main content when drawer is hidden */
+    body.clerk-view .mud-layout {
+        padding-left: 0 !important;
+    }
+}
+
+/* Unpaid order row highlight */
+.unpaid-row,
+tr.unpaid-row,
+.mud-table-row.unpaid-row {
+    background-color: rgba(244, 67, 54, 0.08) !important;
+    border-left: 4px solid #F44336 !important;
+}
+
+.unpaid-row:hover,
+tr.unpaid-row:hover {
+    background-color: rgba(244, 67, 54, 0.12) !important;
+}
+
+/* Mobile-optimized form layout */
+.form-row-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* ==================================
+   2. SMALL TABLETS (>= 600px)
+   ================================== */
+
+@media (min-width: 600px) {
+    .clerk-container,
+    .manager-container {
+        padding: 16px;
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .summary-card,
+    .qdp-card {
+        margin-bottom: 20px;
+    }
+
+    /* Two-column form layout for tablets */
+    .form-row-tablet {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    /* FAB moves up slightly */
+    .fab-container {
+        bottom: 96px; /* Above bottom nav on larger screens */
+        right: 24px;
+    }
+}
+
+/* ==================================
+   3. TABLETS/SMALL DESKTOPS (>= 960px)
+   ================================== */
+
+@media (min-width: 960px) {
+    .clerk-container {
+        padding: 24px;
+        max-width: 900px;
+    }
+
+    .manager-container {
+        padding: 24px;
+        max-width: 100%;
+    }
+
+    /* Re-show sidebar for desktop */
+    body.clerk-view .mud-drawer {
+        display: block !important;
+    }
+
+    /* Hide bottom navigation on desktop */
+    .qdp-bottom-nav {
+        display: none !important;
+    }
+
+    /* Remove bottom padding from main content on desktop */
+    .qdp-main-content {
+        padding-bottom: 0 !important;
+    }
+
+    /* FAB moves to standard position */
+    .fab-container {
+        bottom: 24px;
+        right: 24px;
+    }
+
+    /* Sidebar-aware content padding */
+    .mud-layout {
+        padding-left: 256px; /* MudDrawer default width */
+    }
+
+    /* Three-column form layout */
+    .form-row-desktop {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 20px;
+    }
+
+    /* Card grid layout for desktop */
+    .card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 24px;
+    }
+}
+
+/* ==================================
+   4. LARGE DESKTOPS (>= 1280px)
+   ================================== */
+
+@media (min-width: 1280px) {
+    .manager-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 32px;
+    }
+
+    .clerk-container {
+        max-width: 1000px;
+        padding: 32px;
+    }
+
+    /* Four-column card grid */
+    .card-grid-large {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 24px;
+    }
+
+    /* Larger spacing for metrics */
+    .metric-cards {
+        gap: 24px;
+    }
+}
+
+/* ==================================
+   5. EXTRA LARGE DISPLAYS (>= 1920px)
+   ================================== */
+
+@media (min-width: 1920px) {
+    .manager-container {
+        max-width: 1600px;
+    }
+
+    .card-grid-large {
+        grid-template-columns: repeat(5, 1fr);
+    }
+}
+
+/* ==================================
+   6. LOADING INDICATORS
+   ================================== */
+
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9998;
+    backdrop-filter: blur(4px);
+}
+
+.loading-spinner {
+    background: white;
+    border-radius: 16px;
+    padding: 32px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+/* Inline loading for buttons */
+.btn-loading .mud-progress-circular {
+    margin-right: 8px;
+}
+
+/* ==================================
+   7. ANIMATIONS
+   ================================== */
+
+/* Fade in animation for page load */
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Slide up animation for modals/dialogs */
+.slide-up {
+    animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Pulse animation for important elements */
+.pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
+/* ==================================
+   8. SAFE AREA INSETS (iOS Notch Support)
+   ================================== */
+
+/* PWA-specific safe area handling */
+@supports (padding-top: env(safe-area-inset-top)) {
+    .qdp-appbar {
+        padding-top: env(safe-area-inset-top) !important;
+    }
+
+    .qdp-bottom-nav-container {
+        padding-bottom: calc(8px + env(safe-area-inset-bottom)) !important;
+    }
+
+    .qdp-main-content {
+        padding-top: calc(64px + env(safe-area-inset-top)) !important;
+        padding-left: env(safe-area-inset-left) !important;
+        padding-right: env(safe-area-inset-right) !important;
+    }
+}
+
+/* ==================================
+   9. UTILITY CLASSES
+   ================================== */
+
+/* Spacing utilities */
+.mt-safe {
+    margin-top: 8px;
+}
+
+.mb-safe {
+    margin-bottom: 8px;
+}
+
+.p-safe {
+    padding: 12px;
+}
+
+/* Visibility utilities */
+.mobile-only {
+    display: block;
+}
+
+@media (min-width: 960px) {
+    .mobile-only {
+        display: none !important;
+    }
+}
+
+.desktop-only {
+    display: none;
+}
+
+@media (min-width: 960px) {
+    .desktop-only {
+        display: block !important;
+    }
+}
+
+/* Text utilities for mobile */
+.text-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.text-wrap-mobile {
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+/* ==================================
+   10. ACCESSIBILITY
+   ================================== */
+
+/* Focus visible for keyboard navigation */
+*:focus-visible {
+    outline: 2px solid #1565C0;
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* Skip to main content link */
+.skip-to-content {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: #1565C0;
+    color: white;
+    padding: 8px 16px;
+    z-index: 10000;
+    text-decoration: none;
+    border-radius: 0 0 4px 0;
+}
+
+.skip-to-content:focus {
+    top: 0;
+}
+
+/* ==================================
+   11. PRINT STYLES
+   ================================== */
+
+@media print {
+    /* Hide navigation elements */
+    .qdp-appbar,
+    .qdp-drawer,
+    .qdp-bottom-nav,
+    .fab-container {
+        display: none !important;
+    }
+
+    /* Expand main content */
+    .qdp-main-content {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    /* Ensure tables fit on page */
+    .mud-table {
+        page-break-inside: avoid;
+    }
+
+    /* Black and white for printing */
+    * {
+        background: white !important;
+        color: black !important;
+    }
+}
+
+/* ==================================
+   12. DARK MODE SUPPORT (Prepared)
+   ================================== */
+
+@media (prefers-color-scheme: dark) {
+    /* Dark mode styles will be added when implementing theme toggle */
+    /* Placeholder for future dark mode CSS */
+}
+
+.dark-mode {
+    /* Class-based dark mode (controlled via MudThemeProvider) */
+}
+
+/* ==================================
+   13. HIGH CONTRAST MODE
+   ================================== */
+
+@media (prefers-contrast: high) {
+    .summary-card,
+    .qdp-card {
+        border: 2px solid currentColor;
+    }
+
+    .unpaid-row {
+        border-left-width: 6px !important;
+    }
+}
+
+/* ==================================
+   14. REDUCED MOTION
+   ================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

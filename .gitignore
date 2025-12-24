@@ -116,3 +116,7 @@ out/
 
 # Logs
 logs/
+
+# Data Protection keys (auto-generated, sensitive)
+keys/
+**/keys/

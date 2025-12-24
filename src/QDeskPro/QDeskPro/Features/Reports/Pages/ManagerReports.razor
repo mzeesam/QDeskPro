@@ -1,0 +1,1097 @@
+@page "/manager/reports"
+@page "/admin/reports"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.Reports.Services
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.Options
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject ManagerReportService ReportService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject IEmailQueue EmailQueue
+@inject IOptions<EmailSettings> EmailSettingsOptions
+@inject NavigationManager NavigationManager
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Reports Center - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4 mb-8">
+    <MudStack Spacing="4">
+        @* Header Section *@
+        <div class="reports-header">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <div>
+                    <MudText Typo="Typo.h4" Class="fw-bold reports-title">
+                        <MudIcon Icon="@Icons.Material.Filled.Assessment" Class="mr-2" Style="vertical-align: middle;" />
+                        Reports Center
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted mt-1">
+                        Generate comprehensive reports with analytics and exports
+                    </MudText>
+                </div>
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Variant="Variant.Outlined"
+                              Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.History"
+                              OnClick="@(() => _showHistory = !_showHistory)">
+                        History
+                    </MudButton>
+                </MudStack>
+            </MudStack>
+        </div>
+
+        @* Filters Section *@
+        <MudPaper Elevation="0" Class="filter-card pa-5 rounded-lg">
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect T="string"
+                              @bind-Value="_selectedQuarryId"
+                              Label="Quarry"
+                              Variant="Variant.Outlined"
+                              AnchorOrigin="Origin.BottomCenter"
+                              Dense="true"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Terrain">
+                        @if (_userRole == "Administrator")
+                        {
+                            <MudSelectItem T="string" Value="@((string?)null)">All Quarries</MudSelectItem>
+                        }
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudDatePicker @bind-Date="_fromDate"
+                                  Label="From Date"
+                                  Variant="Variant.Outlined"
+                                  MaxDate="DateTime.Today"
+                                  Dense="true"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.CalendarToday" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudDatePicker @bind-Date="_toDate"
+                                  Label="To Date"
+                                  Variant="Variant.Outlined"
+                                  MinDate="_fromDate"
+                                  MaxDate="DateTime.Today"
+                                  Dense="true"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Event" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              FullWidth="true"
+                              OnClick="GenerateReportAsync"
+                              Disabled="_loading"
+                              StartIcon="@Icons.Material.Filled.PlayArrow"
+                              Style="height: 40px;">
+                        @if (_loading)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Generate Report
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @* Report Type Tabs *@
+        <MudTabs @bind-ActivePanelIndex="_activeTab"
+                 Elevation="0"
+                 Rounded="true"
+                 ApplyEffectsToContainer="true"
+                 KeepPanelsAlive="true"
+                 PanelClass="pa-4"
+                 Class="report-tabs">
+            <MudTabPanel Text="Sales Report" Icon="@Icons.Material.Filled.TrendingUp" BadgeData="@_reportData?.TotalOrders" BadgeColor="Color.Primary">
+                @if (_reportGenerated && _reportData != null)
+                {
+                    @* Sales Summary Cards *@
+                    <MudGrid Class="mb-4">
+                        <MudItem xs="12" sm="6" md="3">
+                            <div class="summary-card summary-revenue">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.Payments" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Total Revenue</span>
+                                    <span class="summary-value">KES @_reportData.TotalSales.ToString("N0")</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <div class="summary-card summary-orders">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.ShoppingCart" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Total Orders</span>
+                                    <span class="summary-value">@_reportData.TotalOrders</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <div class="summary-card summary-quantity">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.Inventory" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Total Quantity</span>
+                                    <span class="summary-value">@_reportData.TotalQuantity.ToString("N0") pcs</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <div class="summary-card summary-unpaid @(_reportData.UnpaidAmount > 0 ? "has-unpaid" : "")">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.CreditCardOff" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Unpaid Orders</span>
+                                    <span class="summary-value">KES @_reportData.UnpaidAmount.ToString("N0")</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                    </MudGrid>
+
+                    @* Charts Row *@
+                    <MudGrid Class="mb-4">
+                        <MudItem xs="12" md="8">
+                            <MudPaper Class="pa-4 rounded-lg chart-paper" Elevation="0">
+                                <MudText Typo="Typo.h6" Class="mb-3 chart-title">Daily Sales Trend</MudText>
+                                <div style="height: 320px;">
+                                    <canvas id="dailySalesTrendChart"></canvas>
+                                </div>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" md="4">
+                            <MudPaper Class="pa-4 rounded-lg chart-paper" Elevation="0" Style="height: 100%;">
+                                <MudText Typo="Typo.h6" Class="mb-3 chart-title">Product Distribution</MudText>
+                                <div style="height: 280px;">
+                                    <canvas id="productDistributionChart"></canvas>
+                                </div>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+
+                    @* Sales Details Table *@
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="0">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+                            <MudText Typo="Typo.h6" Class="chart-title">Sales Details</MudText>
+                            <MudStack Row="true" Spacing="2">
+                                <MudButton Variant="Variant.Outlined"
+                                          Color="Color.Error"
+                                          StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                                          Size="Size.Small"
+                                          OnClick="@(() => ExportReportAsync("pdf", "sales"))"
+                                          Disabled="_exporting">
+                                    PDF
+                                </MudButton>
+                                <MudButton Variant="Variant.Filled"
+                                          Color="Color.Success"
+                                          StartIcon="@Icons.Material.Filled.GridOn"
+                                          Size="Size.Small"
+                                          OnClick="@(() => ExportReportAsync("excel", "sales"))"
+                                          Disabled="_exporting">
+                                    @if (_exporting)
+                                    {
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-1" />
+                                    }
+                                    Excel
+                                </MudButton>
+                            </MudStack>
+                        </MudStack>
+
+                        <MudTable Items="@_reportData.DailySummaries"
+                                 T="DailySalesBreakdown"
+                                 Dense="true"
+                                 Hover="true"
+                                 Breakpoint="Breakpoint.Sm"
+                                 Height="350px"
+                                 FixedHeader="true"
+                                 Class="sales-table">
+                            <HeaderContent>
+                                <MudTh>Date</MudTh>
+                                <MudTh Style="text-align: right">Orders</MudTh>
+                                <MudTh Style="text-align: right">Quantity</MudTh>
+                                <MudTh Style="text-align: right">Revenue</MudTh>
+                                <MudTh Style="text-align: right">Commission</MudTh>
+                                <MudTh Style="text-align: right">Loaders</MudTh>
+                                <MudTh Style="text-align: right">Other</MudTh>
+                                <MudTh Style="text-align: right">Net</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Date">@context.Date.ToString("ddd, dd MMM")</MudTd>
+                                <MudTd DataLabel="Orders" Style="text-align: right">@context.OrderCount</MudTd>
+                                <MudTd DataLabel="Quantity" Style="text-align: right">@context.Quantity.ToString("N0")</MudTd>
+                                <MudTd DataLabel="Revenue" Style="text-align: right">@context.Revenue.ToString("N0")</MudTd>
+                                <MudTd DataLabel="Commission" Style="text-align: right">@context.Commission.ToString("N0")</MudTd>
+                                <MudTd DataLabel="Loaders" Style="text-align: right">@context.LoadersFee.ToString("N0")</MudTd>
+                                <MudTd DataLabel="Other" Style="text-align: right">@context.OtherExpenses.ToString("N0")</MudTd>
+                                <MudTd DataLabel="Net" Style="text-align: right">
+                                    <MudText Color="@(context.NetAmount >= 0 ? Color.Success : Color.Error)" Class="fw-bold">
+                                        @context.NetAmount.ToString("N0")
+                                    </MudText>
+                                </MudTd>
+                            </RowTemplate>
+                            <FooterContent>
+                                <MudTh Class="table-footer">TOTAL</MudTh>
+                                <MudTh Style="text-align: right" Class="table-footer">@_reportData.TotalOrders</MudTh>
+                                <MudTh Style="text-align: right" Class="table-footer">@_reportData.TotalQuantity.ToString("N0")</MudTh>
+                                <MudTh Style="text-align: right" Class="table-footer">@_reportData.TotalSales.ToString("N0")</MudTh>
+                                <MudTh Style="text-align: right" Class="table-footer">@_reportData.TotalCommission.ToString("N0")</MudTh>
+                                <MudTh Style="text-align: right" Class="table-footer">@_reportData.TotalLoadersFee.ToString("N0")</MudTh>
+                                <MudTh Style="text-align: right" Class="table-footer">@_reportData.TotalOtherExpenses.ToString("N0")</MudTh>
+                                <MudTh Style="text-align: right" Class="table-footer">
+                                    <MudText Color="Color.Success" Class="fw-bold">@_reportData.NetAmount.ToString("N0")</MudText>
+                                </MudTh>
+                            </FooterContent>
+                        </MudTable>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-4">
+                        Select date range and click "Generate Report" to view sales data
+                    </MudAlert>
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="Expenses Report" Icon="@Icons.Material.Filled.Receipt" BadgeData="@_expensesData?.TotalExpenseItems" BadgeColor="Color.Warning">
+                @if (_reportGenerated && _expensesData != null)
+                {
+                    @* Expenses Summary Cards *@
+                    <MudGrid Class="mb-4">
+                        <MudItem xs="12" sm="6" md="3">
+                            <div class="summary-card summary-expense-total">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Total Expenses</span>
+                                    <span class="summary-value">KES @_expensesData.TotalExpenses.ToString("N0")</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <div class="summary-card summary-commission">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.Handshake" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Commission</span>
+                                    <span class="summary-value">KES @_expensesData.Commission.ToString("N0")</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <div class="summary-card summary-loaders">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.Engineering" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Loaders Fee</span>
+                                    <span class="summary-value">KES @_expensesData.LoadersFee.ToString("N0")</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <div class="summary-card summary-manual">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.MoreHoriz" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Other Expenses</span>
+                                    <span class="summary-value">KES @_expensesData.ManualExpenses.ToString("N0")</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                    </MudGrid>
+
+                    @* Expenses Charts *@
+                    <MudGrid Class="mb-4">
+                        <MudItem xs="12" md="6">
+                            <MudPaper Class="pa-4 rounded-lg chart-paper" Elevation="0">
+                                <MudText Typo="Typo.h6" Class="mb-3 chart-title">Expense Breakdown</MudText>
+                                <div style="height: 300px;">
+                                    <canvas id="expenseBreakdownChart"></canvas>
+                                </div>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudPaper Class="pa-4 rounded-lg chart-paper" Elevation="0">
+                                <MudText Typo="Typo.h6" Class="mb-3 chart-title">Daily Expense Trend</MudText>
+                                <div style="height: 300px;">
+                                    <canvas id="expenseTrendChart"></canvas>
+                                </div>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+
+                    @* Expenses Table *@
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="0">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+                            <MudText Typo="Typo.h6" Class="chart-title">Expense Details</MudText>
+                            <MudStack Row="true" Spacing="2">
+                                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" OnClick="@(() => ExportReportAsync("pdf", "expenses"))">PDF</MudButton>
+                                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.GridOn" Size="Size.Small" OnClick="@(() => ExportReportAsync("excel", "expenses"))">Excel</MudButton>
+                            </MudStack>
+                        </MudStack>
+
+                        <MudTable Items="@_expensesData.ExpenseItems"
+                                 T="ExpenseReportItem"
+                                 Dense="true"
+                                 Hover="true"
+                                 Breakpoint="Breakpoint.Sm"
+                                 Height="350px"
+                                 FixedHeader="true">
+                            <HeaderContent>
+                                <MudTh>Date</MudTh>
+                                <MudTh>Description</MudTh>
+                                <MudTh>Category</MudTh>
+                                <MudTh Style="text-align: right">Amount</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Date">@context.Date.ToString("dd/MM/yyyy")</MudTd>
+                                <MudTd DataLabel="Description">@context.Description</MudTd>
+                                <MudTd DataLabel="Category">
+                                    <MudChip T="string" Size="Size.Small" Color="@GetExpenseColor(context.Category)">@context.Category</MudChip>
+                                </MudTd>
+                                <MudTd DataLabel="Amount" Style="text-align: right">KES @context.Amount.ToString("N0")</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-4">Select date range and click "Generate Report" to view expense data</MudAlert>
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="Fuel Usage" Icon="@Icons.Material.Filled.LocalGasStation" BadgeData="@_fuelData?.TotalRecords" BadgeColor="Color.Success">
+                @if (_reportGenerated && _fuelData != null)
+                {
+                    @* Fuel Summary Cards *@
+                    <MudGrid Class="mb-4">
+                        <MudItem xs="12" sm="6" md="3">
+                            <div class="summary-card summary-fuel-received">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.AddCircle" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Fuel Received</span>
+                                    <span class="summary-value">@_fuelData.TotalReceived.ToString("N1") L</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <div class="summary-card summary-fuel-machines">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.PrecisionManufacturing" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Machines Usage</span>
+                                    <span class="summary-value">@_fuelData.MachinesUsage.ToString("N1") L</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <div class="summary-card summary-fuel-loaders">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.Agriculture" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">W/Loaders Usage</span>
+                                    <span class="summary-value">@_fuelData.WheelLoadersUsage.ToString("N1") L</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="3">
+                            <div class="summary-card summary-fuel-balance">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.WaterDrop" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Current Balance</span>
+                                    <span class="summary-value">@_fuelData.CurrentBalance.ToString("N1") L</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                    </MudGrid>
+
+                    @* Fuel Charts *@
+                    <MudGrid Class="mb-4">
+                        <MudItem xs="12">
+                            <MudPaper Class="pa-4 rounded-lg chart-paper" Elevation="0">
+                                <MudText Typo="Typo.h6" Class="mb-3 chart-title">Fuel Usage Trend</MudText>
+                                <div style="height: 300px;">
+                                    <canvas id="fuelUsageChart"></canvas>
+                                </div>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+
+                    @* Fuel Table *@
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="0">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+                            <MudText Typo="Typo.h6" Class="chart-title">Fuel Usage Details</MudText>
+                            <MudStack Row="true" Spacing="2">
+                                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" OnClick="@(() => ExportReportAsync("pdf", "fuel"))">PDF</MudButton>
+                                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.GridOn" Size="Size.Small" OnClick="@(() => ExportReportAsync("excel", "fuel"))">Excel</MudButton>
+                            </MudStack>
+                        </MudStack>
+
+                        <MudTable Items="@_fuelData.FuelRecords"
+                                 T="FuelUsageRecord"
+                                 Dense="true"
+                                 Hover="true"
+                                 Breakpoint="Breakpoint.Sm"
+                                 Height="350px"
+                                 FixedHeader="true">
+                            <HeaderContent>
+                                <MudTh>Date</MudTh>
+                                <MudTh Style="text-align: right">Old Stock</MudTh>
+                                <MudTh Style="text-align: right">New Stock</MudTh>
+                                <MudTh Style="text-align: right">Total</MudTh>
+                                <MudTh Style="text-align: right">Machines</MudTh>
+                                <MudTh Style="text-align: right">W/Loaders</MudTh>
+                                <MudTh Style="text-align: right">Balance</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Date">@context.Date.ToString("dd/MM/yyyy")</MudTd>
+                                <MudTd DataLabel="Old Stock" Style="text-align: right">@context.OldStock.ToString("N1")</MudTd>
+                                <MudTd DataLabel="New Stock" Style="text-align: right">@context.NewStock.ToString("N1")</MudTd>
+                                <MudTd DataLabel="Total" Style="text-align: right">@context.TotalStock.ToString("N1")</MudTd>
+                                <MudTd DataLabel="Machines" Style="text-align: right">@context.MachinesLoaded.ToString("N1")</MudTd>
+                                <MudTd DataLabel="W/Loaders" Style="text-align: right">@context.WheelLoadersLoaded.ToString("N1")</MudTd>
+                                <MudTd DataLabel="Balance" Style="text-align: right">
+                                    <MudText Color="Color.Success" Class="fw-bold">@context.Balance.ToString("N1")</MudText>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-4">Select date range and click "Generate Report" to view fuel usage data</MudAlert>
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="Banking Report" Icon="@Icons.Material.Filled.AccountBalance" BadgeData="@_bankingData?.TotalRecords" BadgeColor="Color.Info">
+                @if (_reportGenerated && _bankingData != null)
+                {
+                    @* Banking Summary Cards *@
+                    <MudGrid Class="mb-4">
+                        <MudItem xs="12" sm="6" md="4">
+                            <div class="summary-card summary-banking-total">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.Savings" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Total Banked</span>
+                                    <span class="summary-value">KES @_bankingData.TotalBanked.ToString("N0")</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="4">
+                            <div class="summary-card summary-banking-count">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.Receipt" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Transactions</span>
+                                    <span class="summary-value">@_bankingData.TotalRecords</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="12" sm="6" md="4">
+                            <div class="summary-card summary-banking-avg">
+                                <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.TrendingUp" /></div>
+                                <div class="summary-content">
+                                    <span class="summary-label">Avg per Day</span>
+                                    <span class="summary-value">KES @_bankingData.AveragePerDay.ToString("N0")</span>
+                                </div>
+                            </div>
+                        </MudItem>
+                    </MudGrid>
+
+                    @* Banking Chart *@
+                    <MudGrid Class="mb-4">
+                        <MudItem xs="12">
+                            <MudPaper Class="pa-4 rounded-lg chart-paper" Elevation="0">
+                                <MudText Typo="Typo.h6" Class="mb-3 chart-title">Daily Banking Trend</MudText>
+                                <div style="height: 300px;">
+                                    <canvas id="bankingTrendChart"></canvas>
+                                </div>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+
+                    @* Banking Table *@
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="0">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+                            <MudText Typo="Typo.h6" Class="chart-title">Banking Records</MudText>
+                            <MudStack Row="true" Spacing="2">
+                                <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" OnClick="@(() => ExportReportAsync("pdf", "banking"))">PDF</MudButton>
+                                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.GridOn" Size="Size.Small" OnClick="@(() => ExportReportAsync("excel", "banking"))">Excel</MudButton>
+                            </MudStack>
+                        </MudStack>
+
+                        <MudTable Items="@_bankingData.BankingRecords"
+                                 T="BankingReportItem"
+                                 Dense="true"
+                                 Hover="true"
+                                 Breakpoint="Breakpoint.Sm"
+                                 Height="350px"
+                                 FixedHeader="true">
+                            <HeaderContent>
+                                <MudTh>Date</MudTh>
+                                <MudTh>Description</MudTh>
+                                <MudTh>Reference</MudTh>
+                                <MudTh Style="text-align: right">Amount</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Date">@context.Date.ToString("dd/MM/yyyy")</MudTd>
+                                <MudTd DataLabel="Description">@context.Description</MudTd>
+                                <MudTd DataLabel="Reference">@context.Reference</MudTd>
+                                <MudTd DataLabel="Amount" Style="text-align: right">
+                                    <MudText Color="Color.Primary" Class="fw-bold">KES @context.Amount.ToString("N0")</MudText>
+                                </MudTd>
+                            </RowTemplate>
+                            <FooterContent>
+                                <MudTh Class="table-footer" ColSpan="3">TOTAL</MudTh>
+                                <MudTh Style="text-align: right" Class="table-footer">
+                                    <MudText Color="Color.Primary" Class="fw-bold">KES @_bankingData.TotalBanked.ToString("N0")</MudText>
+                                </MudTh>
+                            </FooterContent>
+                        </MudTable>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-4">Select date range and click "Generate Report" to view banking data</MudAlert>
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="Comprehensive" Icon="@Icons.Material.Filled.Summarize">
+                @if (_reportGenerated)
+                {
+                    <MudGrid>
+                        <MudItem xs="12">
+                            <MudAlert Severity="Severity.Success" Class="mb-4">
+                                <MudText Typo="Typo.body1" Class="fw-bold">Comprehensive Report Ready</MudText>
+                                <MudText Typo="Typo.body2">
+                                    Export a full report containing Sales, Expenses, Fuel Usage, and Banking with charts and analytics.
+                                </MudText>
+                            </MudAlert>
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudPaper Class="pa-6 rounded-lg export-option-card" Elevation="0">
+                                <MudStack AlignItems="AlignItems.Center" Spacing="3">
+                                    <MudIcon Icon="@Icons.Material.Filled.GridOn" Size="Size.Large" Color="Color.Success" />
+                                    <MudText Typo="Typo.h6">Excel Report with Charts</MudText>
+                                    <MudText Typo="Typo.body2" Align="Align.Center" Class="text-muted">
+                                        Multi-sheet workbook with embedded charts, pivot-ready data, and summary analytics
+                                    </MudText>
+                                    <MudButton Variant="Variant.Filled"
+                                              Color="Color.Success"
+                                              Size="Size.Large"
+                                              StartIcon="@Icons.Material.Filled.Download"
+                                              OnClick="@(() => ExportReportAsync("excel", "comprehensive"))"
+                                              Disabled="_exporting"
+                                              FullWidth="true">
+                                        Download Excel Report
+                                    </MudButton>
+                                </MudStack>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudPaper Class="pa-6 rounded-lg export-option-card" Elevation="0">
+                                <MudStack AlignItems="AlignItems.Center" Spacing="3">
+                                    <MudIcon Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Large" Color="Color.Error" />
+                                    <MudText Typo="Typo.h6">PDF Report</MudText>
+                                    <MudText Typo="Typo.body2" Align="Align.Center" Class="text-muted">
+                                        Professional PDF document with tables, summaries, and formatted for printing
+                                    </MudText>
+                                    <MudButton Variant="Variant.Filled"
+                                              Color="Color.Error"
+                                              Size="Size.Large"
+                                              StartIcon="@Icons.Material.Filled.Download"
+                                              OnClick="@(() => ExportReportAsync("pdf", "comprehensive"))"
+                                              Disabled="_exporting"
+                                              FullWidth="true">
+                                        Download PDF Report
+                                    </MudButton>
+                                </MudStack>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-4">Select date range and click "Generate Report" to create a comprehensive report</MudAlert>
+                }
+            </MudTabPanel>
+        </MudTabs>
+    </MudStack>
+</MudContainer>
+
+@* Report History Drawer *@
+<MudDrawer @bind-Open="_showHistory" Anchor="Anchor.End" Elevation="2" Width="400px" Class="pa-4">
+    <MudDrawerHeader>
+        <MudText Typo="Typo.h6">Report History</MudText>
+    </MudDrawerHeader>
+    <MudDrawerContainer>
+        @if (_recentReports.Any())
+        {
+            <MudList T="string" Dense="true">
+                @foreach (var report in _recentReports)
+                {
+                    <MudListItem T="string">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.body2" Class="fw-bold">@report.ReportType</MudText>
+                            <MudText Typo="Typo.caption">@report.QuarryName | @report.DateRange</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Default">@report.GeneratedAt.ToString("dd MMM yyyy HH:mm")</MudText>
+                        </MudStack>
+                    </MudListItem>
+                    <MudDivider />
+                }
+            </MudList>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="text-muted">No reports generated yet in this session</MudText>
+        }
+    </MudDrawerContainer>
+</MudDrawer>
+
+<style>
+    /* Header Styles */
+    .reports-header {
+        background: linear-gradient(135deg, rgba(156, 39, 176, 0.05) 0%, rgba(233, 30, 99, 0.05) 100%);
+        padding: 24px;
+        border-radius: 16px;
+        border-left: 4px solid #9C27B0;
+    }
+
+    .reports-title {
+        background: linear-gradient(135deg, #7B1FA2, #E91E63);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    /* Filter Card */
+    .filter-card {
+        background: white;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    }
+
+    /* Report Tabs */
+    .report-tabs .mud-tabs-toolbar {
+        background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
+        border-radius: 12px;
+        padding: 8px;
+        overflow: visible;
+    }
+
+    .report-tabs .mud-tab {
+        border-radius: 8px;
+        min-height: 48px;
+        padding-right: 16px;
+        overflow: visible;
+    }
+
+    .report-tabs .mud-tab .mud-badge {
+        margin-left: 8px;
+    }
+
+    .report-tabs .mud-tab.mud-tab-active {
+        background: white;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .report-tabs .mud-tabs-panels {
+        overflow: visible;
+    }
+
+    /* Summary Cards */
+    .summary-card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 20px;
+        border-radius: 14px;
+        background: white;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+        transition: all 0.3s ease;
+        border-left: 4px solid;
+    }
+
+    .summary-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+    }
+
+    .summary-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .summary-icon .mud-icon-root { color: white !important; }
+
+    .summary-content {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .summary-label {
+        font-size: 0.75rem;
+        color: #64748B;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 500;
+    }
+
+    .summary-value {
+        font-size: 1.25rem;
+        font-weight: 800;
+        color: #1E293B;
+    }
+
+    /* Summary Card Variants */
+    .summary-revenue { border-color: #4CAF50; }
+    .summary-revenue .summary-icon { background: linear-gradient(135deg, #4CAF50, #388E3C); }
+
+    .summary-orders { border-color: #2196F3; }
+    .summary-orders .summary-icon { background: linear-gradient(135deg, #2196F3, #1976D2); }
+
+    .summary-quantity { border-color: #9C27B0; }
+    .summary-quantity .summary-icon { background: linear-gradient(135deg, #9C27B0, #7B1FA2); }
+
+    .summary-unpaid { border-color: #607D8B; }
+    .summary-unpaid .summary-icon { background: linear-gradient(135deg, #607D8B, #455A64); }
+    .summary-unpaid.has-unpaid { border-color: #F44336; }
+    .summary-unpaid.has-unpaid .summary-icon { background: linear-gradient(135deg, #F44336, #D32F2F); }
+
+    .summary-expense-total { border-color: #FF5722; }
+    .summary-expense-total .summary-icon { background: linear-gradient(135deg, #FF5722, #E64A19); }
+
+    .summary-commission { border-color: #FF9800; }
+    .summary-commission .summary-icon { background: linear-gradient(135deg, #FF9800, #F57C00); }
+
+    .summary-loaders { border-color: #00BCD4; }
+    .summary-loaders .summary-icon { background: linear-gradient(135deg, #00BCD4, #0097A7); }
+
+    .summary-manual { border-color: #795548; }
+    .summary-manual .summary-icon { background: linear-gradient(135deg, #795548, #5D4037); }
+
+    .summary-fuel-received { border-color: #4CAF50; }
+    .summary-fuel-received .summary-icon { background: linear-gradient(135deg, #4CAF50, #388E3C); }
+
+    .summary-fuel-machines { border-color: #FF9800; }
+    .summary-fuel-machines .summary-icon { background: linear-gradient(135deg, #FF9800, #F57C00); }
+
+    .summary-fuel-loaders { border-color: #E91E63; }
+    .summary-fuel-loaders .summary-icon { background: linear-gradient(135deg, #E91E63, #C2185B); }
+
+    .summary-fuel-balance { border-color: #2196F3; }
+    .summary-fuel-balance .summary-icon { background: linear-gradient(135deg, #2196F3, #1976D2); }
+
+    .summary-banking-total { border-color: #1976D2; }
+    .summary-banking-total .summary-icon { background: linear-gradient(135deg, #1976D2, #1565C0); }
+
+    .summary-banking-count { border-color: #9C27B0; }
+    .summary-banking-count .summary-icon { background: linear-gradient(135deg, #9C27B0, #7B1FA2); }
+
+    .summary-banking-avg { border-color: #009688; }
+    .summary-banking-avg .summary-icon { background: linear-gradient(135deg, #009688, #00796B); }
+
+    /* Chart Paper */
+    .chart-paper {
+        background: white;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .chart-title {
+        color: #1E293B;
+        font-weight: 600;
+    }
+
+    /* Table Footer */
+    .table-footer {
+        background: linear-gradient(180deg, #e8f4fd 0%, #e0f2fe 100%) !important;
+        font-weight: 700 !important;
+    }
+
+    /* Export Option Card */
+    .export-option-card {
+        background: linear-gradient(180deg, white 0%, #f8fafc 100%);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        transition: all 0.3s ease;
+    }
+
+    .export-option-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+    }
+</style>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private string _userId = string.Empty;
+    private string _userRole = string.Empty;
+    private List<Quarry> _quarries = new();
+    private string? _selectedQuarryId;
+    private DateTime? _fromDate = DateTime.Today.AddDays(-30);
+    private DateTime? _toDate = DateTime.Today;
+
+    private int _activeTab = 0;
+    private bool _loading = false;
+    private bool _exporting = false;
+    private bool _reportGenerated = false;
+    private bool _showHistory = false;
+    private bool _shouldRenderCharts = false;
+
+    // Report Data
+    private SalesReportData? _reportData;
+    private ExpensesReportData? _expensesData;
+    private FuelReportData? _fuelData;
+    private BankingReportData? _bankingData;
+    private List<ReportHistoryItem> _recentReports = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState == null) return;
+
+        var authState = await AuthState;
+        var user = authState.User;
+
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+
+        // Load quarries based on role
+        if (_userRole == "Administrator")
+        {
+            _quarries = await DbContext.Quarries
+                .Where(q => q.IsActive)
+                .OrderBy(q => q.QuarryName)
+                .ToListAsync();
+        }
+        else if (_userRole == "Manager")
+        {
+            _quarries = await DbContext.Quarries
+                .Where(q => q.IsActive && q.ManagerId == _userId)
+                .OrderBy(q => q.QuarryName)
+                .ToListAsync();
+
+            _selectedQuarryId = _quarries.FirstOrDefault()?.Id;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_shouldRenderCharts)
+        {
+            _shouldRenderCharts = false;
+            await RenderChartsAsync();
+        }
+    }
+
+    private async Task GenerateReportAsync()
+    {
+        if (_fromDate == null || _toDate == null)
+        {
+            Snackbar.Add("Please select both From and To dates", Severity.Warning);
+            return;
+        }
+
+        if (_fromDate > _toDate)
+        {
+            Snackbar.Add("From date cannot be after To date", Severity.Warning);
+            return;
+        }
+
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Load all report data in parallel
+            var salesTask = ReportService.GetSalesReportAsync(_selectedQuarryId, _fromDate.Value, _toDate.Value);
+            var expensesTask = ReportService.GetExpensesReportAsync(_selectedQuarryId, _fromDate.Value, _toDate.Value);
+            var fuelTask = ReportService.GetFuelReportAsync(_selectedQuarryId, _fromDate.Value, _toDate.Value);
+            var bankingTask = ReportService.GetBankingReportAsync(_selectedQuarryId, _fromDate.Value, _toDate.Value);
+
+            await Task.WhenAll(salesTask, expensesTask, fuelTask, bankingTask);
+
+            _reportData = await salesTask;
+            _expensesData = await expensesTask;
+            _fuelData = await fuelTask;
+            _bankingData = await bankingTask;
+
+            _reportGenerated = true;
+            _shouldRenderCharts = true;
+
+            // Add to history
+            AddToHistory("Comprehensive Report");
+
+            Snackbar.Add("Report generated successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        try
+        {
+            // Sales Trend Chart
+            if (_reportData?.DailySummaries?.Any() == true)
+            {
+                var labels = _reportData.DailySummaries.Select(d => d.Date.ToString("dd/MM")).ToArray();
+                var revenues = _reportData.DailySummaries.Select(d => d.Revenue).ToArray();
+                var expenses = _reportData.DailySummaries.Select(d => d.TotalExpenses).ToArray();
+
+                await JS.InvokeVoidAsync("QDeskReportCharts.createSalesTrendChart",
+                    "dailySalesTrendChart", labels, revenues, expenses);
+
+                // Product Distribution Chart
+                if (_reportData.ProductBreakdown?.Any() == true)
+                {
+                    var productLabels = _reportData.ProductBreakdown.Select(p => p.ProductName).ToArray();
+                    var productData = _reportData.ProductBreakdown.Select(p => p.Revenue).ToArray();
+                    await JS.InvokeVoidAsync("QDeskReportCharts.createProductPieChart",
+                        "productDistributionChart", productLabels, productData);
+                }
+            }
+
+            // Expense Charts
+            if (_expensesData != null)
+            {
+                var expenseCategories = new[] { "Commission", "Loaders Fee", "Land Rate", "Manual" };
+                var expenseValues = new[] {
+                    _expensesData.Commission,
+                    _expensesData.LoadersFee,
+                    _expensesData.LandRateFee,
+                    _expensesData.ManualExpenses
+                };
+                await JS.InvokeVoidAsync("QDeskReportCharts.createExpenseBreakdownChart",
+                    "expenseBreakdownChart", expenseCategories, expenseValues);
+
+                if (_expensesData.DailyExpenses?.Any() == true)
+                {
+                    var expenseLabels = _expensesData.DailyExpenses.Select(d => d.Date.ToString("dd/MM")).ToArray();
+                    var expenseData = _expensesData.DailyExpenses.Select(d => d.Amount).ToArray();
+                    await JS.InvokeVoidAsync("QDeskReportCharts.createExpenseTrendChart",
+                        "expenseTrendChart", expenseLabels, expenseData);
+                }
+            }
+
+            // Fuel Usage Chart
+            if (_fuelData?.FuelRecords?.Any() == true)
+            {
+                var fuelLabels = _fuelData.FuelRecords.Select(f => f.Date.ToString("dd/MM")).ToArray();
+                var machineUsage = _fuelData.FuelRecords.Select(f => f.MachinesLoaded).ToArray();
+                var loaderUsage = _fuelData.FuelRecords.Select(f => f.WheelLoadersLoaded).ToArray();
+                await JS.InvokeVoidAsync("QDeskReportCharts.createFuelUsageChart",
+                    "fuelUsageChart", fuelLabels, machineUsage, loaderUsage);
+            }
+
+            // Banking Chart
+            if (_bankingData?.DailyBanking?.Any() == true)
+            {
+                var bankingLabels = _bankingData.DailyBanking.Select(b => b.Date.ToString("dd/MM")).ToArray();
+                var bankingAmounts = _bankingData.DailyBanking.Select(b => b.Amount).ToArray();
+                await JS.InvokeVoidAsync("QDeskReportCharts.createBankingTrendChart",
+                    "bankingTrendChart", bankingLabels, bankingAmounts);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Chart rendering error: {ex.Message}");
+        }
+    }
+
+    private async Task ExportReportAsync(string format, string reportType)
+    {
+        if (!_reportGenerated)
+        {
+            Snackbar.Add("Please generate a report first", Severity.Warning);
+            return;
+        }
+
+        _exporting = true;
+        StateHasChanged();
+
+        try
+        {
+            byte[] fileBytes;
+            string fileName;
+            string mimeType;
+
+            if (format == "excel")
+            {
+                fileBytes = await ReportService.ExportToExcelAsync(
+                    _selectedQuarryId, _fromDate!.Value, _toDate!.Value, reportType);
+                fileName = $"{reportType}_Report_{_fromDate.Value:yyyyMMdd}_to_{_toDate.Value:yyyyMMdd}.xlsx";
+                mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            }
+            else
+            {
+                fileBytes = await ReportService.ExportToPdfAsync(
+                    _selectedQuarryId, _fromDate!.Value, _toDate!.Value, reportType);
+                fileName = $"{reportType}_Report_{_fromDate.Value:yyyyMMdd}_to_{_toDate.Value:yyyyMMdd}.pdf";
+                mimeType = "application/pdf";
+            }
+
+            var base64 = Convert.ToBase64String(fileBytes);
+            await JS.InvokeVoidAsync("downloadFile", fileName, mimeType, base64);
+
+            Snackbar.Add($"{format.ToUpper()} report downloaded successfully", Severity.Success);
+            AddToHistory($"{reportType} ({format.ToUpper()})");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _exporting = false;
+            StateHasChanged();
+        }
+    }
+
+    private void AddToHistory(string reportType)
+    {
+        var quarryName = _selectedQuarryId == null
+            ? "All Quarries"
+            : _quarries.FirstOrDefault(q => q.Id == _selectedQuarryId)?.QuarryName ?? "Unknown";
+
+        _recentReports.Insert(0, new ReportHistoryItem
+        {
+            ReportType = reportType,
+            QuarryName = quarryName,
+            DateRange = $"{_fromDate!.Value:dd MMM} - {_toDate!.Value:dd MMM yyyy}",
+            GeneratedAt = DateTime.Now
+        });
+
+        if (_recentReports.Count > 10)
+            _recentReports = _recentReports.Take(10).ToList();
+    }
+
+    private Color GetExpenseColor(string category)
+    {
+        return category switch
+        {
+            "Commission" => Color.Warning,
+            "Loaders Fee" => Color.Info,
+            "Land Rate" => Color.Success,
+            "Other Expenses" => Color.Default,
+            _ => Color.Default
+        };
+    }
+
+    private class ReportHistoryItem
+    {
+        public string ReportType { get; set; } = "";
+        public string QuarryName { get; set; } = "";
+        public string DateRange { get; set; } = "";
+        public DateTime GeneratedAt { get; set; }
+    }
+}

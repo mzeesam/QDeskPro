@@ -1,34 +1,98 @@
-﻿@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Identity
+@using MudBlazor
 @using QDeskPro.Domain.Entities
 
 @inject SignInManager<ApplicationUser> SignInManager
 
-<ul class="nav nav-pills flex-column">
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage" Match="NavLinkMatch.All">Profile</NavLink>
-    </li>
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/Email">Email</NavLink>
-    </li>
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/ChangePassword">Password</NavLink>
-    </li>
+<MudNavMenu Class="manage-nav-menu">
+    <MudNavLink Href="Account/Manage"
+                Match="NavLinkMatch.All"
+                Icon="@Icons.Material.Rounded.Person"
+                IconColor="Color.Primary">
+        Profile
+    </MudNavLink>
+
+    <MudNavLink Href="Account/Manage/Email"
+                Icon="@Icons.Material.Rounded.Email"
+                IconColor="Color.Secondary">
+        Email
+    </MudNavLink>
+
+    <MudNavLink Href="Account/Manage/ChangePassword"
+                Icon="@Icons.Material.Rounded.Lock"
+                IconColor="Color.Secondary">
+        Password
+    </MudNavLink>
+
     @if (hasExternalLogins)
     {
-        <li class="nav-item">
-            <NavLink class="nav-link" href="Account/Manage/ExternalLogins">External logins</NavLink>
-        </li>
+        <MudNavLink Href="Account/Manage/ExternalLogins"
+                    Icon="@Icons.Material.Rounded.Link"
+                    IconColor="Color.Secondary">
+            External Logins
+        </MudNavLink>
     }
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/TwoFactorAuthentication">Two-factor authentication</NavLink>
-    </li>
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/Passkeys">Passkeys</NavLink>
-    </li>
-    <li class="nav-item">
-        <NavLink class="nav-link" href="Account/Manage/PersonalData">Personal data</NavLink>
-    </li>
-</ul>
+
+    <MudDivider Class="my-2" />
+
+    <MudText Typo="Typo.overline" Class="nav-section-label">Security</MudText>
+
+    <MudNavLink Href="Account/Manage/TwoFactorAuthentication"
+                Icon="@Icons.Material.Rounded.Security"
+                IconColor="Color.Success">
+        Two-Factor Auth
+    </MudNavLink>
+
+    <MudDivider Class="my-2" />
+
+    <MudNavLink Href="Account/Manage/PersonalData"
+                Icon="@Icons.Material.Rounded.Storage"
+                IconColor="Color.Warning">
+        Personal Data
+    </MudNavLink>
+</MudNavMenu>
+
+<style>
+    .manage-nav-menu {
+        padding: 8px;
+    }
+
+    .manage-nav-menu .mud-nav-link {
+        border-radius: 12px !important;
+        margin-bottom: 4px;
+        padding: 12px 16px !important;
+        transition: all 0.2s ease;
+    }
+
+    .manage-nav-menu .mud-nav-link:hover {
+        background-color: rgba(21, 101, 192, 0.08) !important;
+    }
+
+    .manage-nav-menu .mud-nav-link.active {
+        background: linear-gradient(135deg, rgba(21, 101, 192, 0.12) 0%, rgba(13, 71, 161, 0.08) 100%) !important;
+        color: #1565C0 !important;
+        font-weight: 600;
+    }
+
+    .manage-nav-menu .mud-nav-link.active::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 4px;
+        height: 60%;
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        border-radius: 0 4px 4px 0;
+    }
+
+    .nav-section-label {
+        padding: 8px 16px 4px;
+        color: #90A4AE !important;
+        font-size: 0.65rem !important;
+        letter-spacing: 0.1em;
+    }
+</style>
 
 @code {
     private bool hasExternalLogins;

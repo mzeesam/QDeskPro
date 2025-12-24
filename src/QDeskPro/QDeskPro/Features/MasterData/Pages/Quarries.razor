@@ -1,0 +1,397 @@
+@page "/manager/quarries"
+@page "/admin/quarries"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.MasterData.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject MasterDataService MasterDataService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Quarries - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudStack Spacing="3">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4">Quarry Management</MudText>
+            @if (_userRole == "Manager")
+            {
+                <MudButton Variant="Variant.Filled"
+                          Color="Color.Primary"
+                          StartIcon="@Icons.Material.Filled.Add"
+                          OnClick="OpenAddDialog">
+                    New Quarry
+                </MudButton>
+            }
+        </MudStack>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+
+        <MudTable Items="_quarries"
+                 Hover="true"
+                 Breakpoint="Breakpoint.Sm"
+                 Dense="true"
+                 Loading="_loading"
+                 LoadingProgressColor="Color.Primary">
+            <HeaderContent>
+                <MudTh>Quarry Name</MudTh>
+                <MudTh>Location</MudTh>
+                @if (_userRole == "Administrator")
+                {
+                    <MudTh>Manager</MudTh>
+                }
+                <MudTh Style="text-align: right">Loaders Fee</MudTh>
+                <MudTh Style="text-align: right">Land Rate</MudTh>
+                <MudTh Style="text-align: right">Rejects Fee</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">@context.QuarryName</MudTd>
+                <MudTd DataLabel="Location">@context.Location</MudTd>
+                @if (_userRole == "Administrator")
+                {
+                    <MudTd DataLabel="Manager">@context.Manager?.FullName</MudTd>
+                }
+                <MudTd DataLabel="Loaders Fee" Style="text-align: right">
+                    @(context.LoadersFee.HasValue ? $"KES {context.LoadersFee.Value:N2}" : "-")
+                </MudTd>
+                <MudTd DataLabel="Land Rate" Style="text-align: right">
+                    @(context.LandRateFee.HasValue ? $"KES {context.LandRateFee.Value:N2}" : "-")
+                </MudTd>
+                <MudTd DataLabel="Rejects Fee" Style="text-align: right">
+                    @(context.RejectsFee.HasValue ? $"KES {context.RejectsFee.Value:N2}" : "-")
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudStack Row="true" Spacing="1">
+                        @if (_userRole == "Manager" && context.ManagerId == _userId)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                          Size="Size.Small"
+                                          Color="Color.Primary"
+                                          OnClick="@(() => OpenEditDialog(context))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                          Size="Size.Small"
+                                          Color="Color.Error"
+                                          OnClick="@(() => DeleteQuarryAsync(context))" />
+                        }
+                        <MudIconButton Icon="@Icons.Material.Filled.Info"
+                                      Size="Size.Small"
+                                      Color="Color.Info"
+                                      OnClick="@(() => ShowDetails(context))" />
+                    </MudStack>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Align="Align.Center" Class="pa-4">
+                    @if (_userRole == "Manager")
+                    {
+                        <span>No quarries found. Click "New Quarry" to create one.</span>
+                    }
+                    else
+                    {
+                        <span>No quarries found in the system.</span>
+                    }
+                </MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudStack>
+</MudContainer>
+
+@* Add/Edit Dialog *@
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(_isEditing ? "Edit Quarry" : "New Quarry")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formValid">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_editModel.QuarryName"
+                             Label="Quarry Name"
+                             Variant="Variant.Outlined"
+                             Required="true"
+                             RequiredError="Quarry name is required" />
+
+                <MudTextField @bind-Value="_editModel.Location"
+                             Label="Location"
+                             Variant="Variant.Outlined"
+                             Required="true"
+                             RequiredError="Location is required" />
+
+                <MudNumericField @bind-Value="_editModel.LoadersFee"
+                                Label="Loaders Fee (per unit)"
+                                Variant="Variant.Outlined"
+                                Min="0"
+                                Adornment="Adornment.Start"
+                                AdornmentText="KES" />
+
+                <MudNumericField @bind-Value="_editModel.LandRateFee"
+                                Label="Land Rate Fee (per unit)"
+                                Variant="Variant.Outlined"
+                                Min="0"
+                                Adornment="Adornment.Start"
+                                AdornmentText="KES" />
+
+                <MudNumericField @bind-Value="_editModel.RejectsFee"
+                                Label="Rejects Fee (per unit)"
+                                Variant="Variant.Outlined"
+                                Min="0"
+                                Adornment="Adornment.Start"
+                                AdornmentText="KES" />
+
+                <MudTextField @bind-Value="_editModel.EmailRecipients"
+                             Label="Email Recipients (comma-separated)"
+                             Variant="Variant.Outlined"
+                             Placeholder="manager@example.com, admin@example.com"
+                             HelperText="Emails for report delivery" />
+
+                <MudSwitch @bind-Value="_editModel.DailyReportEnabled"
+                          Label="Enable Daily Reports"
+                          Color="Color.Primary" />
+
+                @if (_editModel.DailyReportEnabled)
+                {
+                    <MudTimePicker @bind-Time="_editModel.DailyReportTime"
+                                  Label="Report Time"
+                                  Variant="Variant.Outlined" />
+                }
+            </MudStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                  Color="Color.Primary"
+                  Disabled="@(!_formValid || _saving)"
+                  OnClick="SaveQuarryAsync">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @(_isEditing ? "Update" : "Create")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* Details Dialog *@
+<MudDialog @bind-Visible="_detailsVisible">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Quarry Details</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedQuarry != null)
+        {
+            <MudStack Spacing="2">
+                <MudText><strong>Quarry Name:</strong> @_selectedQuarry.QuarryName</MudText>
+                <MudText><strong>Location:</strong> @_selectedQuarry.Location</MudText>
+                @if (_userRole == "Administrator" && _selectedQuarry.Manager != null)
+                {
+                    <MudText><strong>Manager:</strong> @_selectedQuarry.Manager.FullName (@_selectedQuarry.Manager.Email)</MudText>
+                }
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Fee Configuration</MudText>
+                <MudText><strong>Loaders Fee:</strong> @(_selectedQuarry.LoadersFee.HasValue ? $"KES {_selectedQuarry.LoadersFee.Value:N2}" : "Not set")</MudText>
+                <MudText><strong>Land Rate Fee:</strong> @(_selectedQuarry.LandRateFee.HasValue ? $"KES {_selectedQuarry.LandRateFee.Value:N2}" : "Not set")</MudText>
+                <MudText><strong>Rejects Fee:</strong> @(_selectedQuarry.RejectsFee.HasValue ? $"KES {_selectedQuarry.RejectsFee.Value:N2}" : "Not set")</MudText>
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Email Configuration</MudText>
+                <MudText><strong>Recipients:</strong> @(_selectedQuarry.EmailRecipients ?? "Not configured")</MudText>
+                <MudText><strong>Daily Reports:</strong> @(_selectedQuarry.DailyReportEnabled ? "Enabled" : "Disabled")</MudText>
+                @if (_selectedQuarry.DailyReportEnabled && _selectedQuarry.DailyReportTime.HasValue)
+                {
+                    <MudText><strong>Report Time:</strong> @_selectedQuarry.DailyReportTime.Value.ToString(@"hh\:mm")</MudText>
+                }
+            </MudStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _detailsVisible = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Quarry> _quarries = new();
+    private Quarry _editModel = new();
+    private Quarry? _selectedQuarry;
+    private bool _loading = true;
+    private bool _dialogVisible = false;
+    private bool _detailsVisible = false;
+    private bool _isEditing = false;
+    private bool _formValid = false;
+    private bool _saving = false;
+    private string? _userId;
+    private string _userRole = string.Empty;
+    private MudForm? _form;
+
+    private readonly DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseButton = true
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+
+        await LoadQuarriesAsync();
+    }
+
+    private async Task LoadQuarriesAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            if (_userRole == "Administrator")
+            {
+                _quarries = await MasterDataService.GetAllQuarriesAsync();
+            }
+            else if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
+            {
+                _quarries = await MasterDataService.GetQuarriesForManagerAsync(_userId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenAddDialog()
+    {
+        _editModel = new Quarry
+        {
+            LoadersFee = 0,
+            LandRateFee = 0,
+            RejectsFee = 0,
+            DailyReportEnabled = false
+        };
+        _isEditing = false;
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Quarry quarry)
+    {
+        _editModel = new Quarry
+        {
+            Id = quarry.Id,
+            QuarryName = quarry.QuarryName,
+            Location = quarry.Location,
+            LoadersFee = quarry.LoadersFee,
+            LandRateFee = quarry.LandRateFee,
+            RejectsFee = quarry.RejectsFee,
+            EmailRecipients = quarry.EmailRecipients,
+            DailyReportEnabled = quarry.DailyReportEnabled,
+            DailyReportTime = quarry.DailyReportTime,
+            ManagerId = quarry.ManagerId
+        };
+        _isEditing = true;
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+        _editModel = new();
+        _isEditing = false;
+    }
+
+    private async Task SaveQuarryAsync()
+    {
+        if (!_formValid) return;
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            if (_isEditing)
+            {
+                var result = await MasterDataService.UpdateQuarryAsync(_editModel, _userId!);
+                if (result.Success)
+                {
+                    Snackbar.Add(result.Message, Severity.Success);
+                    CloseDialog();
+                    await LoadQuarriesAsync();
+                }
+                else
+                {
+                    Snackbar.Add(result.Message, Severity.Error);
+                }
+            }
+            else
+            {
+                var result = await MasterDataService.CreateQuarryAsync(_editModel, _userId!);
+                if (result.Success)
+                {
+                    Snackbar.Add(result.Message, Severity.Success);
+                    CloseDialog();
+                    await LoadQuarriesAsync();
+                }
+                else
+                {
+                    Snackbar.Add(result.Message, Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving quarry: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteQuarryAsync(Quarry quarry)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Delete Quarry",
+            $"Are you sure you want to delete '{quarry.QuarryName}'? This action cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var result = await MasterDataService.DeleteQuarryAsync(quarry.Id, _userId!);
+            if (result.Success)
+            {
+                Snackbar.Add(result.Message, Severity.Success);
+                await LoadQuarriesAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+    }
+
+    private void ShowDetails(Quarry quarry)
+    {
+        _selectedQuarry = quarry;
+        _detailsVisible = true;
+    }
+}

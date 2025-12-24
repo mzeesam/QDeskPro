@@ -1,81 +1,80 @@
-﻿<!DOCTYPE html>
+@*
+    App.razor - Root component for QDeskPro
+
+    ARCHITECTURE (Pure Blazor Server):
+    - Routes component uses InteractiveServer and contains all MudBlazor providers
+    - MudProviders (MudThemeProvider, MudPopoverProvider, MudDialogProvider, MudSnackbarProvider)
+      are inside Routes to ensure they share the same Blazor circuit
+    - Account pages use [ExcludeFromInteractiveRouting] attribute for SSR-only auth
+    - This makes the entire app interactive by default, which is required for MudBlazor layouts
+
+    IMPORTANT: MudBlazor providers MUST be in the same component/circuit as components using them.
+    Having them in a separate component creates a different Blazor circuit, breaking interactivity.
+
+    See: https://learn.microsoft.com/en-us/aspnet/core/blazor/security/?view=aspnetcore-10.0
+*@
+@using Microsoft.AspNetCore.Components.Web
+
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
-    <ResourcePreloader />
-    
-    @* PWA Meta Tags *@
+
+    @* Theme Color *@
     <meta name="theme-color" content="#1976D2" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="QDeskPro" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="application-name" content="QDeskPro" />
-    <meta name="msapplication-TileColor" content="#1976D2" />
-    <meta name="msapplication-tap-highlight" content="no" />
-    
-    @* PWA Manifest *@
-    <link rel="manifest" href="manifest.json" />
-    
-    @* Apple Touch Icons *@
-    <link rel="apple-touch-icon" href="icons/icon-152x152.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180x180.png" />
-    
+
     @* Favicon *@
-    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png" />
-    
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+
     @* Google Fonts - Inter *@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-    
+
     @* MudBlazor CSS *@
     <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
-    
+
     @* App Styles *@
     <link rel="stylesheet" href="@Assets["css/app.css"]" />
+    <link rel="stylesheet" href="@Assets["css/modern-theme.css"]" />
+    <link rel="stylesheet" href="@Assets["css/responsive.css"]" />
     <link rel="stylesheet" href="@Assets["QDeskPro.styles.css"]" />
-    
+
     <ImportMap />
-    <HeadOutlet />
+    <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
 </head>
 
 <body>
-    <Routes />
+    @* Routes uses InteractiveServer - contains all MudBlazor providers and router *@
+    @* All providers are in Routes.razor to share the same Blazor circuit *@
+    @* Account pages use [ExcludeFromInteractiveRouting] to remain SSR for auth cookies *@
+    @* Prerendering is disabled to avoid issues with authentication state and SignalR initialization *@
+    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+
+    @* Blazor reconnection UI *@
     <ReconnectModal />
-    
+
     @* Blazor JS *@
     <script src="@Assets["_framework/blazor.web.js"]"></script>
-    <script src="@Assets["Components/Account/Shared/PasskeySubmit.razor.js"]" type="module"></script>
-    
+
     @* MudBlazor JS *@
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
-    
+
     @* Chart.js CDN *@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    
+
     @* Custom Charts JS *@
     <script src="js/charts.js"></script>
-    
-    @* Service Worker Registration *@
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js')
-                    .then(registration => {
-                        console.log('SW registered:', registration.scope);
-                    })
-                    .catch(error => {
-                        console.log('SW registration failed:', error);
-                    });
-            });
-        }
-    </script>
+
+    @* Utility Functions *@
+    <script src="js/utilities.js"></script>
+
+    @* Authentication Manager *@
+    <script src="js/auth.js"></script>
 </body>
 
 </html>

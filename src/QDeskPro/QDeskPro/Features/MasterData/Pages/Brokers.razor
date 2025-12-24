@@ -1,0 +1,363 @@
+@page "/manager/brokers"
+@page "/admin/brokers"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.MasterData.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject MasterDataService MasterDataService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Brokers - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudStack Spacing="3">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4">Broker Management</MudText>
+        </MudStack>
+
+        @* Quarry Selector *@
+        <MudPaper Class="pa-4">
+            <MudGrid>
+                <MudItem xs="12" sm="8">
+                    <MudSelect T="string"
+                              @bind-Value="_selectedQuarryId"
+                              Label="Select Quarry"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Terrain"
+                              OnValueChanged="OnQuarryChangedAsync">
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4" Class="d-flex align-end">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.Add"
+                              OnClick="OpenAddDialog"
+                              FullWidth="true"
+                              Disabled="@(string.IsNullOrEmpty(_selectedQuarryId) || _userRole == "Administrator")">
+                        New Broker
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @if (string.IsNullOrEmpty(_selectedQuarryId))
+        {
+            <MudAlert Severity="Severity.Info">
+                Please select a quarry to view and manage its brokers.
+            </MudAlert>
+        }
+        else
+        {
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+
+            <MudTable Items="_brokers"
+                     Hover="true"
+                     Breakpoint="Breakpoint.Sm"
+                     Dense="true"
+                     Loading="_loading"
+                     LoadingProgressColor="Color.Primary">
+                <HeaderContent>
+                    <MudTh>Broker Name</MudTh>
+                    <MudTh>Phone Number</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Name">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Person" Color="Color.Primary" Size="Size.Small" />
+                            <MudText>@context.BrokerName</MudText>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Phone">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Phone" Size="Size.Small" />
+                            <MudText>@context.Phone</MudText>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudStack Row="true" Spacing="1">
+                            @if (_userRole == "Manager" && _canEditCurrentQuarry)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                              Size="Size.Small"
+                                              Color="Color.Primary"
+                                              OnClick="@(() => OpenEditDialog(context))" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                              Size="Size.Small"
+                                              Color="Color.Error"
+                                              OnClick="@(() => DeleteBrokerAsync(context))" />
+                            }
+                        </MudStack>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Align="Align.Center" Class="pa-4">
+                        @if (_userRole == "Manager" && _canEditCurrentQuarry)
+                        {
+                            <span>No brokers found for this quarry. Click "New Broker" to add one.</span>
+                        }
+                        else
+                        {
+                            <span>No brokers found for this quarry.</span>
+                        }
+                    </MudText>
+                </NoRecordsContent>
+            </MudTable>
+        }
+    </MudStack>
+</MudContainer>
+
+@* Add/Edit Dialog *@
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(_isEditing ? "Edit Broker" : "New Broker")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formValid">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_editModel.BrokerName"
+                             Label="Broker Name"
+                             Variant="Variant.Outlined"
+                             Required="true"
+                             RequiredError="Broker name is required" />
+
+                <MudTextField @bind-Value="_editModel.Phone"
+                             Label="Phone Number"
+                             Variant="Variant.Outlined"
+                             Required="true"
+                             RequiredError="Phone number is required"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Phone" />
+            </MudStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                  Color="Color.Primary"
+                  Disabled="@(!_formValid || _saving)"
+                  OnClick="SaveBrokerAsync">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @(_isEditing ? "Update" : "Create")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Quarry> _quarries = new();
+    private List<Broker> _brokers = new();
+    private Broker _editModel = new();
+    private string? _selectedQuarryId;
+    private bool _loading = false;
+    private bool _dialogVisible = false;
+    private bool _isEditing = false;
+    private bool _formValid = false;
+    private bool _saving = false;
+    private bool _canEditCurrentQuarry = false;
+    private string? _userId;
+    private string _userRole = string.Empty;
+    private MudForm? _form;
+
+    private readonly DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseButton = true
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+
+        await LoadQuarriesAsync();
+    }
+
+    private async Task LoadQuarriesAsync()
+    {
+        try
+        {
+            if (_userRole == "Administrator")
+            {
+                _quarries = await MasterDataService.GetAllQuarriesAsync();
+            }
+            else if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
+            {
+                _quarries = await MasterDataService.GetQuarriesForManagerAsync(_userId);
+            }
+
+            // Auto-select first quarry if available
+            if (_quarries.Any() && string.IsNullOrEmpty(_selectedQuarryId))
+            {
+                _selectedQuarryId = _quarries.First().Id;
+                await LoadBrokersAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OnQuarryChangedAsync(string? quarryId)
+    {
+        _selectedQuarryId = quarryId;
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            await LoadBrokersAsync();
+        }
+    }
+
+    private async Task LoadBrokersAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId)) return;
+
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Check if user can edit this quarry
+            if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
+            {
+                _canEditCurrentQuarry = await MasterDataService.UserHasQuarryAccessAsync(_userId, _selectedQuarryId, false);
+            }
+            else
+            {
+                _canEditCurrentQuarry = false;
+            }
+
+            _brokers = await MasterDataService.GetBrokersForQuarryAsync(_selectedQuarryId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading brokers: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenAddDialog()
+    {
+        _editModel = new Broker();
+        _isEditing = false;
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Broker broker)
+    {
+        _editModel = new Broker
+        {
+            Id = broker.Id,
+            BrokerName = broker.BrokerName,
+            Phone = broker.Phone
+        };
+        _isEditing = true;
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+        _editModel = new();
+        _isEditing = false;
+    }
+
+    private async Task SaveBrokerAsync()
+    {
+        if (!_formValid || string.IsNullOrEmpty(_selectedQuarryId)) return;
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            if (_isEditing)
+            {
+                var result = await MasterDataService.UpdateBrokerAsync(_editModel, _userId!);
+                if (result.Success)
+                {
+                    Snackbar.Add(result.Message, Severity.Success);
+                    CloseDialog();
+                    await LoadBrokersAsync();
+                }
+                else
+                {
+                    Snackbar.Add(result.Message, Severity.Error);
+                }
+            }
+            else
+            {
+                var result = await MasterDataService.CreateBrokerAsync(_editModel, _userId!, _selectedQuarryId);
+                if (result.Success)
+                {
+                    Snackbar.Add(result.Message, Severity.Success);
+                    CloseDialog();
+                    await LoadBrokersAsync();
+                }
+                else
+                {
+                    Snackbar.Add(result.Message, Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving broker: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteBrokerAsync(Broker broker)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Delete Broker",
+            $"Are you sure you want to delete '{broker.BrokerName}'? This action cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var result = await MasterDataService.DeleteBrokerAsync(broker.Id, _userId!);
+            if (result.Success)
+            {
+                Snackbar.Add(result.Message, Severity.Success);
+                await LoadBrokersAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+    }
+}

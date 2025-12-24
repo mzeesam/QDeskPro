@@ -1,0 +1,63 @@
+@inject IJSRuntime JS
+
+<div class="chart-container" style="height: @Height; width: 100%;">
+    <canvas id="@CanvasId"></canvas>
+</div>
+
+@code {
+    [Parameter] public string CanvasId { get; set; } = "productPieChart";
+    [Parameter] public string Height { get; set; } = "300px";
+    [Parameter] public List<string> Labels { get; set; } = new();
+    [Parameter] public List<double> Data { get; set; } = new();
+
+    private bool _dataChanged = true;
+    private IJSObjectReference? _chartInstance;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || _dataChanged)
+        {
+            try
+            {
+                // Destroy previous chart instance if exists
+                if (_chartInstance != null)
+                {
+                    await JS.InvokeVoidAsync("QDeskCharts.destroyChart", _chartInstance);
+                    _chartInstance = null;
+                }
+
+                // Create new chart
+                _chartInstance = await JS.InvokeAsync<IJSObjectReference>("QDeskCharts.createProductPieChart",
+                    CanvasId, Labels, Data);
+                _dataChanged = false;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating product pie chart: {ex.Message}");
+            }
+        }
+    }
+
+    public async Task UpdateDataAsync(List<string> labels, List<double> data)
+    {
+        Labels = labels;
+        Data = data;
+        _dataChanged = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_chartInstance != null)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("QDeskCharts.destroyChart", _chartInstance);
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+        }
+    }
+}

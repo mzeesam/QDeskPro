@@ -1,0 +1,783 @@
+@page "/manager/users"
+@page "/admin/users"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.Admin.Services
+@using QDeskPro.Features.MasterData.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject UserService UserService
+@inject MasterDataService MasterDataService
+@inject UserManager<ApplicationUser> UserManager
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>User Management - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudStack Spacing="3">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4">User Management</MudText>
+        </MudStack>
+
+        @* Quarry Selector *@
+        <MudPaper Class="pa-4">
+            <MudGrid>
+                <MudItem xs="12" sm="8">
+                    <MudSelect T="string"
+                              @bind-Value="_selectedQuarryId"
+                              Label="Select Quarry"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Terrain"
+                              OnValueChanged="OnQuarryChangedAsync">
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4" Class="d-flex align-end">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.Add"
+                              OnClick="OpenAddDialog"
+                              FullWidth="true"
+                              Disabled="@IsAddDisabled">
+                        New User
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @if (string.IsNullOrEmpty(_selectedQuarryId))
+        {
+            <MudAlert Severity="Severity.Info">
+                Please select a quarry to view and manage its users.
+            </MudAlert>
+        }
+        else
+        {
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+
+            <MudTable Items="_users"
+                     Hover="true"
+                     Breakpoint="Breakpoint.Sm"
+                     Dense="true"
+                     Loading="_loading"
+                     LoadingProgressColor="Color.Primary">
+                <HeaderContent>
+                    <MudTh>Full Name</MudTh>
+                    <MudTh>Email</MudTh>
+                    <MudTh>Position</MudTh>
+                    <MudTh>Role</MudTh>
+                    <MudTh>Quarries</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Full Name">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Person" Color="Color.Primary" Size="Size.Small" />
+                            <MudText>@context.FullName</MudText>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Email">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" />
+                            <MudText>@context.Email</MudText>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Position">
+                        <MudText>@(context.Position ?? "-")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Role">
+                        @{
+                            var role = _userRoles.ContainsKey(context.Id) ? _userRoles[context.Id] : "Unknown";
+                        }
+                        <MudChip T="string" Size="Size.Small" Color="@GetRoleColor(role)" Variant="Variant.Text">@role</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Quarries">
+                        @{
+                            var quarryCount = _userQuarryCounts.ContainsKey(context.Id) ? _userQuarryCounts[context.Id] : 0;
+                            var isPrimary = context.QuarryId == _selectedQuarryId;
+                        }
+                        <MudStack Row="true" Spacing="1">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Text">
+                                @quarryCount quarry@(quarryCount > 1 ? "s" : "")
+                            </MudChip>
+                            @if (isPrimary)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">Primary</MudChip>
+                            }
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        @if (context.IsActive)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">Active</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Text">Inactive</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudStack Row="true" Spacing="1">
+                            @if (_userRole == "Manager" && _canEditCurrentQuarry)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.ManageAccounts"
+                                              Size="Size.Small"
+                                              Color="Color.Info"
+                                              OnClick="@(() => ManageQuarryAssignments(context))"
+                                              Title="Manage Quarries"
+                                              Disabled="@(!context.IsActive)" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                              Size="Size.Small"
+                                              Color="Color.Primary"
+                                              OnClick="@(() => OpenEditDialog(context))"
+                                              Disabled="@(!context.IsActive)" />
+                                <MudIconButton Icon="@Icons.Material.Filled.VpnKey"
+                                              Size="Size.Small"
+                                              Color="Color.Warning"
+                                              OnClick="@(() => ResetPasswordAsync(context))"
+                                              Disabled="@(!context.IsActive)"
+                                              Title="Reset Password" />
+                                @if (context.IsActive)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Block"
+                                                  Size="Size.Small"
+                                                  Color="Color.Error"
+                                                  OnClick="@(() => DeactivateUserAsync(context))"
+                                                  Title="Deactivate" />
+                                }
+                                else
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.CheckCircle"
+                                                  Size="Size.Small"
+                                                  Color="Color.Success"
+                                                  OnClick="@(() => ReactivateUserAsync(context))"
+                                                  Title="Reactivate" />
+                                }
+                            }
+                        </MudStack>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Align="Align.Center" Class="pa-4">
+                        @if (_userRole == "Manager" && _canEditCurrentQuarry)
+                        {
+                            <span>No users assigned to this quarry. Click "New User" to add one.</span>
+                        }
+                        else
+                        {
+                            <span>No users assigned to this quarry.</span>
+                        }
+                    </MudText>
+                </NoRecordsContent>
+            </MudTable>
+        }
+    </MudStack>
+</MudContainer>
+
+@* Add/Edit Dialog *@
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(_isEditing ? "Edit User" : "New User")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formValid">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_editModel.FullName"
+                             Label="Full Name"
+                             Variant="Variant.Outlined"
+                             Required="true"
+                             RequiredError="Full name is required" />
+
+                <MudTextField @bind-Value="_editModel.Email"
+                             Label="Email"
+                             Variant="Variant.Outlined"
+                             Required="true"
+                             RequiredError="Email is required"
+                             InputType="InputType.Email"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Email"
+                             Disabled="@_isEditing" />
+
+                <MudTextField @bind-Value="_editModel.Position"
+                             Label="Position"
+                             Variant="Variant.Outlined"
+                             HelperText="Job title or role (optional)"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Work" />
+
+                @if (!_isEditing)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        User will be assigned to <strong>@(_quarries.FirstOrDefault(q => q.Id == _selectedQuarryId)?.QuarryName)</strong> as their primary quarry.
+                    </MudAlert>
+                }
+            </MudStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                  Color="Color.Primary"
+                  Disabled="@(!_formValid || _saving)"
+                  OnClick="SaveUserAsync">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @(_isEditing ? "Update" : "Create")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* Temporary Password Dialog *@
+<MudDialog @bind-Visible="_passwordDialogVisible" Options="_passwordDialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" />
+            User Account @(_isPasswordReset ? "Password Reset" : "Created")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Success">
+                @if (_isPasswordReset)
+                {
+                    <span>Password reset successfully for <strong>@_createdUserEmail</strong></span>
+                }
+                else
+                {
+                    <span>User account created successfully for <strong>@_createdUserEmail</strong></span>
+                }
+            </MudAlert>
+
+            <MudPaper Class="pa-4" Elevation="0" Style="background-color: var(--mud-palette-background-grey);">
+                <MudStack Spacing="2">
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Temporary Password (copy and send to user):
+                    </MudText>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudTextField @bind-Value="_temporaryPassword"
+                                     Variant="Variant.Outlined"
+                                     ReadOnly="true"
+                                     Adornment="Adornment.End"
+                                     AdornmentIcon="@Icons.Material.Filled.ContentCopy"
+                                     OnAdornmentClick="CopyPasswordToClipboard"
+                                     HelperText="Click the copy icon to copy password" />
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+
+            <MudAlert Severity="Severity.Warning" Dense="true">
+                <strong>Important:</strong> This password will only be shown once. Make sure to copy and securely send it to the user.
+            </MudAlert>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Filled"
+                  Color="Color.Primary"
+                  OnClick="ClosePasswordDialog">
+            Done
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* Quarry Assignments Dialog *@
+<MudDialog @bind-Visible="_assignmentsDialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            Manage Quarry Assignments for @_selectedUser?.FullName
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Info" Dense="true">
+                Assign this user to your quarries. You can only assign users to quarries you own.
+            </MudAlert>
+
+            @if (_managerOwnedQuarries.Any())
+            {
+                <MudList T="string">
+                    @foreach (var quarry in _managerOwnedQuarries)
+                    {
+                        var isAssigned = _userAssignedQuarries.Any(q => q.Id == quarry.Id);
+                        var isPrimary = _selectedUser?.QuarryId == quarry.Id;
+
+                        <MudListItem T="string">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                <MudStack>
+                                    <MudText Typo="Typo.body1">@quarry.QuarryName</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@quarry.Location</MudText>
+                                </MudStack>
+                                <MudStack Row="true" Spacing="2">
+                                    @if (isPrimary)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">Primary</MudChip>
+                                    }
+                                    @if (isAssigned)
+                                    {
+                                        <MudButton Size="Size.Small"
+                                                  Variant="Variant.Text"
+                                                  Color="Color.Error"
+                                                  OnClick="@(() => UnassignQuarryAsync(quarry.Id))">
+                                            Unassign
+                                        </MudButton>
+                                        @if (!isPrimary)
+                                        {
+                                            <MudButton Size="Size.Small"
+                                                      Variant="Variant.Text"
+                                                      Color="Color.Primary"
+                                                      OnClick="@(() => SetPrimaryQuarryAsync(quarry.Id))">
+                                                Set Primary
+                                            </MudButton>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <MudButton Size="Size.Small"
+                                                  Variant="Variant.Filled"
+                                                  Color="Color.Primary"
+                                                  OnClick="@(() => AssignQuarryAsync(quarry.Id, false))">
+                                            Assign
+                                        </MudButton>
+                                    }
+                                </MudStack>
+                            </MudStack>
+                        </MudListItem>
+                        <MudDivider />
+                    }
+                </MudList>
+            }
+            else
+            {
+                <MudText Align="Align.Center" Class="pa-4">
+                    You don't own any quarries yet.
+                </MudText>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseAssignmentsDialog">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Quarry> _quarries = new();
+    private List<ApplicationUser> _users = new();
+    private List<Quarry> _managerOwnedQuarries = new();
+    private List<Quarry> _userAssignedQuarries = new();
+    private Dictionary<string, string> _userRoles = new();
+    private Dictionary<string, int> _userQuarryCounts = new();
+    private ApplicationUser _editModel = new();
+    private ApplicationUser? _selectedUser;
+    private string? _selectedQuarryId;
+    private bool _loading = false;
+    private bool _dialogVisible = false;
+    private bool _passwordDialogVisible = false;
+    private bool _assignmentsDialogVisible = false;
+    private bool _isEditing = false;
+    private bool _formValid = false;
+    private bool _saving = false;
+    private bool _canEditCurrentQuarry = false;
+    private bool _isPasswordReset = false;
+    private string? _userId;
+    private string _userRole = string.Empty;
+    private string _temporaryPassword = string.Empty;
+    private string _createdUserEmail = string.Empty;
+    private MudForm? _form;
+
+    private bool IsAddDisabled => string.IsNullOrEmpty(_selectedQuarryId) || _userRole == "Administrator";
+
+    private readonly DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseButton = true
+    };
+
+    private readonly DialogOptions _passwordDialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseButton = false
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+
+        await LoadQuarriesAsync();
+    }
+
+    private async Task LoadQuarriesAsync()
+    {
+        try
+        {
+            if (_userRole == "Administrator")
+            {
+                _quarries = await MasterDataService.GetAllQuarriesAsync();
+            }
+            else if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
+            {
+                _quarries = await MasterDataService.GetQuarriesForManagerAsync(_userId);
+            }
+
+            // Auto-select first quarry if available
+            if (_quarries.Any() && string.IsNullOrEmpty(_selectedQuarryId))
+            {
+                _selectedQuarryId = _quarries.First().Id;
+                await LoadUsersAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OnQuarryChangedAsync(string? quarryId)
+    {
+        _selectedQuarryId = quarryId;
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            await LoadUsersAsync();
+        }
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId)) return;
+
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Check if user can edit this quarry
+            if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
+            {
+                _canEditCurrentQuarry = await MasterDataService.UserHasQuarryAccessAsync(_userId, _selectedQuarryId, false);
+            }
+            else
+            {
+                _canEditCurrentQuarry = false;
+            }
+
+            _users = await UserService.GetUsersByQuarryAsync(_selectedQuarryId);
+
+            // Load roles and quarry counts for each user
+            _userRoles.Clear();
+            _userQuarryCounts.Clear();
+
+            foreach (var usr in _users)
+            {
+                var role = await UserService.GetUserRoleAsync(usr);
+                _userRoles[usr.Id] = role;
+
+                var quarries = await UserService.GetUserQuarriesAsync(usr.Id);
+                _userQuarryCounts[usr.Id] = quarries.Count;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading users: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenAddDialog()
+    {
+        _editModel = new ApplicationUser();
+        _isEditing = false;
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(ApplicationUser user)
+    {
+        _editModel = new ApplicationUser
+        {
+            Id = user.Id,
+            FullName = user.FullName,
+            Email = user.Email,
+            Position = user.Position
+        };
+        _isEditing = true;
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+        _editModel = new();
+        _isEditing = false;
+    }
+
+    private async Task SaveUserAsync()
+    {
+        if (!_formValid || string.IsNullOrEmpty(_selectedQuarryId)) return;
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            if (_isEditing)
+            {
+                var result = await UserService.UpdateUserAsync(_editModel.Id!, _editModel.FullName!, _editModel.Position, _userId!);
+                if (result.Success)
+                {
+                    Snackbar.Add(result.Message, Severity.Success);
+                    CloseDialog();
+                    await LoadUsersAsync();
+                }
+                else
+                {
+                    Snackbar.Add(result.Message, Severity.Error);
+                }
+            }
+            else
+            {
+                // Create Clerk
+                var result = await UserService.CreateClerkAsync(
+                    _editModel.FullName!,
+                    _editModel.Email!,
+                    _editModel.Position,
+                    _selectedQuarryId,
+                    _userId!);
+
+                if (result.Success)
+                {
+                    _createdUserEmail = _editModel.Email!;
+                    _temporaryPassword = result.TempPassword!;
+                    _isPasswordReset = false;
+
+                    CloseDialog();
+                    await LoadUsersAsync();
+
+                    // Show password dialog
+                    _passwordDialogVisible = true;
+                }
+                else
+                {
+                    Snackbar.Add(result.Message, Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving user: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeactivateUserAsync(ApplicationUser user)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Deactivate User",
+            $"Are you sure you want to deactivate '{user.FullName}'? They will no longer be able to log in.",
+            yesText: "Deactivate",
+            cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var result = await UserService.DeactivateUserAsync(user.Id, _userId!);
+            if (result.Success)
+            {
+                Snackbar.Add(result.Message, Severity.Success);
+                await LoadUsersAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+    }
+
+    private async Task ReactivateUserAsync(ApplicationUser user)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Reactivate User",
+            $"Are you sure you want to reactivate '{user.FullName}'? They will be able to log in again.",
+            yesText: "Reactivate",
+            cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var result = await UserService.ReactivateUserAsync(user.Id, _userId!);
+            if (result.Success)
+            {
+                Snackbar.Add(result.Message, Severity.Success);
+                await LoadUsersAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+    }
+
+    private async Task ResetPasswordAsync(ApplicationUser user)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Reset Password",
+            $"Generate a new temporary password for '{user.FullName}'?",
+            yesText: "Reset",
+            cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var result = await UserService.ResetPasswordAsync(user.Id, _userId!);
+            if (result.Success)
+            {
+                _createdUserEmail = user.Email!;
+                _temporaryPassword = result.TempPassword!;
+                _isPasswordReset = true;
+                _passwordDialogVisible = true;
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+    }
+
+    private async Task ManageQuarryAssignments(ApplicationUser user)
+    {
+        _selectedUser = user;
+
+        // Load manager's owned quarries
+        if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
+        {
+            _managerOwnedQuarries = await DbContext.Quarries
+                .Where(q => q.ManagerId == _userId && q.IsActive)
+                .OrderBy(q => q.QuarryName)
+                .ToListAsync();
+        }
+
+        // Load user's assigned quarries
+        _userAssignedQuarries = await UserService.GetUserQuarriesAsync(user.Id);
+
+        _assignmentsDialogVisible = true;
+    }
+
+    private async Task AssignQuarryAsync(string quarryId, bool isPrimary)
+    {
+        if (_selectedUser == null) return;
+
+        var result = await UserService.AssignUserToQuarryAsync(_selectedUser.Id, quarryId, isPrimary, _userId!);
+        if (result.Success)
+        {
+            Snackbar.Add(result.Message, Severity.Success);
+            _userAssignedQuarries = await UserService.GetUserQuarriesAsync(_selectedUser.Id);
+            await LoadUsersAsync();
+        }
+        else
+        {
+            Snackbar.Add(result.Message, Severity.Error);
+        }
+    }
+
+    private async Task SetPrimaryQuarryAsync(string quarryId)
+    {
+        if (_selectedUser == null) return;
+
+        // First unassign, then reassign as primary
+        await UserService.RemoveUserFromQuarryAsync(_selectedUser.Id, quarryId, _userId!);
+        await AssignQuarryAsync(quarryId, true);
+    }
+
+    private async Task UnassignQuarryAsync(string quarryId)
+    {
+        if (_selectedUser == null) return;
+
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Unassign Quarry",
+            $"Remove this user's access to the selected quarry?",
+            yesText: "Unassign",
+            cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var result = await UserService.RemoveUserFromQuarryAsync(_selectedUser.Id, quarryId, _userId!);
+            if (result.Success)
+            {
+                Snackbar.Add(result.Message, Severity.Success);
+                _userAssignedQuarries = await UserService.GetUserQuarriesAsync(_selectedUser.Id);
+                await LoadUsersAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+    }
+
+    private void CloseAssignmentsDialog()
+    {
+        _assignmentsDialogVisible = false;
+        _selectedUser = null;
+        _managerOwnedQuarries = new();
+        _userAssignedQuarries = new();
+    }
+
+    private void ClosePasswordDialog()
+    {
+        _passwordDialogVisible = false;
+        _temporaryPassword = string.Empty;
+        _createdUserEmail = string.Empty;
+        _isPasswordReset = false;
+    }
+
+    private async Task CopyPasswordToClipboard()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _temporaryPassword);
+            Snackbar.Add("Password copied to clipboard", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy password. Please copy it manually.", Severity.Warning);
+        }
+    }
+
+    private Color GetRoleColor(string role)
+    {
+        return role switch
+        {
+            "Administrator" => Color.Error,
+            "Manager" => Color.Primary,
+            "Clerk" => Color.Success,
+            _ => Color.Default
+        };
+    }
+}

@@ -1,0 +1,234 @@
+@using QDeskPro.Features.AI.Services
+@using MudBlazor
+@inject ISalesAnalyticsService AnalyticsService
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudAvatar Color="Color.Info" Size="Size.Small">
+                <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Small" />
+            </MudAvatar>
+            <MudText Typo="Typo.h6">AI Trend Analysis</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudStack AlignItems="AlignItems.Center" Spacing="3" Class="py-8">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+                <MudText Typo="Typo.body1">Analyzing trends...</MudText>
+                <MudText Typo="Typo.caption" Class="text-muted">AI is reviewing your sales patterns</MudText>
+            </MudStack>
+        }
+        else if (_result?.Success == true)
+        {
+            @* Key Metrics *@
+            <MudGrid Spacing="2" Class="mb-4">
+                <MudItem xs="6" sm="3">
+                    <MudPaper Elevation="0" Class="pa-3 rounded-lg text-center trend-metric">
+                        <MudIcon Icon="@Icons.Material.Filled.CalendarToday" Color="Color.Success" Size="Size.Small" />
+                        <MudText Typo="Typo.caption" Class="text-muted d-block">Best Day</MudText>
+                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold">
+                            @(_result.BestDay?.ToString("ddd, MMM d") ?? "N/A")
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Elevation="0" Class="pa-3 rounded-lg text-center trend-metric">
+                        <MudIcon Icon="@Icons.Material.Filled.CalendarToday" Color="Color.Error" Size="Size.Small" />
+                        <MudText Typo="Typo.caption" Class="text-muted d-block">Slowest Day</MudText>
+                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold">
+                            @(_result.WorstDay?.ToString("ddd, MMM d") ?? "N/A")
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Elevation="0" Class="pa-3 rounded-lg text-center trend-metric">
+                        <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Color="Color.Primary" Size="Size.Small" />
+                        <MudText Typo="Typo.caption" Class="text-muted d-block">Daily Avg Revenue</MudText>
+                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold">
+                            KES @_result.AverageDailyRevenue.ToString("N0")
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Elevation="0" Class="pa-3 rounded-lg text-center trend-metric">
+                        <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Color="Color.Secondary" Size="Size.Small" />
+                        <MudText Typo="Typo.caption" Class="text-muted d-block">Daily Avg Orders</MudText>
+                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold">
+                            @_result.AverageDailyOrders.ToString("F1")
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* Identified Patterns *@
+            @if (_result.Patterns.Any())
+            {
+                <MudText Typo="Typo.subtitle1" Class="font-weight-bold mb-2">Identified Patterns</MudText>
+                <MudStack Row="true" Spacing="2" Class="mb-4" Style="flex-wrap: wrap;">
+                    @foreach (var pattern in _result.Patterns)
+                    {
+                        <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined" Size="Size.Small">
+                            <MudIcon Icon="@Icons.Material.Filled.AutoGraph" Size="Size.Small" Class="mr-1" />
+                            @pattern.Name
+                        </MudChip>
+                    }
+                </MudStack>
+            }
+
+            @* AI Analysis *@
+            <MudText Typo="Typo.subtitle1" Class="font-weight-bold mb-2">AI Analysis</MudText>
+            <MudPaper Elevation="0" Class="pa-4 rounded-lg analysis-card mb-4">
+                <MudText Typo="Typo.body1" Style="white-space: pre-wrap; line-height: 1.8;">
+                    @_result.Analysis
+                </MudText>
+            </MudPaper>
+
+            @* Daily Data Table *@
+            @if (_result.TrendData?.DailyData?.Any() == true)
+            {
+                <MudText Typo="Typo.subtitle1" Class="font-weight-bold mb-2">Daily Breakdown</MudText>
+                <MudSimpleTable Dense="true" Hover="true" Class="mb-4" Style="max-height: 300px; overflow-y: auto;">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th style="text-align: right">Revenue</th>
+                            <th style="text-align: right">Expenses</th>
+                            <th style="text-align: right">Orders</th>
+                            <th style="text-align: right">Quantity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var day in _result.TrendData.DailyData.OrderByDescending(d => d.Date))
+                        {
+                            <tr class="@GetRowClass(day)">
+                                <td>@day.Date.ToString("ddd, MMM d")</td>
+                                <td style="text-align: right">KES @day.Revenue.ToString("N0")</td>
+                                <td style="text-align: right">KES @day.Expenses.ToString("N0")</td>
+                                <td style="text-align: right">@day.Orders</td>
+                                <td style="text-align: right">@day.Quantity.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+
+            @* Pattern Details *@
+            @if (_result.Patterns.Any())
+            {
+                <MudExpansionPanels Elevation="0" Class="mb-4">
+                    <MudExpansionPanel Text="Pattern Details" MaxHeight="300">
+                        <MudList T="string" Dense="true">
+                            @foreach (var pattern in _result.Patterns)
+                            {
+                                <MudListItem T="string" Icon="@Icons.Material.Filled.Insights">
+                                    <div class="d-flex flex-column">
+                                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold">@pattern.Name</MudText>
+                                        <MudText Typo="Typo.caption" Class="text-muted">@pattern.Description</MudText>
+                                    </div>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+
+            <MudText Typo="Typo.caption" Class="text-muted text-center">
+                Generated at @_result.GeneratedAt.ToLocalTime().ToString("g")
+            </MudText>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Error">
+                @(_result?.Error ?? "Failed to analyze trends. Please try again.")
+            </MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Close</MudButton>
+        <MudButton Color="Color.Primary" OnClick="RefreshAsync" Disabled="@_loading">
+            <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Class="mr-1" />
+            Refresh
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    .trend-metric {
+        background-color: var(--mud-palette-background);
+        border: 1px solid var(--mud-palette-lines-default);
+    }
+
+    .analysis-card {
+        background: linear-gradient(135deg, rgba(33, 150, 243, 0.05) 0%, transparent 100%);
+        border: 1px solid rgba(33, 150, 243, 0.2);
+        border-left: 4px solid var(--mud-palette-info);
+    }
+
+    .best-day-row {
+        background-color: rgba(76, 175, 80, 0.1) !important;
+    }
+
+    .worst-day-row {
+        background-color: rgba(244, 67, 54, 0.05) !important;
+    }
+</style>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string? QuarryId { get; set; }
+
+    [Parameter]
+    public DateTime FromDate { get; set; }
+
+    [Parameter]
+    public DateTime ToDate { get; set; }
+
+    private TrendAnalysisResult? _result;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTrendAnalysisAsync();
+    }
+
+    private async Task LoadTrendAnalysisAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _result = await AnalyticsService.GetTrendAnalysisAsync(QuarryId, FromDate, ToDate);
+        }
+        catch (Exception)
+        {
+            _result = new TrendAnalysisResult { Success = false, Error = "An error occurred while analyzing trends" };
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        await LoadTrendAnalysisAsync();
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private string GetRowClass(Features.Dashboard.Services.DailySalesData day)
+    {
+        if (_result?.BestDay != null && day.Date.Date == _result.BestDay.Value.Date)
+            return "best-day-row";
+        if (_result?.WorstDay != null && day.Date.Date == _result.WorstDay.Value.Date)
+            return "worst-day-row";
+        return "";
+    }
+}

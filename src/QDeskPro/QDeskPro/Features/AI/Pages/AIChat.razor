@@ -1,0 +1,475 @@
+@page "/ai-chat"
+@page "/ai-chat/{ConversationId}"
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Domain.Services.AI
+@using System.Security.Claims
+@using MudBlazor
+@inject IChatCompletionService ChatService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Authorize]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>QDeskPro AI Assistant</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudGrid>
+        @* Conversation List Sidebar *@
+        <MudItem xs="12" md="3">
+            <MudPaper Elevation="0" Class="pa-3 rounded-lg" Style="background-color: var(--mud-palette-surface);">
+                <MudStack Spacing="2">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               FullWidth="true"
+                               StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="CreateNewConversationAsync">
+                        New Conversation
+                    </MudButton>
+
+                    <MudDivider Class="my-2" />
+
+                    <MudText Typo="Typo.subtitle2" Class="text-muted">Recent Conversations</MudText>
+
+                    @if (_loadingConversations)
+                    {
+                        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                    }
+                    else if (_conversations.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Class="text-muted text-center pa-4">
+                            No conversations yet. Start a new one!
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudList T="string" Dense="true" Class="conversation-list">
+                            @foreach (var conv in _conversations)
+                            {
+                                <MudListItem T="string"
+                                             Value="@conv.Id"
+                                             OnClick="() => SelectConversationAsync(conv.Id)"
+                                             Class="@(conv.Id == ConversationId ? "selected-conversation" : "")">
+                                    <div class="d-flex flex-column">
+                                        <MudText Typo="Typo.body2" Class="text-truncate" Style="max-width: 180px;">
+                                            @conv.Title
+                                        </MudText>
+                                        <MudText Typo="Typo.caption" Class="text-muted">
+                                            @conv.LastMessageAt.ToString("MMM dd, HH:mm")
+                                        </MudText>
+                                    </div>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    }
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        @* Chat Area *@
+        <MudItem xs="12" md="9">
+            <MudPaper Elevation="0" Class="rounded-lg chat-container" Style="height: calc(100vh - 150px); display: flex; flex-direction: column;">
+                @* Chat Header *@
+                <div class="chat-header pa-3 d-flex align-center justify-space-between">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudAvatar Color="Color.Primary" Size="Size.Medium">
+                            <MudIcon Icon="@Icons.Material.Filled.SmartToy" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.h6">QDeskPro AI</MudText>
+                            <MudText Typo="Typo.caption" Class="text-muted">
+                                @if (_currentConversation != null)
+                                {
+                                    @_currentConversation.Title
+                                }
+                                else
+                                {
+                                    <span>Your intelligent sales assistant</span>
+                                }
+                            </MudText>
+                        </div>
+                    </MudStack>
+                    @if (_currentConversation != null)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                       Color="Color.Error"
+                                       Size="Size.Small"
+                                       OnClick="DeleteConversationAsync"
+                                       Title="Delete conversation" />
+                    }
+                </div>
+
+                <MudDivider />
+
+                @* Messages Area *@
+                <div class="chat-messages flex-grow-1 pa-3" @ref="_messagesContainer" style="overflow-y: auto;">
+                    @if (_messages.Count == 0 && _currentConversation == null)
+                    {
+                        @* Welcome Screen *@
+                        <div class="text-center py-8">
+                            <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Large" Color="Color.Primary" Class="mb-4" />
+                            <MudText Typo="Typo.h5" Class="mb-2">Welcome to QDeskPro AI</MudText>
+                            <MudText Typo="Typo.body1" Class="text-muted mb-4">
+                                Ask me anything about your sales, expenses, or reports!
+                            </MudText>
+                            <MudGrid Justify="Justify.Center" Spacing="2">
+                                @foreach (var suggestion in _suggestions)
+                                {
+                                    <MudItem>
+                                        <MudButton Variant="Variant.Outlined"
+                                                   Size="Size.Small"
+                                                   OnClick="() => SendSuggestionAsync(suggestion)">
+                                            @suggestion
+                                        </MudButton>
+                                    </MudItem>
+                                }
+                            </MudGrid>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var message in _messages)
+                        {
+                            <div class="message-wrapper @(message.Role == "user" ? "user-message" : "assistant-message") mb-3">
+                                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                                    @if (message.Role != "user")
+                                    {
+                                        <MudAvatar Color="Color.Primary" Size="Size.Small">
+                                            <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" />
+                                        </MudAvatar>
+                                    }
+                                    <MudPaper Class="@GetMessageBubbleClass(message.Role)"
+                                              Elevation="0">
+                                        <MudText>@message.Content</MudText>
+                                        @if (message.TokensUsed > 0)
+                                        {
+                                            <MudText Typo="Typo.caption" Class="text-muted mt-1">
+                                                @message.TokensUsed tokens
+                                            </MudText>
+                                        }
+                                    </MudPaper>
+                                    @if (message.Role == "user")
+                                    {
+                                        <MudAvatar Color="Color.Secondary" Size="Size.Small">
+                                            <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
+                                        </MudAvatar>
+                                    }
+                                </MudStack>
+                            </div>
+                        }
+
+                        @if (_isProcessing)
+                        {
+                            <div class="message-wrapper assistant-message mb-3">
+                                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                                    <MudAvatar Color="Color.Primary" Size="Size.Small">
+                                        <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" />
+                                    </MudAvatar>
+                                    <MudPaper Class="message-bubble assistant-bubble pa-3" Elevation="0">
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                        <MudText Typo="Typo.body2" Class="d-inline">Thinking...</MudText>
+                                    </MudPaper>
+                                </MudStack>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <MudDivider />
+
+                @* Input Area *@
+                <div class="chat-input pa-3">
+                    <MudStack Row="true" Spacing="2">
+                        <MudTextField @bind-Value="_inputMessage"
+                                      Placeholder="Ask me about your sales data..."
+                                      Variant="Variant.Outlined"
+                                      Lines="1"
+                                      FullWidth="true"
+                                      Immediate="true"
+                                      OnKeyDown="HandleKeyDownAsync"
+                                      Disabled="@_isProcessing"
+                                      Class="chat-input-field" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Send"
+                                       Color="Color.Primary"
+                                       Variant="Variant.Filled"
+                                       Disabled="@(string.IsNullOrWhiteSpace(_inputMessage) || _isProcessing)"
+                                       OnClick="SendMessageAsync" />
+                    </MudStack>
+                </div>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+<style>
+    .chat-container {
+        background-color: var(--mud-palette-surface);
+    }
+
+    .chat-header {
+        background-color: var(--mud-palette-background);
+    }
+
+    .chat-messages {
+        background-color: var(--mud-palette-background);
+    }
+
+    .message-wrapper.user-message {
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .message-wrapper.assistant-message {
+        display: flex;
+        justify-content: flex-start;
+    }
+
+    .message-bubble {
+        max-width: 80%;
+        border-radius: 12px;
+    }
+
+    .user-bubble {
+        background-color: var(--mud-palette-primary);
+        color: white;
+    }
+
+    .assistant-bubble {
+        background-color: var(--mud-palette-surface);
+    }
+
+    .selected-conversation {
+        background-color: var(--mud-palette-action-default-hover);
+        border-radius: 8px;
+    }
+
+    .conversation-list {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .chat-input-field .mud-input-outlined-border {
+        border-radius: 24px;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public string? ConversationId { get; set; }
+
+    private string _userId = string.Empty;
+    private string? _quarryId;
+    private string _inputMessage = string.Empty;
+    private bool _isProcessing = false;
+    private bool _loadingConversations = true;
+    private ElementReference _messagesContainer;
+
+    private List<AIConversation> _conversations = new();
+    private AIConversation? _currentConversation;
+    private List<AIMessage> _messages = new();
+
+    private readonly string[] _suggestions = new[]
+    {
+        "What were today's sales?",
+        "Show me this week's top products",
+        "How much did we expense this month?",
+        "Any unpaid orders?",
+        "Generate daily report"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+
+        // Get user's quarry from claims if available
+        _quarryId = authState.User.FindFirst("QuarryId")?.Value;
+
+        await LoadConversationsAsync();
+
+        if (!string.IsNullOrEmpty(ConversationId))
+        {
+            await LoadConversationAsync(ConversationId);
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(ConversationId) && _currentConversation?.Id != ConversationId)
+        {
+            await LoadConversationAsync(ConversationId);
+        }
+    }
+
+    private async Task LoadConversationsAsync()
+    {
+        _loadingConversations = true;
+        try
+        {
+            _conversations = await ChatService.GetUserConversationsAsync(_userId, 20);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load conversations: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingConversations = false;
+        }
+    }
+
+    private async Task LoadConversationAsync(string conversationId)
+    {
+        try
+        {
+            _currentConversation = await ChatService.GetConversationAsync(conversationId);
+            if (_currentConversation != null)
+            {
+                _messages = _currentConversation.Messages.ToList();
+                await ScrollToBottomAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load conversation: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task CreateNewConversationAsync()
+    {
+        try
+        {
+            var conversation = await ChatService.CreateConversationAsync(_userId, _quarryId, "sales");
+            _conversations.Insert(0, conversation);
+            _currentConversation = conversation;
+            _messages.Clear();
+            Navigation.NavigateTo($"/ai-chat/{conversation.Id}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to create conversation: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task SelectConversationAsync(string conversationId)
+    {
+        Navigation.NavigateTo($"/ai-chat/{conversationId}");
+        await LoadConversationAsync(conversationId);
+    }
+
+    private async Task DeleteConversationAsync()
+    {
+        if (_currentConversation == null) return;
+
+        try
+        {
+            await ChatService.DeleteConversationAsync(_currentConversation.Id);
+            _conversations.Remove(_currentConversation);
+            _currentConversation = null;
+            _messages.Clear();
+            Navigation.NavigateTo("/ai-chat");
+            Snackbar.Add("Conversation deleted", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to delete conversation: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendMessageAsync();
+        }
+    }
+
+    private async Task SendSuggestionAsync(string suggestion)
+    {
+        _inputMessage = suggestion;
+        await SendMessageAsync();
+    }
+
+    private async Task SendMessageAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_inputMessage) || _isProcessing)
+            return;
+
+        var message = _inputMessage.Trim();
+        _inputMessage = string.Empty;
+        _isProcessing = true;
+
+        try
+        {
+            // Create conversation if needed
+            if (_currentConversation == null)
+            {
+                _currentConversation = await ChatService.CreateConversationAsync(_userId, _quarryId, "sales");
+                _conversations.Insert(0, _currentConversation);
+                Navigation.NavigateTo($"/ai-chat/{_currentConversation.Id}", replace: true);
+            }
+
+            // Add user message to UI immediately
+            _messages.Add(new AIMessage
+            {
+                Id = Guid.NewGuid().ToString(),
+                Role = "user",
+                Content = message,
+                Timestamp = DateTime.UtcNow
+            });
+            await ScrollToBottomAsync();
+            StateHasChanged();
+
+            // Send to AI
+            var response = await ChatService.SendMessageAsync(
+                _currentConversation.Id,
+                message,
+                _userId,
+                _quarryId);
+
+            if (response.Success)
+            {
+                _messages.Add(new AIMessage
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Role = "assistant",
+                    Content = response.Message,
+                    TokensUsed = response.TokensUsed,
+                    Timestamp = DateTime.UtcNow
+                });
+
+                // Update conversation in sidebar
+                _currentConversation.LastMessageAt = DateTime.UtcNow;
+                _currentConversation.TotalTokensUsed += response.TokensUsed;
+
+                // Update title if it was the first message
+                if (_messages.Count == 2)
+                {
+                    _currentConversation.Title = message.Length > 50 ? message[..47] + "..." : message;
+                }
+            }
+            else
+            {
+                Snackbar.Add($"AI Error: {response.Error}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to send message: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isProcessing = false;
+            await ScrollToBottomAsync();
+        }
+    }
+
+    private async Task ScrollToBottomAsync()
+    {
+        await Task.Delay(50);
+        StateHasChanged();
+    }
+
+    private string GetMessageBubbleClass(string role) =>
+        $"message-bubble pa-3 {(role == "user" ? "user-bubble" : "assistant-bubble")}";
+}

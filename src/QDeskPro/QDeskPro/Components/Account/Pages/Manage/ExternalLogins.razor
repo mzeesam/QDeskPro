@@ -1,5 +1,5 @@
-﻿@page "/Account/Manage/ExternalLogins"
-
+@page "/Account/Manage/ExternalLogins"
+@using MudBlazor
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Identity
 @using QDeskPro.Domain.Entities
@@ -9,58 +9,204 @@
 @inject IUserStore<ApplicationUser> UserStore
 @inject IdentityRedirectManager RedirectManager
 
-<PageTitle>Manage your external logins</PageTitle>
+<PageTitle>External Logins - QDeskPro</PageTitle>
 
-<StatusMessage />
-@if (currentLogins?.Count > 0)
-{
-    <h3>Registered Logins</h3>
-    <table class="table">
-        <tbody>
-            @foreach (var login in currentLogins)
-            {
-                <tr>
-                    <td>@login.ProviderDisplayName</td>
-                    <td>
-                        @if (showRemoveButton)
-                        {
-                            <form @formname="@($"remove-login-{login.LoginProvider}")" @onsubmit="OnSubmitAsync" method="post">
-                                <AntiforgeryToken />
+<div class="external-logins-page">
+    <MudPaper Class="logins-card" Elevation="0">
+        <div class="logins-card-header">
+            <div class="logins-icon">
+                <MudIcon Icon="@Icons.Material.Rounded.Link" />
+            </div>
+            <MudText Typo="Typo.h5" Class="logins-title">External Logins</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Manage linked external accounts
+            </MudText>
+        </div>
+
+        <StatusMessage />
+
+        @if (currentLogins?.Count > 0)
+        {
+            <MudText Typo="Typo.h6" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Rounded.LinkOff" Size="Size.Small" Class="mr-2" />
+                Linked Accounts
+            </MudText>
+
+            <MudStack Spacing="2" Class="mb-4">
+                @foreach (var login in currentLogins)
+                {
+                    <MudPaper Class="login-item" Elevation="0">
+                        <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                <MudAvatar Color="Color.Primary" Size="Size.Medium" Variant="Variant.Outlined">
+                                    <MudIcon Icon="@GetProviderIcon(login.ProviderDisplayName)" />
+                                </MudAvatar>
                                 <div>
+                                    <MudText Typo="Typo.body1" Class="font-weight-semibold">@login.ProviderDisplayName</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Connected</MudText>
+                                </div>
+                            </MudStack>
+
+                            @if (showRemoveButton)
+                            {
+                                <form @formname="@($"remove-login-{login.LoginProvider}")" @onsubmit="OnSubmitAsync" method="post">
+                                    <AntiforgeryToken />
                                     <input type="hidden" name="@nameof(LoginProvider)" value="@login.LoginProvider" />
                                     <input type="hidden" name="@nameof(ProviderKey)" value="@login.ProviderKey" />
-                                    <button type="submit" class="btn btn-primary" title="Remove this @login.ProviderDisplayName login from your account">Remove</button>
-                                </div>
-                            </form>
-                        }
-                        else
-                        {
-                            @: &nbsp;
-                        }
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-}
-@if (otherLogins?.Count > 0)
-{
-    <h4>Add another service to log in.</h4>
-    <hr />
-    <form class="form-horizontal" action="Account/Manage/LinkExternalLogin" method="post">
-        <AntiforgeryToken />
-        <div>
-            <p>
-                @foreach (var provider in otherLogins)
-                {
-                    <button type="submit" class="btn btn-primary" name="Provider" value="@provider.Name" title="Log in using your @provider.DisplayName account">
-                        @provider.DisplayName
-                    </button>
+                                    <MudButton ButtonType="ButtonType.Submit"
+                                               Variant="Variant.Outlined"
+                                               Color="Color.Error"
+                                               Size="Size.Small"
+                                               StartIcon="@Icons.Material.Rounded.LinkOff"
+                                               Class="remove-button">
+                                        Remove
+                                    </MudButton>
+                                </form>
+                            }
+                        </MudStack>
+                    </MudPaper>
                 }
-            </p>
-        </div>
-    </form>
-}
+            </MudStack>
+        }
+        else
+        {
+            <MudPaper Class="no-logins" Elevation="0">
+                <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Rounded.LinkOff" Size="Size.Large" Color="Color.Default" />
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">No external accounts linked</MudText>
+                </MudStack>
+            </MudPaper>
+        }
+
+        @if (otherLogins?.Count > 0)
+        {
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.h6" Class="mb-3">
+                <MudIcon Icon="@Icons.Material.Rounded.AddLink" Size="Size.Small" Class="mr-2" />
+                Add External Login
+            </MudText>
+
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                Link another service to enable quick sign-in
+            </MudText>
+
+            <form action="Account/Manage/LinkExternalLogin" method="post">
+                <AntiforgeryToken />
+                <MudStack Row="true" Spacing="2" Class="provider-buttons">
+                    @foreach (var provider in otherLogins)
+                    {
+                        <MudButton ButtonType="ButtonType.Submit"
+                                   Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   name="Provider"
+                                   value="@provider.Name"
+                                   StartIcon="@GetProviderIcon(provider.DisplayName)"
+                                   Class="provider-button">
+                            @provider.DisplayName
+                        </MudButton>
+                    }
+                </MudStack>
+            </form>
+        }
+
+        <MudPaper Class="info-section" Elevation="0">
+            <MudStack Spacing="2">
+                <MudText Typo="Typo.body2" Class="font-weight-semibold">
+                    <MudIcon Icon="@Icons.Material.Rounded.Info" Size="Size.Small" Class="mr-1" />
+                    About External Logins
+                </MudText>
+                <MudStack Spacing="1">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.Speed" Size="Size.Small" Color="Color.Success" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Quick sign-in with one click</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.Security" Size="Size.Small" Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Uses the provider's secure authentication</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.Psychology" Size="Size.Small" Color="Color.Warning" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">No extra passwords to remember</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudStack>
+        </MudPaper>
+    </MudPaper>
+</div>
+
+<style>
+    .external-logins-page {
+        max-width: 500px;
+    }
+
+    .logins-card {
+        background: white !important;
+        border-radius: 20px;
+        padding: 32px;
+        border: 1px solid #e0e6ed;
+    }
+
+    .logins-card-header {
+        text-align: center;
+        margin-bottom: 28px;
+    }
+
+    .logins-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #00ACC1 0%, #00838F 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+        color: white;
+        box-shadow: 0 6px 24px rgba(0, 131, 143, 0.3);
+    }
+
+    .logins-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 8px;
+    }
+
+    .login-item {
+        background: #f8fafc !important;
+        border-radius: 12px;
+        padding: 16px;
+        border: 1px solid #e0e6ed;
+    }
+
+    .no-logins {
+        background: #f5f7fa !important;
+        border-radius: 12px;
+        padding: 32px;
+        text-align: center;
+    }
+
+    .remove-button {
+        border-radius: 8px !important;
+        text-transform: none !important;
+    }
+
+    .provider-buttons {
+        flex-wrap: wrap;
+    }
+
+    .provider-button {
+        border-radius: 12px !important;
+        text-transform: none !important;
+        padding: 12px 20px !important;
+    }
+
+    .info-section {
+        background: #E0F7FA !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 24px;
+    }
+</style>
 
 @code {
     public const string LinkLoginCallbackAction = "LinkLoginCallback";
@@ -108,6 +254,20 @@
         {
             await OnGetLinkLoginCallbackAsync();
         }
+    }
+
+    private string GetProviderIcon(string? providerName)
+    {
+        return providerName?.ToLower() switch
+        {
+            "google" => Icons.Custom.Brands.Google,
+            "microsoft" => Icons.Custom.Brands.Microsoft,
+            "facebook" => Icons.Custom.Brands.Facebook,
+            "twitter" => Icons.Custom.Brands.Twitter,
+            "github" => Icons.Custom.Brands.GitHub,
+            "apple" => Icons.Custom.Brands.Apple,
+            _ => Icons.Material.Rounded.AccountCircle
+        };
     }
 
     private async Task OnSubmitAsync()

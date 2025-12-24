@@ -26,7 +26,9 @@ internal sealed class IdentityRedirectManager(NavigationManager navigationManage
             uri = navigationManager.ToBaseRelativePath(uri);
         }
 
-        navigationManager.NavigateTo(uri);
+        // Force full page reload to avoid hydration errors when navigating
+        // from SSR Account pages to Interactive pages
+        navigationManager.NavigateTo(uri, forceLoad: true);
     }
 
     public void RedirectTo(string uri, Dictionary<string, object?> queryParameters)

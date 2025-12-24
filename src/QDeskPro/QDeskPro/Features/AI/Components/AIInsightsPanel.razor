@@ -1,0 +1,344 @@
+@using QDeskPro.Features.AI.Services
+@using QDeskPro.Features.Dashboard.Services
+@using MudBlazor
+@inject ISalesAnalyticsService AnalyticsService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudPaper Elevation="0" Class="ai-insights-panel rounded-lg">
+    @* Header *@
+    <div class="panel-header pa-4 d-flex align-center justify-space-between">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudAvatar Color="Color.Success" Size="Size.Medium" Variant="Variant.Outlined" Class="ai-avatar">
+                <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" />
+            </MudAvatar>
+            <div>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudText Typo="Typo.h6">AI Insights</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined" Class="ml-2">
+                        Weekly Analysis
+                    </MudChip>
+                </MudStack>
+                <MudText Typo="Typo.caption" Class="text-muted">
+                    @if (_effectiveFromDate.HasValue && _effectiveToDate.HasValue)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.DateRange" Size="Size.Small" Class="mr-1" Style="vertical-align: middle; font-size: 14px;" />
+                        <span>@_effectiveFromDate.Value.ToString("MMM dd") - @_effectiveToDate.Value.ToString("MMM dd, yyyy")</span>
+                    }
+                    else if (_quickInsights?.GeneratedAt != null)
+                    {
+                        <span>Updated @_quickInsights.GeneratedAt.ToLocalTime().ToString("HH:mm")</span>
+                    }
+                    else
+                    {
+                        <span>Powered by AI</span>
+                    }
+                </MudText>
+            </div>
+        </MudStack>
+        <MudStack Row="true" Spacing="1">
+            <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                           Size="Size.Small"
+                           OnClick="RefreshInsightsAsync"
+                           Disabled="@_loading"
+                           Title="Refresh insights" />
+            <MudIconButton Icon="@Icons.Material.Filled.OpenInFull"
+                           Size="Size.Small"
+                           OnClick="ShowFullInsightsAsync"
+                           Title="View full insights" />
+        </MudStack>
+    </div>
+
+    <MudDivider />
+
+    @* Content *@
+    <div class="panel-content pa-4">
+        @if (_loading)
+        {
+            <MudStack AlignItems="AlignItems.Center" Spacing="3" Class="py-4">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Medium" />
+                <MudText Typo="Typo.body2" Class="text-muted">Analyzing your data...</MudText>
+            </MudStack>
+        }
+        else if (_error != null)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+                @_error
+            </MudAlert>
+            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="RefreshInsightsAsync">
+                Try Again
+            </MudButton>
+        }
+        else if (_quickInsights != null)
+        {
+            @* Status Badge *@
+            <div class="d-flex justify-center mb-3">
+                <MudChip T="string"
+                         Color="@GetStatusColor(_quickInsights.Status)"
+                         Size="Size.Small"
+                         Variant="Variant.Filled">
+                    @GetStatusText(_quickInsights.Status)
+                </MudChip>
+            </div>
+
+            @* Main Insight *@
+            <MudText Typo="Typo.body1" Class="text-center mb-4" Style="line-height: 1.6;">
+                @_quickInsights.MainInsight
+            </MudText>
+
+            @* Metrics Row *@
+            <MudGrid Spacing="2" Class="mb-4">
+                <MudItem xs="6">
+                    <MudPaper Elevation="0" Class="metric-card pa-3 rounded-lg text-center">
+                        <MudText Typo="Typo.caption" Class="text-muted">Weekly Revenue</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-bold">
+                            KES @_quickInsights.WeeklyRevenue.ToString("N0")
+                        </MudText>
+                        <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center" Spacing="1">
+                            @if (_quickInsights.RevenueChangePercent != 0)
+                            {
+                                <MudIcon Icon="@GetTrendIcon(_quickInsights.RevenueChangePercent)"
+                                         Size="Size.Small"
+                                         Color="@GetTrendColor(_quickInsights.RevenueChangePercent)" />
+                                <MudText Typo="Typo.caption" Color="@GetTrendColor(_quickInsights.RevenueChangePercent)">
+                                    @FormatPercent(_quickInsights.RevenueChangePercent)
+                                </MudText>
+                            }
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudPaper Elevation="0" Class="metric-card pa-3 rounded-lg text-center">
+                        <MudText Typo="Typo.caption" Class="text-muted">Weekly Orders</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-bold">
+                            @_quickInsights.WeeklyOrders
+                        </MudText>
+                        <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center" Spacing="1">
+                            @if (_quickInsights.OrdersChangePercent != 0)
+                            {
+                                <MudIcon Icon="@GetTrendIcon(_quickInsights.OrdersChangePercent)"
+                                         Size="Size.Small"
+                                         Color="@GetTrendColor(_quickInsights.OrdersChangePercent)" />
+                                <MudText Typo="Typo.caption" Color="@GetTrendColor(_quickInsights.OrdersChangePercent)">
+                                    @FormatPercent(_quickInsights.OrdersChangePercent)
+                                </MudText>
+                            }
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* Profit Margin Gauge *@
+            <MudPaper Elevation="0" Class="metric-card pa-3 rounded-lg mb-4">
+                <MudText Typo="Typo.caption" Class="text-muted text-center d-block mb-2">Profit Margin</MudText>
+                <div class="d-flex align-center justify-center gap-3">
+                    <MudProgressLinear Value="@Math.Min(_quickInsights.ProfitMargin, 100)"
+                                       Color="@GetMarginColor(_quickInsights.ProfitMargin)"
+                                       Size="Size.Large"
+                                       Rounded="true"
+                                       Style="flex: 1; max-width: 200px;" />
+                    <MudText Typo="Typo.subtitle1" Class="font-weight-bold">
+                        @_quickInsights.ProfitMargin.ToString("F1")%
+                    </MudText>
+                </div>
+            </MudPaper>
+
+            @* Action Buttons *@
+            <MudStack Row="true" Spacing="2" Justify="Justify.Center">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Lightbulb"
+                           OnClick="ShowRecommendationsAsync">
+                    Recommendations
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Secondary"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.TrendingUp"
+                           OnClick="ShowTrendAnalysisAsync">
+                    Trends
+                </MudButton>
+            </MudStack>
+        }
+        else
+        {
+            @* No Data State *@
+            <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="py-4">
+                <MudIcon Icon="@Icons.Material.Filled.Analytics" Size="Size.Large" Color="Color.Default" />
+                <MudText Typo="Typo.body2" Class="text-muted text-center">
+                    Select a quarry and date range to generate AI insights
+                </MudText>
+            </MudStack>
+        }
+    </div>
+</MudPaper>
+
+<style>
+    .ai-insights-panel {
+        background: linear-gradient(135deg, var(--mud-palette-surface) 0%, rgba(76, 175, 80, 0.02) 100%);
+        border: 1px solid rgba(76, 175, 80, 0.2);
+    }
+
+    .panel-header {
+        background: linear-gradient(90deg, rgba(76, 175, 80, 0.08) 0%, transparent 100%);
+    }
+
+    .metric-card {
+        background-color: var(--mud-palette-background);
+        border: 1px solid var(--mud-palette-lines-default);
+    }
+</style>
+
+@code {
+    [Parameter]
+    public string? QuarryId { get; set; }
+
+    [Parameter]
+    public DateTime? FromDate { get; set; }
+
+    [Parameter]
+    public DateTime? ToDate { get; set; }
+
+    // Computed effective dates - use parameters if provided, otherwise default to last 7 days
+    private DateTime? _effectiveFromDate => FromDate ?? DateTime.Today.AddDays(-7);
+    private DateTime? _effectiveToDate => ToDate ?? DateTime.Today;
+
+    private QuickInsightsSummary? _quickInsights;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInsightsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadInsightsAsync();
+    }
+
+    private async Task LoadInsightsAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            _quickInsights = await AnalyticsService.GetQuickInsightsAsync(QuarryId);
+            if (!_quickInsights.Success)
+            {
+                _error = _quickInsights.Error ?? "Failed to generate insights";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = "Unable to load insights";
+            _quickInsights = null;
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshInsightsAsync()
+    {
+        await LoadInsightsAsync();
+        Snackbar.Add("Insights refreshed", Severity.Success);
+    }
+
+    private async Task ShowFullInsightsAsync()
+    {
+        var parameters = new DialogParameters<SalesInsightsDialog>
+        {
+            { x => x.QuarryId, QuarryId },
+            { x => x.FromDate, _effectiveFromDate },
+            { x => x.ToDate, _effectiveToDate }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        await DialogService.ShowAsync<SalesInsightsDialog>("AI Sales Insights", parameters, options);
+    }
+
+    private async Task ShowRecommendationsAsync()
+    {
+        var parameters = new DialogParameters<RecommendationsDialog>
+        {
+            { x => x.QuarryId, QuarryId },
+            { x => x.FromDate, _effectiveFromDate },
+            { x => x.ToDate, _effectiveToDate }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        await DialogService.ShowAsync<RecommendationsDialog>("AI Recommendations", parameters, options);
+    }
+
+    private async Task ShowTrendAnalysisAsync()
+    {
+        var parameters = new DialogParameters<TrendAnalysisDialog>
+        {
+            { x => x.QuarryId, QuarryId },
+            { x => x.FromDate, _effectiveFromDate },
+            { x => x.ToDate, _effectiveToDate }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        await DialogService.ShowAsync<TrendAnalysisDialog>("AI Trend Analysis", parameters, options);
+    }
+
+    private Color GetStatusColor(InsightStatus status) => status switch
+    {
+        InsightStatus.Excellent => Color.Success,
+        InsightStatus.Good => Color.Info,
+        InsightStatus.Stable => Color.Default,
+        InsightStatus.NeedsAttention => Color.Warning,
+        _ => Color.Default
+    };
+
+    private string GetStatusText(InsightStatus status) => status switch
+    {
+        InsightStatus.Excellent => "Excellent Performance",
+        InsightStatus.Good => "Good Performance",
+        InsightStatus.Stable => "Stable",
+        InsightStatus.NeedsAttention => "Needs Attention",
+        _ => "Unknown"
+    };
+
+    private string GetTrendIcon(double change) =>
+        change > 0 ? Icons.Material.Filled.TrendingUp : Icons.Material.Filled.TrendingDown;
+
+    private Color GetTrendColor(double change) =>
+        change > 0 ? Color.Success : Color.Error;
+
+    private Color GetMarginColor(double margin) => margin switch
+    {
+        >= 40 => Color.Success,
+        >= 20 => Color.Info,
+        >= 10 => Color.Warning,
+        _ => Color.Error
+    };
+
+    private string FormatPercent(double value) =>
+        $"{(value > 0 ? "+" : "")}{value:F1}%";
+}

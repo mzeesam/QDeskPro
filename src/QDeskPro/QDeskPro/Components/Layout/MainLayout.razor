@@ -1,63 +1,273 @@
 @inherits LayoutComponentBase
 @using MudBlazor
 @using QDeskPro.Shared
+@using QDeskPro.Shared.Components
+@using QDeskPro.Components.Layout
+@using Microsoft.AspNetCore.Components.Authorization
+@using QDeskPro.Data
+@using Microsoft.EntityFrameworkCore
 @inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthStateProvider
+@inject AppDbContext DbContext
+
+@*
+    MainLayout - Primary layout for authenticated pages
+
+    ARCHITECTURE (Pure Blazor Server):
+    - This layout is rendered statically, but becomes interactive via Routes @rendermode in App.razor
+    - Setting @rendermode on layouts directly causes "Cannot pass Body parameter" error
+    - MudThemeProvider is in Routes.razor with InteractiveServer
+    - MudPopoverProvider/DialogProvider/SnackbarProvider are in MudProviders.razor
+    - Account pages use AccountLayout which remains SSR for proper auth (ExcludeFromInteractiveRouting)
+*@
 
 <MudLayout>
-    <MudAppBar Elevation="1" Fixed="true">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
-        <MudText Typo="Typo.h6" Class="ml-3">QDeskPro</MudText>
+    @* Modern App Bar with Gradient Effect *@
+    <MudAppBar Elevation="0" Fixed="true" Class="qdp-appbar">
+        <MudIconButton Icon="@Icons.Material.Rounded.Menu"
+                       Color="Color.Inherit"
+                       Edge="Edge.Start"
+                       OnClick="@ToggleDrawer"
+                       Class="mr-2" />
+
+        @* App Logo and Brand *@
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mr-4">
+            <div class="qdp-appbar-logo-icon">
+                <MudIcon Icon="@Icons.Material.Rounded.Terrain" Size="Size.Medium" Color="Color.Surface" />
+            </div>
+            <div class="d-none d-sm-block">
+                <MudText Typo="Typo.h6" Class="qdp-brand-text" Style="color: white; margin: 0;">QDeskPro</MudText>
+                <MudText Class="qdp-brand-subtitle" Style="color: rgba(255,255,255,0.85); margin: 0;">Quarry Management</MudText>
+            </div>
+        </MudStack>
+
         <MudSpacer />
+
+        @* Search Bar (Desktop only) *@
+        <div class="qdp-search-container d-none d-md-flex mr-4">
+            <MudTextField @bind-Value="_searchText"
+                          Placeholder="Search..."
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Rounded.Search"
+                          Class="qdp-search-field"
+                          Margin="Margin.Dense"
+                          Underline="false" />
+        </div>
+
+        @* User Menu *@
         <AuthorizeView>
             <Authorized>
-                <MudMenu Icon="@Icons.Material.Filled.AccountCircle" Color="Color.Inherit">
-                    <MudMenuItem Icon="@Icons.Material.Filled.Person" Href="Account/Manage">Profile</MudMenuItem>
-                    <MudDivider />
-                    <MudMenuItem Icon="@Icons.Material.Filled.Logout">
-                        <form action="Account/Logout" method="post">
-                            <AntiforgeryToken />
-                            <input type="hidden" name="ReturnUrl" value="@currentUrl" />
-                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" Color="Color.Inherit" FullWidth="true" Style="text-transform: none; justify-content: flex-start;">
-                                Logout
-                            </MudButton>
-                        </form>
-                    </MudMenuItem>
+                <MudMenu AnchorOrigin="Origin.BottomRight"
+                         TransformOrigin="Origin.TopRight"
+                         PopoverClass="qdp-user-menu-popover">
+                    <ActivatorContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Class="ml-2 cursor-pointer pa-2 rounded-lg qdp-user-menu-trigger">
+                            <MudAvatar Color="Color.Primary" Size="Size.Medium" Class="qdp-user-avatar">
+                                <MudIcon Icon="@Icons.Material.Rounded.Person" />
+                            </MudAvatar>
+                            <div class="d-none d-sm-block ml-2">
+                                <MudText Typo="Typo.body2" Class="font-weight-semibold" Style="line-height: 1.2;">@context.User.Identity?.Name</MudText>
+                                <MudText Typo="Typo.caption" Class="qdp-user-role">@GetUserRole(context)</MudText>
+                            </div>
+                            <MudIcon Icon="@Icons.Material.Rounded.KeyboardArrowDown" Size="Size.Small" Class="d-none d-sm-block" />
+                        </MudStack>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <MudMenuItem Icon="@Icons.Material.Rounded.Person" IconColor="Color.Primary"
+                                     OnClick="@NavigateToProfile">
+                            <MudText Typo="Typo.body2">My Profile</MudText>
+                        </MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Rounded.Settings" IconColor="Color.Default">
+                            <MudText Typo="Typo.body2">Settings</MudText>
+                        </MudMenuItem>
+                        <MudDivider Class="my-2" />
+                        <MudMenuItem Icon="@Icons.Material.Rounded.Logout"
+                                     IconColor="Color.Error"
+                                     OnClick="@PerformLogout">
+                            <MudText Typo="Typo.body2" Color="Color.Error">Sign Out</MudText>
+                        </MudMenuItem>
+                    </ChildContent>
                 </MudMenu>
             </Authorized>
             <NotAuthorized>
-                <MudButton Variant="Variant.Text" Color="Color.Inherit" Href="Account/Login">Login</MudButton>
+                <MudButton Variant="Variant.Text"
+                           Color="Color.Inherit"
+                           StartIcon="@Icons.Material.Rounded.Login"
+                           Class="qdp-login-btn"
+                           OnClick="NavigateToLogin">
+                    Sign In
+                </MudButton>
             </NotAuthorized>
         </AuthorizeView>
     </MudAppBar>
 
-    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
-        <MudDrawerHeader>
-            <MudText Typo="Typo.h6">QDeskPro</MudText>
-        </MudDrawerHeader>
-        <NavMenu />
+    @* Modern Sidebar Drawer *@
+    <MudDrawer @bind-Open="_drawerOpen"
+               ClipMode="DrawerClipMode.Always"
+               Elevation="0"
+               Class="qdp-drawer"
+               Variant="DrawerVariant.Responsive"
+               Breakpoint="Breakpoint.Md">
+
+        @* Drawer Header *@
+        <div class="qdp-drawer-header">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                <MudAvatar Size="Size.Large" Class="qdp-drawer-logo">
+                    <MudIcon Icon="@Icons.Material.Rounded.Layers" Size="Size.Large" />
+                </MudAvatar>
+                <div>
+                    <MudText Typo="Typo.h6" Class="font-weight-bold">@_quarryName</MudText>
+                    <MudText Class="qdp-drawer-header-subtitle">@_quarrySubtitle</MudText>
+                </div>
+            </MudStack>
+        </div>
+
+        @* Navigation Menu *@
+        <div class="qdp-nav-menu">
+            <NavMenu />
+        </div>
+
+        @* Drawer Footer *@
+        <MudSpacer />
+        <div class="qdp-drawer-footer">
+            <MudDivider Class="mb-3" />
+            <MudText Typo="Typo.caption" Class="text-center" Color="Color.Secondary">
+                v1.0.0 - Phase 1
+            </MudText>
+        </div>
     </MudDrawer>
 
-    <MudMainContent Class="pt-16 px-4">
-        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="my-4">
+    @* Main Content Area *@
+    <MudMainContent Class="qdp-main-content">
+        <div class="qdp-content-wrapper">
             @Body
-        </MudContainer>
+        </div>
     </MudMainContent>
+
+    @* Bottom Navigation for Clerks (Mobile Only) *@
+    <AuthorizeView Roles="Clerk">
+        <Authorized>
+            <BottomNavigation />
+        </Authorized>
+    </AuthorizeView>
 </MudLayout>
 
+@* Error UI *@
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
+    <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="rounded-lg">
+        An unhandled error has occurred.
+        <a href="." class="mud-alert-link">Reload</a>
+        <span class="dismiss">X</span>
+    </MudAlert>
 </div>
 
 @code {
     private bool _drawerOpen = true;
     private string? currentUrl;
+    private string _searchText = "";
+    private string _quarryName = "Loading...";
+    private string _quarrySubtitle = "";
 
-    protected override void OnInitialized()
+    // Receive dark mode state from Routes.razor cascading value
+    [CascadingParameter(Name = "IsDarkMode")]
+    private bool IsDarkMode { get; set; }
+
+    protected override async Task OnInitializedAsync()
     {
         currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
         NavigationManager.LocationChanged += OnLocationChanged;
+
+        await LoadQuarryInfoAsync();
+    }
+
+    private async Task LoadQuarryInfoAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var userRole = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+
+                if (string.IsNullOrEmpty(userId))
+                {
+                    _quarryName = "QDeskPro";
+                    _quarrySubtitle = "Quarry Management";
+                    return;
+                }
+
+                if (userRole == "Administrator")
+                {
+                    _quarryName = "System Admin";
+                    _quarrySubtitle = "All Quarries";
+                }
+                else if (userRole == "Manager")
+                {
+                    // Get manager's first quarry
+                    var firstQuarry = await DbContext.Quarries
+                        .Where(q => q.ManagerId == userId)
+                        .OrderBy(q => q.DateCreated)
+                        .FirstOrDefaultAsync();
+
+                    if (firstQuarry != null)
+                    {
+                        _quarryName = firstQuarry.QuarryName;
+                        _quarrySubtitle = firstQuarry.Location ?? "Manager View";
+                    }
+                    else
+                    {
+                        _quarryName = "Manager";
+                        _quarrySubtitle = "No Quarries Assigned";
+                    }
+                }
+                else if (userRole == "Clerk")
+                {
+                    // Get clerk's assigned quarry
+                    var userEntity = await DbContext.Users.FindAsync(userId);
+
+                    if (userEntity != null && !string.IsNullOrEmpty(userEntity.QuarryId))
+                    {
+                        var quarry = await DbContext.Quarries.FindAsync(userEntity.QuarryId);
+
+                        if (quarry != null)
+                        {
+                            _quarryName = quarry.QuarryName;
+                            _quarrySubtitle = quarry.Location ?? "Clerk View";
+                        }
+                        else
+                        {
+                            _quarryName = "Clerk";
+                            _quarrySubtitle = "No Quarry Assigned";
+                        }
+                    }
+                    else
+                    {
+                        _quarryName = "Clerk";
+                        _quarrySubtitle = "No Quarry Assigned";
+                    }
+                }
+                else
+                {
+                    _quarryName = "QDeskPro";
+                    _quarrySubtitle = "Quarry Management";
+                }
+            }
+            else
+            {
+                _quarryName = "QDeskPro";
+                _quarrySubtitle = "Quarry Management";
+            }
+        }
+        catch (Exception ex)
+        {
+            _quarryName = "QDeskPro";
+            _quarrySubtitle = "Quarry Management";
+        }
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
@@ -71,8 +281,301 @@
         _drawerOpen = !_drawerOpen;
     }
 
+    // Theme toggle is now handled in Routes.razor via ThemeService cascading value
+    [CascadingParameter(Name = "ThemeService")]
+    private Routes? ThemeService { get; set; }
+
+    private void HandleThemeChanged(bool isDark)
+    {
+        // Delegate theme change to Routes.razor which owns the theme state
+        ThemeService?.ToggleTheme();
+    }
+
+    private string GetUserRole(AuthenticationState context)
+    {
+        if (context.User.IsInRole("Administrator"))
+            return "Administrator";
+        if (context.User.IsInRole("Manager"))
+            return "Manager";
+        if (context.User.IsInRole("Clerk"))
+            return "Clerk";
+        return "User";
+    }
+
+    private async Task PerformLogout()
+    {
+        // Use JavaScript window.location.replace to force a hard navigation
+        // This ensures a complete browser reload, not a Blazor SPA navigation
+        await JS.InvokeVoidAsync("eval", "window.location.replace('/Account/Logout')");
+    }
+
+    private void NavigateToProfile()
+    {
+        // Navigate to the static SSR account management page
+        NavigationManager.NavigateTo("Account/Manage", forceLoad: true);
+    }
+
+    private void NavigateToLogin()
+    {
+        // Navigate to the static SSR login page with force reload
+        NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
+    }
+
     public void Dispose()
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
     }
 }
+
+<style>
+    /* AppBar Gradient Enhancement */
+    .qdp-appbar {
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 50%, #1A237E 100%) !important;
+        box-shadow: 0 4px 20px rgba(21, 101, 192, 0.3) !important;
+    }
+
+    .qdp-brand-text {
+        font-weight: 800 !important;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+    }
+
+    .qdp-brand-subtitle {
+        opacity: 0.85;
+        font-size: 0.65rem !important;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .qdp-appbar-logo-icon {
+        width: 40px;
+        height: 40px;
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    /* Search Field */
+    .qdp-search-container {
+        width: 280px;
+    }
+
+    .qdp-search-field {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        backdrop-filter: blur(10px);
+    }
+
+    .qdp-search-field .mud-input-outlined-border {
+        border-color: rgba(255, 255, 255, 0.2) !important;
+    }
+
+    .qdp-search-field input {
+        color: white !important;
+    }
+
+    .qdp-search-field input::placeholder {
+        color: rgba(255, 255, 255, 0.6) !important;
+    }
+
+    .qdp-search-field .mud-icon-root {
+        color: rgba(255, 255, 255, 0.7) !important;
+    }
+
+    /* User Menu */
+    .qdp-user-menu-trigger {
+        transition: background-color 0.2s ease;
+    }
+
+    .qdp-user-menu-trigger:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .qdp-user-avatar {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .qdp-user-role {
+        opacity: 0.8;
+        font-size: 0.7rem !important;
+    }
+
+    .qdp-user-menu-popover {
+        border-radius: 16px !important;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important;
+        border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    /* Login Link */
+    .qdp-login-link {
+        text-decoration: none !important;
+        color: inherit !important;
+    }
+
+    /* Login Button */
+    .qdp-login-btn {
+        border-radius: 12px !important;
+        padding: 8px 20px !important;
+        font-weight: 600 !important;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        transition: all 0.2s ease;
+    }
+
+    .qdp-login-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Drawer Styling */
+    .qdp-drawer {
+        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+        border-right: 1px solid #e0e6ed !important;
+        box-shadow: none !important; /* Remove shadow that creates gradient strip */
+    }
+
+    /* Fix drawer content overflow to prevent header cutoff */
+    .qdp-drawer .mud-drawer-content {
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }
+
+    /* Fix MudDrawer clipped mode positioning */
+    .qdp-drawer.mud-drawer--clipped-always {
+        margin-top: 0 !important;
+    }
+
+    /* Ensure first child (header) is not clipped */
+    .qdp-drawer .mud-drawer-content > :first-child {
+        flex-shrink: 0;
+        margin-top: 0 !important;
+    }
+
+    .qdp-drawer-header {
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        padding: 24px 20px;
+        color: white;
+        position: relative;
+        overflow: hidden;
+        flex-shrink: 0; /* Prevent header from shrinking */
+        margin-top: 0 !important;
+        min-height: 90px; /* Ensure minimum height for header */
+        z-index: 1; /* Ensure header is above any overlapping elements */
+        box-sizing: border-box;
+    }
+
+    .qdp-drawer-header::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -30%;
+        width: 100%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+        pointer-events: none;
+    }
+
+    .qdp-drawer-logo {
+        background: rgba(255, 255, 255, 0.2) !important;
+        backdrop-filter: blur(10px);
+    }
+
+    .qdp-drawer-header-subtitle {
+        color: rgba(255, 255, 255, 0.75) !important;
+        font-size: 0.7rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-top: 2px;
+    }
+
+    .qdp-drawer-footer {
+        padding: 16px 20px;
+    }
+
+    /* Main Content - Remove gap between drawer and content */
+    .qdp-main-content {
+        background: #f5f7fa !important;
+        min-height: calc(100vh - 64px);
+        transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        padding-left: 0 !important;
+        margin-left: 0 !important;
+    }
+
+    /* MudBlazor Layout Integration - Remove all gaps */
+    .mud-layout {
+        gap: 0 !important;
+    }
+
+    /* Override MudBlazor's default main content margin/padding */
+    .mud-main-content {
+        padding-left: 0 !important;
+        margin-left: 0 !important;
+        transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+
+    /* Content Wrapper - provides consistent padding inside */
+    .qdp-content-wrapper {
+        padding: 24px;
+        animation: fadeInUp 0.4s ease-out;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    @@media (min-width: 960px) {
+        .qdp-content-wrapper {
+            padding: 32px;
+        }
+    }
+
+    /* Ensure the main content fills available horizontal space */
+    .mud-main-content.qdp-main-content {
+        flex: 1 1 auto;
+        width: 100%;
+    }
+
+    /* Remove any drawer shadow/gap that might appear */
+    .mud-drawer {
+        box-shadow: none !important;
+    }
+
+    /* Ensure no gap in responsive drawer states */
+    .mud-drawer-responsive ~ .mud-main-content,
+    .mud-drawer--open ~ .mud-main-content,
+    .mud-drawer--closed ~ .mud-main-content {
+        padding-left: 0 !important;
+    }
+
+    @@keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(12px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Error UI styling */
+    #blazor-error-ui {
+        display: none;
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9999;
+    }
+
+    #blazor-error-ui .mud-alert {
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+</style>

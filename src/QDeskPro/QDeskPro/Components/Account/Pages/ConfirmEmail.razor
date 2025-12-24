@@ -1,5 +1,5 @@
-﻿@page "/Account/ConfirmEmail"
-
+@page "/Account/ConfirmEmail"
+@using MudBlazor
 @using System.Text
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.WebUtilities
@@ -8,13 +8,246 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject IdentityRedirectManager RedirectManager
 
-<PageTitle>Confirm email</PageTitle>
+<PageTitle>Confirm Email - QDeskPro</PageTitle>
 
-<h1>Confirm email</h1>
-<StatusMessage Message="@statusMessage" />
+<div class="confirmation-page">
+    <div class="confirmation-background">
+        <div class="confirmation-pattern @(_isSuccess ? "success-pattern" : "error-pattern")"></div>
+    </div>
+
+    <MudContainer MaxWidth="MaxWidth.Small" Class="confirmation-container">
+        <MudPaper Class="confirmation-card" Elevation="0">
+            @if (_isSuccess)
+            {
+                <div class="confirmation-icon-container success">
+                    <MudIcon Icon="@Icons.Material.Rounded.VerifiedUser" Size="Size.Large" />
+                </div>
+
+                <MudText Typo="Typo.h3" Class="confirmation-title">
+                    Email Confirmed
+                </MudText>
+
+                <MudText Typo="Typo.body1" Color="Color.Secondary" Class="confirmation-description">
+                    Thank you for confirming your email address.
+                    Your account is now fully activated and ready to use.
+                </MudText>
+
+                <MudPaper Class="confirmation-success" Elevation="0">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Justify="Justify.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Size="Size.Small" Color="Color.Success" />
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Your account is now verified
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           Href="Account/Login"
+                           StartIcon="@Icons.Material.Rounded.Login"
+                           Class="confirmation-button">
+                    Sign In to Your Account
+                </MudButton>
+            }
+            else
+            {
+                <div class="confirmation-icon-container error">
+                    <MudIcon Icon="@Icons.Material.Rounded.ErrorOutline" Size="Size.Large" />
+                </div>
+
+                <MudText Typo="Typo.h3" Class="confirmation-title">
+                    Confirmation Failed
+                </MudText>
+
+                <MudText Typo="Typo.body1" Color="Color.Secondary" Class="confirmation-description">
+                    @statusMessage
+                </MudText>
+
+                <MudStack Spacing="3" Class="confirmation-actions">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Size="Size.Large"
+                               FullWidth="true"
+                               Href="Account/ResendEmailConfirmation"
+                               StartIcon="@Icons.Material.Rounded.Refresh"
+                               Class="confirmation-button">
+                        Resend Confirmation Email
+                    </MudButton>
+
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Default"
+                               Size="Size.Large"
+                               FullWidth="true"
+                               Href="/"
+                               StartIcon="@Icons.Material.Rounded.Home"
+                               Class="confirmation-button-secondary">
+                        Go to Home
+                    </MudButton>
+                </MudStack>
+            }
+        </MudPaper>
+    </MudContainer>
+</div>
+
+<style>
+    .confirmation-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        padding: 24px;
+    }
+
+    .confirmation-background {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
+        z-index: -1;
+    }
+
+    .confirmation-pattern {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+    }
+
+    .confirmation-pattern.success-pattern {
+        background-image:
+            radial-gradient(circle at 30% 70%, rgba(46, 125, 50, 0.08) 0%, transparent 50%),
+            radial-gradient(circle at 70% 30%, rgba(46, 125, 50, 0.05) 0%, transparent 50%);
+    }
+
+    .confirmation-pattern.error-pattern {
+        background-image:
+            radial-gradient(circle at 30% 70%, rgba(198, 40, 40, 0.08) 0%, transparent 50%),
+            radial-gradient(circle at 70% 30%, rgba(198, 40, 40, 0.05) 0%, transparent 50%);
+    }
+
+    .confirmation-container {
+        display: flex;
+        justify-content: center;
+    }
+
+    .confirmation-card {
+        background: white !important;
+        border-radius: 24px;
+        padding: 48px;
+        text-align: center;
+        max-width: 480px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+    }
+
+    .confirmation-icon-container {
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 24px;
+    }
+
+    .confirmation-icon-container.success {
+        background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+        animation: successPop 0.6s ease-out;
+    }
+
+    .confirmation-icon-container.success .mud-icon-root {
+        font-size: 3rem !important;
+        color: #2E7D32;
+    }
+
+    .confirmation-icon-container.error {
+        background: linear-gradient(135deg, #FFEBEE 0%, #FFCDD2 100%);
+        animation: errorShake 0.5s ease-out;
+    }
+
+    .confirmation-icon-container.error .mud-icon-root {
+        font-size: 3rem !important;
+        color: #C62828;
+    }
+
+    @@keyframes successPop {
+        0% { transform: scale(0); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
+
+    @@keyframes errorShake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-5px); }
+        75% { transform: translateX(5px); }
+    }
+
+    .confirmation-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 16px;
+    }
+
+    .confirmation-description {
+        line-height: 1.7;
+        margin-bottom: 24px;
+    }
+
+    .confirmation-success {
+        background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%) !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 24px;
+        border: 1px solid rgba(46, 125, 50, 0.2);
+    }
+
+    .confirmation-actions {
+        margin-top: 8px;
+    }
+
+    .confirmation-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+        box-shadow: 0 4px 16px rgba(21, 101, 192, 0.3) !important;
+    }
+
+    .confirmation-button:hover {
+        box-shadow: 0 6px 24px rgba(21, 101, 192, 0.4) !important;
+        transform: translateY(-1px);
+    }
+
+    .confirmation-button-secondary {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        text-transform: none !important;
+    }
+
+    @@media (max-width: 600px) {
+        .confirmation-card {
+            padding: 32px 24px;
+        }
+
+        .confirmation-icon-container {
+            width: 80px;
+            height: 80px;
+        }
+
+        .confirmation-icon-container .mud-icon-root {
+            font-size: 2.5rem !important;
+        }
+    }
+</style>
 
 @code {
     private string? statusMessage;
+    private bool _isSuccess = false;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
@@ -37,13 +270,23 @@
         if (user is null)
         {
             HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            statusMessage = $"Error loading user with ID {UserId}";
+            statusMessage = "We couldn't find your account. Please check the confirmation link or contact support.";
+            _isSuccess = false;
         }
         else
         {
             var code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(Code));
             var result = await UserManager.ConfirmEmailAsync(user, code);
-            statusMessage = result.Succeeded ? "Thank you for confirming your email." : "Error confirming your email.";
+            if (result.Succeeded)
+            {
+                statusMessage = "Thank you for confirming your email.";
+                _isSuccess = true;
+            }
+            else
+            {
+                statusMessage = "The confirmation link is invalid or has expired. Please request a new confirmation email.";
+                _isSuccess = false;
+            }
         }
     }
 }

@@ -1,0 +1,388 @@
+@page "/clerk/expenses"
+@using Microsoft.AspNetCore.Authorization
+@using QDeskPro.Features.Expenses.Services
+@using QDeskPro.Features.Admin.Services
+@using QDeskPro.Domain.Entities
+@attribute [Authorize(Roles = "Clerk")]
+@rendermode InteractiveServer
+@inject ExpenseService ExpenseService
+@inject UserService UserService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Expenses - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudText Typo="Typo.h4" Class="font-weight-bold mb-4">
+        <MudIcon Icon="@Icons.Material.Rounded.Receipt" Class="mr-2" />
+        Expenses
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else
+    {
+        @* Expense Entry Form *@
+        <MudPaper Class="pa-4 mb-4" Elevation="0">
+            <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">
+                @(_isEditMode ? "Update Expense" : "Add New Expense")
+            </MudText>
+
+            <MudForm @ref="_form" @bind-IsValid="_isValid">
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_expense.Item"
+                                      Label="Description"
+                                      Variant="Variant.Outlined"
+                                      Required="true"
+                                      RequiredError="Please provide the description details" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField @bind-Value="_expense.Amount"
+                                         Label="Amount"
+                                         Variant="Variant.Outlined"
+                                         Min="0.01"
+                                         Required="true"
+                                         RequiredError="Please provide the amount details"
+                                         Adornment="Adornment.Start"
+                                         AdornmentText="KES" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudDatePicker @bind-Date="_expenseDate"
+                                       Label="Expense Date"
+                                       Variant="Variant.Outlined"
+                                       Required="true"
+                                       MaxDate="@DateTime.Today"
+                                       MinDate="@DateTime.Today.AddDays(-14)"
+                                       DateFormat="dd/MM/yyyy" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudSelect @bind-Value="_expense.Category"
+                                   Label="Category"
+                                   Variant="Variant.Outlined"
+                                   Required="true"
+                                   RequiredError="Please select a category">
+                            @foreach (var category in ExpenseCategories)
+                            {
+                                <MudSelectItem Value="@category">@category</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_expense.TxnReference"
+                                      Label="Payment Reference (Optional)"
+                                      Variant="Variant.Outlined"
+                                      Lines="2" />
+                    </MudItem>
+                </MudGrid>
+
+                @* Action Buttons *@
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2" Class="mt-4">
+                    @if (_isEditMode)
+                    {
+                        <MudButton Variant="Variant.Text"
+                                   Color="Color.Error"
+                                   OnClick="DeleteExpense"
+                                   Disabled="_processing">
+                            Delete
+                        </MudButton>
+                        <MudButton Variant="Variant.Text"
+                                   OnClick="CancelEdit"
+                                   Disabled="_processing">
+                            Cancel
+                        </MudButton>
+                    }
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Disabled="@(!_isValid || _processing)"
+                               OnClick="SaveExpense"
+                               StartIcon="@Icons.Material.Rounded.Save">
+                        @if (_processing)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        @(_isEditMode ? "Update" : "Save")
+                    </MudButton>
+                </MudStack>
+            </MudForm>
+        </MudPaper>
+
+        @* Expense List *@
+        <MudPaper Class="pa-4" Elevation="0">
+            <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">Recent Expenses (Last 14 Days)</MudText>
+
+            @if (!_expenses.Any())
+            {
+                <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info">
+                    No expenses recorded yet
+                </MudAlert>
+            }
+            else
+            {
+                <MudTable Items="@_expenses"
+                          T="Expense"
+                          Hover="true"
+                          Breakpoint="Breakpoint.Sm"
+                          Dense="true"
+                          Loading="@_loadingList"
+                          RowClass="cursor-pointer"
+                          OnRowClick="@(args => SelectExpenseForEdit(args.Item))">
+                    <HeaderContent>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Description</MudTh>
+                        <MudTh>Category</MudTh>
+                        <MudTh Style="text-align: right">Amount</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Date">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body2">@context.ExpenseDate?.ToString("dd/MM/yy")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.ExpenseDate?.ToString("hh:mm tt")</MudText>
+                            </MudStack>
+                        </MudTd>
+                        <MudTd DataLabel="Description">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body2">@context.Item</MudText>
+                                @if (!string.IsNullOrWhiteSpace(context.TxnReference))
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Ref: @context.TxnReference</MudText>
+                                }
+                            </MudStack>
+                        </MudTd>
+                        <MudTd DataLabel="Category">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Default">@context.Category</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Amount" Style="text-align: right">
+                            <MudText Typo="Typo.body1" Color="Color.Error" Class="font-weight-bold">
+                                KES @context.Amount.ToString("N1")
+                            </MudText>
+                        </MudTd>
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager PageSizeOptions="new int[] { 12, 25, 50 }" />
+                    </PagerContent>
+                </MudTable>
+            }
+        </MudPaper>
+    }
+</MudContainer>
+
+<style>
+    .cursor-pointer {
+        cursor: pointer;
+    }
+
+    .cursor-pointer:hover {
+        background-color: rgba(0, 0, 0, 0.04);
+    }
+</style>
+
+@code {
+    private MudForm? _form;
+    private bool _isValid = false;
+    private bool _loading = true;
+    private bool _loadingList = false;
+    private bool _processing = false;
+    private bool _isEditMode = false;
+    private string _userId = "";
+    private string _quarryId = "";
+
+    private Expense _expense = new()
+    {
+        ExpenseDate = DateTime.Now,
+        Amount = 0,
+        Category = "Miscellaneous"
+    };
+
+    private DateTime? _expenseDate = DateTime.Now;
+    private List<Expense> _expenses = new();
+
+    // Expense Categories (Fixed List from implementation_plan.md)
+    private static readonly string[] ExpenseCategories = new[]
+    {
+        "Fuel",
+        "Transportation Hire",
+        "Maintenance and Repairs",
+        "Commission",
+        "Administrative",
+        "Marketing",
+        "Wages",
+        "Loaders Fees",
+        "Consumables and Utilities",
+        "Bank Charges",
+        "Cess and Road Fees",
+        "Miscellaneous"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get user info from auth state
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+
+                // Get user's quarry context from database
+                var userContext = await UserService.GetUserQuarryContextAsync(_userId);
+
+                if (userContext != null)
+                {
+                    _quarryId = userContext.QuarryId;
+
+                    // Load existing expenses
+                    await RefreshExpenseList();
+                }
+                else
+                {
+                    Snackbar.Add("No quarry assigned to your account. Please contact your manager.", Severity.Warning);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading expenses: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RefreshExpenseList()
+    {
+        _loadingList = true;
+        try
+        {
+            _expenses = await ExpenseService.GetExpensesForClerkAsync(_userId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading expense list: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingList = false;
+        }
+    }
+
+    private async Task SaveExpense()
+    {
+        // Sync expense date
+        _expense.ExpenseDate = _expenseDate;
+
+        _processing = true;
+        try
+        {
+            bool success;
+            string message;
+
+            if (_isEditMode)
+            {
+                (success, message) = await ExpenseService.UpdateExpenseAsync(_expense, _userId);
+            }
+            else
+            {
+                (success, message, _) = await ExpenseService.CreateExpenseAsync(_expense, _userId, _quarryId);
+            }
+
+            if (success)
+            {
+                Snackbar.Add(message, Severity.Success);
+                await RefreshExpenseList();
+                ResetForm();
+            }
+            else
+            {
+                Snackbar.Add(message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving expense: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private async Task DeleteExpense()
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Delete Expense",
+            "Are you sure you want to delete this expense?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (result != true)
+            return;
+
+        _processing = true;
+        try
+        {
+            var (success, message) = await ExpenseService.DeleteExpenseAsync(_expense.Id, _userId);
+
+            if (success)
+            {
+                Snackbar.Add(message, Severity.Success);
+                await RefreshExpenseList();
+                ResetForm();
+            }
+            else
+            {
+                Snackbar.Add(message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting expense: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private void SelectExpenseForEdit(Expense expense)
+    {
+        _expense = new Expense
+        {
+            Id = expense.Id,
+            Item = expense.Item,
+            Amount = expense.Amount,
+            ExpenseDate = expense.ExpenseDate,
+            Category = expense.Category,
+            TxnReference = expense.TxnReference
+        };
+        _expenseDate = expense.ExpenseDate;
+        _isEditMode = true;
+    }
+
+    private void CancelEdit()
+    {
+        ResetForm();
+    }
+
+    private void ResetForm()
+    {
+        _expense = new Expense
+        {
+            ExpenseDate = DateTime.Now,
+            Amount = 0,
+            Category = "Miscellaneous"
+        };
+        _expenseDate = DateTime.Now;
+        _isEditMode = false;
+        _form?.ResetAsync();
+    }
+}

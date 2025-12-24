@@ -1,0 +1,207 @@
+@using MudBlazor
+@inject NavigationManager NavigationManager
+
+@* Bottom Navigation Bar for Clerks (Mobile-First) *@
+<div class="qdp-bottom-nav">
+    <MudPaper Elevation="8" Class="qdp-bottom-nav-container">
+        <MudStack Row="true" Justify="Justify.SpaceAround" AlignItems="AlignItems.Center" Class="qdp-bottom-nav-items">
+            @* Dashboard *@
+            <MudButton Variant="Variant.Text"
+                      OnClick="@(() => Navigate("clerk/dashboard"))"
+                      Class="@GetNavItemClass("clerk/dashboard")"
+                      Style="flex-direction: column; padding: 8px 16px; min-width: 64px; text-transform: none;">
+                <MudIcon Icon="@Icons.Material.Rounded.Dashboard"
+                        Size="Size.Medium"
+                        Color="@GetIconColor("clerk/dashboard")" />
+                <MudText Typo="Typo.caption" Class="mt-1" Style="font-size: 0.65rem;">
+                    Dashboard
+                </MudText>
+            </MudButton>
+
+            @* Sales List *@
+            <MudButton Variant="Variant.Text"
+                      OnClick="@(() => Navigate("clerk/sales"))"
+                      Class="@GetNavItemClass("clerk/sales")"
+                      Style="flex-direction: column; padding: 8px 16px; min-width: 64px; text-transform: none;">
+                <MudIcon Icon="@Icons.Material.Rounded.PointOfSale"
+                        Size="Size.Medium"
+                        Color="@GetIconColor("clerk/sales")" />
+                <MudText Typo="Typo.caption" Class="mt-1" Style="font-size: 0.65rem;">
+                    Sales
+                </MudText>
+            </MudButton>
+
+            @* FAB - New Sale (Center, Elevated) *@
+            <div class="qdp-fab-container">
+                <MudFab Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       Size="Size.Large"
+                       OnClick="@(() => Navigate("clerk/sales/new"))"
+                       Class="qdp-bottom-nav-fab"
+                       aria-label="New Sale" />
+            </div>
+
+            @* Expenses *@
+            <MudButton Variant="Variant.Text"
+                      OnClick="@(() => Navigate("clerk/expenses"))"
+                      Class="@GetNavItemClass("clerk/expenses")"
+                      Style="flex-direction: column; padding: 8px 16px; min-width: 64px; text-transform: none;">
+                <MudIcon Icon="@Icons.Material.Rounded.Receipt"
+                        Size="Size.Medium"
+                        Color="@GetIconColor("clerk/expenses")" />
+                <MudText Typo="Typo.caption" Class="mt-1" Style="font-size: 0.65rem;">
+                    Expenses
+                </MudText>
+            </MudButton>
+
+            @* Reports *@
+            <MudButton Variant="Variant.Text"
+                      OnClick="@(() => Navigate("clerk/reports"))"
+                      Class="@GetNavItemClass("clerk/reports")"
+                      Style="flex-direction: column; padding: 8px 16px; min-width: 64px; text-transform: none;">
+                <MudIcon Icon="@Icons.Material.Rounded.Assessment"
+                        Size="Size.Medium"
+                        Color="@GetIconColor("clerk/reports")" />
+                <MudText Typo="Typo.caption" Class="mt-1" Style="font-size: 0.65rem;">
+                    Reports
+                </MudText>
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+</div>
+
+@code {
+    private string? _currentPath;
+
+    protected override void OnInitialized()
+    {
+        _currentPath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        _currentPath = NavigationManager.ToBaseRelativePath(e.Location);
+        StateHasChanged();
+    }
+
+    private void Navigate(string path)
+    {
+        NavigationManager.NavigateTo(path);
+    }
+
+    private string GetNavItemClass(string path)
+    {
+        var isActive = _currentPath?.StartsWith(path, StringComparison.OrdinalIgnoreCase) ?? false;
+        return isActive ? "qdp-bottom-nav-item-active" : "qdp-bottom-nav-item";
+    }
+
+    private Color GetIconColor(string path)
+    {
+        var isActive = _currentPath?.StartsWith(path, StringComparison.OrdinalIgnoreCase) ?? false;
+        return isActive ? Color.Primary : Color.Default;
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}
+
+<style>
+    /* Bottom Navigation Container - Only visible on mobile for Clerks */
+    .qdp-bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 1200;
+        display: block;
+    }
+
+    /* Hide on desktop (md breakpoint and above) */
+    @@media (min-width: 960px) {
+        .qdp-bottom-nav {
+            display: none;
+        }
+    }
+
+    .qdp-bottom-nav-container {
+        border-radius: 24px 24px 0 0 !important;
+        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+        border-top: 1px solid #e0e6ed;
+        box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.12) !important;
+        padding: 8px 0;
+        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); /* Safe area for iOS */
+    }
+
+    .qdp-bottom-nav-items {
+        height: 64px;
+        position: relative;
+    }
+
+    /* Navigation Item Styling */
+    .qdp-bottom-nav-item,
+    .qdp-bottom-nav-item-active {
+        transition: all 0.2s ease;
+        border-radius: 16px !important;
+        min-height: 56px !important;
+    }
+
+    .qdp-bottom-nav-item:hover {
+        background: rgba(21, 101, 192, 0.08) !important;
+    }
+
+    .qdp-bottom-nav-item-active {
+        background: linear-gradient(135deg, rgba(21, 101, 192, 0.12) 0%, rgba(13, 71, 161, 0.08) 100%) !important;
+    }
+
+    .qdp-bottom-nav-item-active .mud-button-label {
+        color: var(--mud-palette-primary) !important;
+    }
+
+    /* FAB Container - Elevated Above Nav Bar */
+    .qdp-fab-container {
+        position: absolute;
+        top: -28px;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .qdp-bottom-nav-fab {
+        box-shadow: 0 8px 24px rgba(21, 101, 192, 0.4) !important;
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%) !important;
+        width: 56px !important;
+        height: 56px !important;
+        border: 4px solid white;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .qdp-bottom-nav-fab:hover {
+        transform: scale(1.08);
+        box-shadow: 0 12px 32px rgba(21, 101, 192, 0.5) !important;
+    }
+
+    .qdp-bottom-nav-fab:active {
+        transform: scale(0.96);
+    }
+
+    .qdp-bottom-nav-fab .mud-icon-root {
+        font-size: 1.75rem !important;
+    }
+
+    /* Touch-friendly tap targets (min 44x44px) */
+    .qdp-bottom-nav-item button,
+    .qdp-bottom-nav-item-active button {
+        min-width: 64px;
+        min-height: 56px;
+        touch-action: manipulation;
+    }
+
+    /* Add padding to content when bottom nav is visible */
+    @@media (max-width: 959px) {
+        .qdp-main-content {
+            padding-bottom: 80px !important; /* Space for bottom nav */
+        }
+    }
+</style>

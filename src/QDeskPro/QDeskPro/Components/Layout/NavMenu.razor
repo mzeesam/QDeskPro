@@ -1,43 +1,408 @@
 @using MudBlazor
 
-<MudNavMenu>
-    <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Home</MudNavLink>
-    
+<MudNavMenu Class="qdp-nav-list">
+    @* Home - Always visible *@
+    <MudNavLink Href="/" Icon="@Icons.Material.Rounded.Home" IconColor="Color.Primary" Match="NavLinkMatch.All">
+        <span class="nav-label">Home</span>
+    </MudNavLink>
+
+    @* Administrator Navigation *@
     <AuthorizeView Roles="Administrator">
-        <MudNavGroup Title="Administration" Icon="@Icons.Material.Filled.AdminPanelSettings" Expanded="false">
-            <MudNavLink Href="admin/managers" Icon="@Icons.Material.Filled.SupervisorAccount">Managers</MudNavLink>
-            <MudNavLink Href="admin/quarries" Icon="@Icons.Material.Filled.Terrain">All Quarries</MudNavLink>
-            <MudNavLink Href="reports" Icon="@Icons.Material.Filled.Assessment">Reports</MudNavLink>
-        </MudNavGroup>
+        <div class="nav-section-header">
+            <MudText Typo="Typo.overline" Class="nav-section-title">Administration</MudText>
+        </div>
+
+        <MudNavLink Href="admin/managers" Icon="@Icons.Material.Rounded.SupervisorAccount" IconColor="Color.Secondary">
+            <span class="nav-label">Managers</span>
+        </MudNavLink>
+        <MudNavLink Href="admin/quarries" Icon="@Icons.Material.Rounded.Terrain" IconColor="Color.Tertiary">
+            <span class="nav-label">All Quarries</span>
+        </MudNavLink>
+        <MudNavLink Href="admin/reports" Icon="@Icons.Material.Rounded.Assessment" IconColor="Color.Info">
+            <span class="nav-label">Reports</span>
+        </MudNavLink>
+
+        <div class="nav-section-header mt-4">
+            <MudText Typo="Typo.overline" Class="nav-section-title">Master Data</MudText>
+        </div>
+
+        <MudNavLink Href="admin/products" Icon="@Icons.Material.Rounded.Inventory" IconColor="Color.Warning">
+            <span class="nav-label">Products</span>
+        </MudNavLink>
+        <MudNavLink Href="admin/layers" Icon="@Icons.Material.Rounded.Layers" IconColor="Color.Success">
+            <span class="nav-label">Layers</span>
+        </MudNavLink>
+        <MudNavLink Href="admin/brokers" Icon="@Icons.Material.Rounded.Groups" IconColor="Color.Secondary">
+            <span class="nav-label">Brokers</span>
+        </MudNavLink>
+        <MudNavLink Href="admin/prices" Icon="@Icons.Material.Rounded.AttachMoney" IconColor="Color.Success">
+            <span class="nav-label">Prices</span>
+        </MudNavLink>
     </AuthorizeView>
 
+    @* Manager Navigation *@
     <AuthorizeView Roles="Manager">
-        <MudNavLink Href="dashboard" Icon="@Icons.Material.Filled.Dashboard">Analytics</MudNavLink>
-        <MudNavLink Href="quarries" Icon="@Icons.Material.Filled.Terrain">My Quarries</MudNavLink>
-        <MudNavLink Href="users" Icon="@Icons.Material.Filled.People">Users</MudNavLink>
-        <MudNavLink Href="reports" Icon="@Icons.Material.Filled.Assessment">Reports</MudNavLink>
-        <MudNavGroup Title="Master Data" Icon="@Icons.Material.Filled.Settings" Expanded="false">
-            <MudNavLink Href="master-data/products" Icon="@Icons.Material.Filled.Inventory">Products</MudNavLink>
-            <MudNavLink Href="master-data/layers" Icon="@Icons.Material.Filled.Layers">Layers</MudNavLink>
-            <MudNavLink Href="master-data/brokers" Icon="@Icons.Material.Filled.Groups">Brokers</MudNavLink>
-            <MudNavLink Href="master-data/prices" Icon="@Icons.Material.Filled.AttachMoney">Prices</MudNavLink>
-        </MudNavGroup>
+        <div class="nav-section-header">
+            <MudText Typo="Typo.overline" Class="nav-section-title">Overview</MudText>
+        </div>
+
+        <MudNavLink Href="manager/dashboard" Icon="@Icons.Material.Rounded.Dashboard" IconColor="Color.Primary">
+            <span class="nav-label">Analytics</span>
+            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="nav-badge">New</MudChip>
+        </MudNavLink>
+        <MudNavLink Href="manager/quarries" Icon="@Icons.Material.Rounded.Terrain" IconColor="Color.Tertiary">
+            <span class="nav-label">My Quarries</span>
+        </MudNavLink>
+        <MudNavLink Href="manager/users" Icon="@Icons.Material.Rounded.People" IconColor="Color.Secondary">
+            <span class="nav-label">Users</span>
+        </MudNavLink>
+        <MudNavLink Href="manager/reports" Icon="@Icons.Material.Rounded.Assessment" IconColor="Color.Info">
+            <span class="nav-label">Reports</span>
+        </MudNavLink>
+
+        <div class="nav-section-header mt-4">
+            <MudText Typo="Typo.overline" Class="nav-section-title">Master Data</MudText>
+        </div>
+
+        <MudNavLink Href="manager/products" Icon="@Icons.Material.Rounded.Inventory" IconColor="Color.Warning">
+            <span class="nav-label">Products</span>
+        </MudNavLink>
+        <MudNavLink Href="manager/layers" Icon="@Icons.Material.Rounded.Layers" IconColor="Color.Success">
+            <span class="nav-label">Layers</span>
+        </MudNavLink>
+        <MudNavLink Href="manager/brokers" Icon="@Icons.Material.Rounded.Groups" IconColor="Color.Secondary">
+            <span class="nav-label">Brokers</span>
+        </MudNavLink>
+        <MudNavLink Href="manager/prices" Icon="@Icons.Material.Rounded.AttachMoney" IconColor="Color.Success">
+            <span class="nav-label">Prices</span>
+        </MudNavLink>
     </AuthorizeView>
 
+    @* Clerk Navigation *@
     <AuthorizeView Roles="Clerk">
-        <MudNavLink Href="clerk/dashboard" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
-        <MudNavLink Href="clerk/sales/new" Icon="@Icons.Material.Filled.AddShoppingCart">New Sale</MudNavLink>
-        <MudNavLink Href="clerk/expenses" Icon="@Icons.Material.Filled.Receipt">Expenses</MudNavLink>
-        <MudNavLink Href="clerk/banking" Icon="@Icons.Material.Filled.AccountBalance">Banking</MudNavLink>
-        <MudNavLink Href="clerk/fuel" Icon="@Icons.Material.Filled.LocalGasStation">Fuel Usage</MudNavLink>
-        <MudNavLink Href="clerk/reports" Icon="@Icons.Material.Filled.Assessment">Reports</MudNavLink>
+        <div class="nav-section-header">
+            <MudText Typo="Typo.overline" Class="nav-section-title">Daily Operations</MudText>
+        </div>
+
+        <MudNavLink Href="clerk/dashboard" Icon="@Icons.Material.Rounded.Dashboard" IconColor="Color.Primary">
+            <span class="nav-label">Dashboard</span>
+        </MudNavLink>
+
+        @* Highlighted New Sale Button *@
+        <MudNavLink Href="clerk/sales/new" Class="nav-link-primary">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                <div class="nav-icon-highlight">
+                    <MudIcon Icon="@Icons.Material.Rounded.AddShoppingCart" Size="Size.Small" />
+                </div>
+                <span class="nav-label font-weight-semibold">New Sale</span>
+            </MudStack>
+        </MudNavLink>
+
+        <MudNavLink Href="clerk/sales" Icon="@Icons.Material.Rounded.ShoppingCart" IconColor="Color.Info">
+            <span class="nav-label">My Sales</span>
+        </MudNavLink>
+
+        <MudNavLink Href="clerk/expenses" Icon="@Icons.Material.Rounded.Receipt" IconColor="Color.Warning">
+            <span class="nav-label">Expenses</span>
+        </MudNavLink>
+        <MudNavLink Href="clerk/banking" Icon="@Icons.Material.Rounded.AccountBalance" IconColor="Color.Tertiary">
+            <span class="nav-label">Banking</span>
+        </MudNavLink>
+        <MudNavLink Href="clerk/fuel" Icon="@Icons.Material.Rounded.LocalGasStation" IconColor="Color.Error">
+            <span class="nav-label">Fuel Usage</span>
+        </MudNavLink>
+
+        <div class="nav-section-header mt-4">
+            <MudText Typo="Typo.overline" Class="nav-section-title">Reporting</MudText>
+        </div>
+
+        <MudNavLink Href="clerk/reports" Icon="@Icons.Material.Rounded.Assessment" IconColor="Color.Info">
+            <span class="nav-label">Daily Report</span>
+        </MudNavLink>
     </AuthorizeView>
 
+    @* AI Assistant - Available to Manager and Administrator only *@
+    <AuthorizeView Roles="Manager, Administrator">
+        <Authorized>
+            <div class="nav-section-header mt-4">
+                <MudText Typo="Typo.overline" Class="nav-section-title">AI Assistant</MudText>
+            </div>
+
+            <MudNavLink Href="ai-chat" Class="nav-link-ai">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <div class="nav-icon-ai">
+                        <MudIcon Icon="@Icons.Material.Rounded.SmartToy" Size="Size.Small" />
+                    </div>
+                    <span class="nav-label font-weight-semibold">AI Chat</span>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="nav-badge">AI</MudChip>
+                </MudStack>
+            </MudNavLink>
+        </Authorized>
+    </AuthorizeView>
+
+    @* Not Authorized - Login/Register *@
     <AuthorizeView>
         <NotAuthorized>
-            <MudNavLink Href="Account/Login" Icon="@Icons.Material.Filled.Login">Login</MudNavLink>
-            <MudNavLink Href="Account/Register" Icon="@Icons.Material.Filled.PersonAdd">Register</MudNavLink>
+            <div class="nav-section-header mt-4">
+                <MudText Typo="Typo.overline" Class="nav-section-title">Account</MudText>
+            </div>
+
+            <div class="qdp-account-link" @onclick="NavigateToLogin" style="cursor: pointer;">
+                <div class="account-nav-item">
+                    <MudIcon Icon="@Icons.Material.Rounded.Login" Color="Color.Primary" Class="account-nav-icon" />
+                    <span class="nav-label">Login</span>
+                </div>
+            </div>
+            <div class="qdp-account-link" @onclick="NavigateToRegister" style="cursor: pointer;">
+                <div class="account-nav-item">
+                    <MudIcon Icon="@Icons.Material.Rounded.PersonAdd" Color="Color.Success" class="account-nav-icon" />
+                    <span class="nav-label">Register</span>
+                </div>
+            </div>
         </NotAuthorized>
     </AuthorizeView>
 </MudNavMenu>
 
+<style>
+    /* Navigation List Container */
+    .qdp-nav-list {
+        padding: 12px 16px;
+    }
+
+    /* Section Headers */
+    .nav-section-header {
+        padding: 16px 12px 8px 12px;
+    }
+
+    .nav-section-title {
+        color: #90a4ae !important;
+        font-weight: 700 !important;
+        font-size: 0.65rem !important;
+        letter-spacing: 0.12em !important;
+        text-transform: uppercase;
+    }
+
+    /* Navigation Links */
+    .qdp-nav-list .mud-nav-link {
+        border-radius: 12px !important;
+        margin-bottom: 4px;
+        padding: 12px 16px !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .qdp-nav-list .mud-nav-link::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%) scaleY(0);
+        width: 4px;
+        height: 60%;
+        background: linear-gradient(180deg, #1565C0 0%, #0D47A1 100%);
+        border-radius: 0 4px 4px 0;
+        transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .qdp-nav-list .mud-nav-link:hover {
+        background: linear-gradient(90deg, rgba(21, 101, 192, 0.08) 0%, rgba(21, 101, 192, 0.04) 100%) !important;
+        transform: translateX(4px);
+    }
+
+    .qdp-nav-list .mud-nav-link:hover::before {
+        transform: translateY(-50%) scaleY(1);
+    }
+
+    /* Active State */
+    .qdp-nav-list .mud-nav-link.active,
+    .qdp-nav-list .mud-nav-link-active {
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%) !important;
+        color: white !important;
+        box-shadow: 0 4px 15px rgba(21, 101, 192, 0.35);
+        transform: translateX(0);
+    }
+
+    .qdp-nav-list .mud-nav-link.active::before,
+    .qdp-nav-list .mud-nav-link-active::before {
+        display: none;
+    }
+
+    .qdp-nav-list .mud-nav-link.active .mud-nav-link-icon,
+    .qdp-nav-list .mud-nav-link-active .mud-nav-link-icon,
+    .qdp-nav-list .mud-nav-link.active .nav-label,
+    .qdp-nav-list .mud-nav-link-active .nav-label {
+        color: white !important;
+    }
+
+    .qdp-nav-list .mud-nav-link.active .nav-badge,
+    .qdp-nav-list .mud-nav-link-active .nav-badge {
+        background: rgba(255, 255, 255, 0.2) !important;
+        color: white !important;
+    }
+
+    /* Navigation Label */
+    .nav-label {
+        font-weight: 500;
+        font-size: 0.9rem;
+        margin-left: 4px;
+    }
+
+    /* Navigation Badge */
+    .nav-badge {
+        margin-left: auto;
+        font-size: 0.65rem !important;
+        height: 20px !important;
+        font-weight: 600;
+    }
+
+    /* Highlighted Primary Link (New Sale) */
+    .nav-link-primary {
+        background: linear-gradient(135deg, rgba(21, 101, 192, 0.1) 0%, rgba(13, 71, 161, 0.05) 100%) !important;
+        border: 1px dashed rgba(21, 101, 192, 0.3) !important;
+    }
+
+    .nav-link-primary:hover {
+        background: linear-gradient(135deg, rgba(21, 101, 192, 0.15) 0%, rgba(13, 71, 161, 0.1) 100%) !important;
+        border-color: rgba(21, 101, 192, 0.5) !important;
+    }
+
+    .nav-link-primary.active,
+    .nav-link-primary.mud-nav-link-active {
+        border: none !important;
+    }
+
+    .nav-icon-highlight {
+        width: 32px;
+        height: 32px;
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        box-shadow: 0 2px 8px rgba(21, 101, 192, 0.35);
+    }
+
+    .nav-link-primary.active .nav-icon-highlight,
+    .nav-link-primary.mud-nav-link-active .nav-icon-highlight {
+        background: rgba(255, 255, 255, 0.2);
+        box-shadow: none;
+    }
+
+    /* Icon Styling */
+    .qdp-nav-list .mud-nav-link-icon {
+        margin-right: 12px;
+        transition: transform 0.2s ease;
+    }
+
+    .qdp-nav-list .mud-nav-link:hover .mud-nav-link-icon {
+        transform: scale(1.1);
+    }
+
+    /* Nav Group Styling */
+    .qdp-nav-list .mud-nav-group {
+        margin-bottom: 4px;
+    }
+
+    .qdp-nav-list .mud-nav-group .mud-nav-group-title {
+        border-radius: 12px !important;
+        padding: 12px 16px !important;
+        font-weight: 500;
+    }
+
+    .qdp-nav-list .mud-nav-group .mud-nav-group-title:hover {
+        background: rgba(21, 101, 192, 0.08) !important;
+    }
+
+    .qdp-nav-list .mud-nav-group .mud-nav-group-items {
+        padding-left: 16px;
+    }
+
+    .qdp-nav-list .mud-nav-group .mud-nav-group-items .mud-nav-link {
+        padding: 10px 16px !important;
+        font-size: 0.875rem;
+    }
+
+    /* AI Link Styling */
+    .nav-link-ai {
+        background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(56, 142, 60, 0.05) 100%) !important;
+        border: 1px dashed rgba(76, 175, 80, 0.3) !important;
+    }
+
+    .nav-link-ai:hover {
+        background: linear-gradient(135deg, rgba(76, 175, 80, 0.15) 0%, rgba(56, 142, 60, 0.1) 100%) !important;
+        border-color: rgba(76, 175, 80, 0.5) !important;
+    }
+
+    .nav-link-ai.active,
+    .nav-link-ai.mud-nav-link-active {
+        background: linear-gradient(135deg, #43A047 0%, #2E7D32 100%) !important;
+        border: none !important;
+    }
+
+    .nav-icon-ai {
+        width: 32px;
+        height: 32px;
+        background: linear-gradient(135deg, #43A047 0%, #2E7D32 100%);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        box-shadow: 0 2px 8px rgba(76, 175, 80, 0.35);
+    }
+
+    .nav-link-ai.active .nav-icon-ai,
+    .nav-link-ai.mud-nav-link-active .nav-icon-ai {
+        background: rgba(255, 255, 255, 0.2);
+        box-shadow: none;
+    }
+
+    /* Account Links - For SSR pages */
+    .qdp-account-link {
+        text-decoration: none !important;
+        color: inherit !important;
+        display: block;
+    }
+
+    .account-nav-item {
+        display: flex;
+        align-items: center;
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin-bottom: 4px;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+    }
+
+    .account-nav-item:hover {
+        background: linear-gradient(90deg, rgba(21, 101, 192, 0.08) 0%, rgba(21, 101, 192, 0.04) 100%);
+        transform: translateX(4px);
+    }
+
+    .account-nav-icon {
+        margin-right: 12px;
+    }
+
+    /* Responsive adjustments */
+    @@media (max-width: 960px) {
+        .nav-badge {
+            display: none;
+        }
+    }
+</style>
+
+@code {
+    [Inject] private NavigationManager NavigationManager { get; set; } = default!;
+
+    private void NavigateToLogin()
+    {
+        NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
+    }
+
+    private void NavigateToRegister()
+    {
+        NavigationManager.NavigateTo("/Account/Register", forceLoad: true);
+    }
+}

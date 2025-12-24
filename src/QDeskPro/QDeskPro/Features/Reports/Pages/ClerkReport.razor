@@ -1,0 +1,671 @@
+@page "/clerk/reports"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using QDeskPro.Features.Reports.Services
+@using QDeskPro.Features.Admin.Services
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Data
+@attribute [Authorize(Roles = "Clerk")]
+@rendermode InteractiveServer
+@inject ReportService ReportService
+@inject ReportExportService ExportService
+@inject UserService UserService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@inject AppDbContext DbContext
+
+<PageTitle>Sales Report - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudText Typo="Typo.h4" Class="font-weight-bold mb-4">
+        <MudIcon Icon="@Icons.Material.Rounded.Assessment" Class="mr-2" />
+        Sales Report
+    </MudText>
+
+    @* Date Selection *@
+    <MudPaper Class="pa-4 mb-4" Elevation="0">
+        <MudGrid>
+            <MudItem xs="12" sm="8">
+                <MudDatePicker @bind-Date="_selectedDate"
+                               Label="Report Date"
+                               Variant="Variant.Outlined"
+                               DateFormat="dd/MM/yyyy"
+                               MinDate="DateTime.Today.AddDays(-5)"
+                               MaxDate="DateTime.Today"
+                               HelperText="Select a date (up to 5 days back)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           FullWidth="true"
+                           OnClick="GenerateReport"
+                           Disabled="_generating"
+                           Style="height: 56px;">
+                    @if (_generating)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Get Report
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_reportGenerated && _report != null)
+    {
+        @* Report Header *@
+        <MudPaper Class="pa-4 mb-4 report-header" Elevation="0">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <div>
+                    <MudText Typo="Typo.h5" Class="font-weight-bold">@_report.ReportTitle</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Generated on @DateTime.Now.ToString("dd/MM/yyyy hh:mm tt")</MudText>
+                </div>
+                <MudStack Row="true" Spacing="2">
+                    <MudMenu AnchorOrigin="Origin.BottomRight"
+                             TransformOrigin="Origin.TopRight"
+                             ActivationEvent="@MouseEvent.LeftClick">
+                        <ActivatorContent>
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Surface"
+                                       StartIcon="@Icons.Material.Rounded.Share"
+                                       EndIcon="@Icons.Material.Rounded.ArrowDropDown"
+                                       Style="background-color: white; color: #1976D2; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                                Export
+                            </MudButton>
+                        </ActivatorContent>
+                        <ChildContent>
+                            <MudMenuItem Icon="@Icons.Material.Rounded.TextFields" OnClick="ShareReportText">
+                                Share as Text (WhatsApp)
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Rounded.PictureAsPdf" OnClick="DownloadPdf">
+                                Download PDF
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Rounded.TableChart" OnClick="DownloadExcel">
+                                Download Excel
+                            </MudMenuItem>
+                        </ChildContent>
+                    </MudMenu>
+                </MudStack>
+            </MudStack>
+        </MudPaper>
+
+        @* Report Summary *@
+        <MudPaper Class="pa-4 mb-4 summary-card" Elevation="0">
+            <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">Report Summary</MudText>
+            <MudGrid>
+                @if (_report.IsSingleDay)
+                {
+                    <MudItem xs="12" sm="6" md="4">
+                        <div class="summary-item">
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Opening Balance (B/F)</MudText>
+                            <MudText Typo="Typo.h6" Class="font-weight-medium">KES @_report.OpeningBalance.ToString("N0")</MudText>
+                        </div>
+                    </MudItem>
+                }
+                <MudItem xs="12" sm="6" md="4">
+                    <div class="summary-item">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Quantity</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-medium">@_report.TotalQuantity.ToString("N0") pcs</MudText>
+                    </div>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <div class="summary-item">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Sales</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-medium" Color="Color.Success">KES @_report.TotalSales.ToString("N0")</MudText>
+                    </div>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <div class="summary-item">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Commissions</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-medium">KES @_report.Commission.ToString("N0")</MudText>
+                    </div>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <div class="summary-item">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Loaders Fee</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-medium">KES @_report.LoadersFee.ToString("N0")</MudText>
+                    </div>
+                </MudItem>
+                @if (_report.LandRateVisible)
+                {
+                    <MudItem xs="12" sm="6" md="4">
+                        <div class="summary-item">
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Land Rate</MudText>
+                            <MudText Typo="Typo.h6" Class="font-weight-medium">KES @_report.LandRateFee.ToString("N0")</MudText>
+                        </div>
+                    </MudItem>
+                }
+                <MudItem xs="12" sm="6" md="4">
+                    <div class="summary-item">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Total Expenses</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-medium" Color="Color.Error">KES @_report.TotalExpenses.ToString("N0")</MudText>
+                    </div>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <div class="summary-item">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Earnings</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-medium">KES @_report.Earnings.ToString("N0")</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Style="opacity: 0.7; font-size: 0.7rem;">
+                            Sales - Total Expenses
+                        </MudText>
+                    </div>
+                </MudItem>
+                @if (_report.UnpaidOrders)
+                {
+                    <MudItem xs="12" sm="6" md="4">
+                        <div class="summary-item unpaid-highlight">
+                            <MudText Typo="Typo.body2" Color="Color.Error">Unpaid Orders</MudText>
+                            <MudText Typo="Typo.h6" Class="font-weight-bold" Color="Color.Error">KES @_report.Unpaid.ToString("N0")</MudText>
+                        </div>
+                    </MudItem>
+                }
+                <MudItem xs="12" sm="6" md="4">
+                    <div class="summary-item">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Net Income</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-medium">KES @_report.NetEarnings.ToString("N0")</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Style="opacity: 0.7; font-size: 0.7rem;">
+                            (Earnings + Opening Balance) - Unpaid Orders
+                        </MudText>
+                    </div>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <div class="summary-item banked-highlight">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            <MudIcon Icon="@Icons.Material.Rounded.AccountBalance" Size="Size.Medium" Style="color: #1976D2;" />
+                            <MudText Typo="Typo.body1" Class="font-weight-bold" Style="color: #1976D2;">BANKED</MudText>
+                        </div>
+                        <MudText Typo="Typo.h4" Class="font-weight-bold" Style="color: #1976D2; letter-spacing: -0.5px;">
+                            KES @_report.Banked.ToString("N0")
+                        </MudText>
+                        <MudText Typo="Typo.caption" Style="color: #4CAF50; font-weight: 600; margin-top: 4px;">
+                            <MudIcon Icon="@Icons.Material.Rounded.TrendingUp" Size="Size.Small" Style="vertical-align: middle;" />
+                            Banking Performance
+                        </MudText>
+                    </div>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <div class="summary-item closing-balance">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="font-weight-medium">Closing Balance (C/H)</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-medium">
+                            KES @_report.CashInHand.ToString("N0")
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Style="opacity: 0.6; font-size: 0.65rem;">
+                            Net Income - Banked
+                        </MudText>
+                    </div>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @* Report Sections *@
+        <MudExpansionPanels MultiExpansion="true">
+            @* Sales Section *@
+            <MudExpansionPanel Text="@($"Sales ({_report.Sales.Count} orders)")" Icon="@Icons.Material.Rounded.ShoppingCart" IsInitiallyExpanded="true">
+                @if (!_report.Sales.Any())
+                {
+                    <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info">No sales recorded</MudAlert>
+                }
+                else
+                {
+                    <MudTable Items="@_report.Sales" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+                        <HeaderContent>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Vehicle</MudTh>
+                            <MudTh>Product</MudTh>
+                            <MudTh Style="text-align: right">Qty</MudTh>
+                            <MudTh Style="text-align: right">Amount</MudTh>
+                            <MudTh>Status</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Date">@context.SaleDate?.ToString("dd/MM/yy")</MudTd>
+                            <MudTd DataLabel="Vehicle">@context.VehicleRegistration</MudTd>
+                            <MudTd DataLabel="Product">@context.Product?.ProductName</MudTd>
+                            <MudTd DataLabel="Qty" Style="text-align: right">@context.Quantity.ToString("N0")</MudTd>
+                            <MudTd DataLabel="Amount" Style="text-align: right" Class="@(context.PaymentStatus != "Paid" ? "unpaid-amount" : "")">
+                                <MudText Typo="Typo.body2" Color="@(context.PaymentStatus != "Paid" ? Color.Error : Color.Primary)" Class="font-weight-medium">
+                                    KES @context.GrossSaleAmount.ToString("N1")
+                                </MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Status">
+                                @if (context.PaymentStatus == "Paid")
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success">Paid</MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Error">Not Paid</MudChip>
+                                }
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudExpansionPanel>
+
+            @* Expenses Section *@
+            <MudExpansionPanel Text="@($"Expenses ({_report.ExpenseItems.Count} items)")" Icon="@Icons.Material.Rounded.Receipt" IsInitiallyExpanded="true">
+                @if (!_report.ExpenseItems.Any())
+                {
+                    <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info">No expenses recorded</MudAlert>
+                }
+                else
+                {
+                    <MudTable Items="@_report.ExpenseItems" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+                        <HeaderContent>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Description</MudTh>
+                            <MudTh>Type</MudTh>
+                            <MudTh Style="text-align: right">Amount</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Date">@context.ItemDate.ToString("dd/MM/yy")</MudTd>
+                            <MudTd DataLabel="Description">
+                                <MudText Typo="Typo.body2">@context.LineItem</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Type">
+                                <MudChip T="string" Size="Size.Small" Color="@GetExpenseTypeColor(context.LineType)">
+                                    @GetExpenseTypeLabel(context.LineType)
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Amount" Style="text-align: right">
+                                <MudText Typo="Typo.body2" Class="font-weight-medium">KES @context.Amount.ToString("N1")</MudText>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudExpansionPanel>
+
+            @* Fuel Usage Section *@
+            <MudExpansionPanel Text="@($"Fuel Usage ({_report.FuelUsages.Count} records)")" Icon="@Icons.Material.Rounded.LocalGasStation">
+                @if (!_report.FuelUsages.Any())
+                {
+                    <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info">No fuel usage recorded</MudAlert>
+                }
+                else
+                {
+                    <MudTable Items="@_report.FuelUsages" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+                        <HeaderContent>
+                            <MudTh>Date</MudTh>
+                            <MudTh Style="text-align: right">Old Stock</MudTh>
+                            <MudTh Style="text-align: right">New Stock</MudTh>
+                            <MudTh Style="text-align: right">Total</MudTh>
+                            <MudTh Style="text-align: right">Machines</MudTh>
+                            <MudTh Style="text-align: right">W/Loaders</MudTh>
+                            <MudTh Style="text-align: right">Balance</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Date">@context.UsageDate?.ToString("dd/MM/yy")</MudTd>
+                            <MudTd DataLabel="Old Stock" Style="text-align: right">@context.OldStock.ToString("N1")</MudTd>
+                            <MudTd DataLabel="New Stock" Style="text-align: right">@context.NewStock.ToString("N1")</MudTd>
+                            <MudTd DataLabel="Total" Style="text-align: right" Class="font-weight-medium">@context.TotalStock.ToString("N1")</MudTd>
+                            <MudTd DataLabel="Machines" Style="text-align: right">@context.MachinesLoaded.ToString("N1")</MudTd>
+                            <MudTd DataLabel="W/Loaders" Style="text-align: right">@context.WheelLoadersLoaded.ToString("N1")</MudTd>
+                            <MudTd DataLabel="Balance" Style="text-align: right">
+                                <MudText Typo="Typo.body2" Color="Color.Success" Class="font-weight-bold">@context.Balance.ToString("N1")</MudText>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudExpansionPanel>
+
+            @* Banking Section *@
+            <MudExpansionPanel Text="@($"Banking ({_report.Bankings.Count} records)")" Icon="@Icons.Material.Rounded.AccountBalance">
+                @if (!_report.Bankings.Any())
+                {
+                    <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info">No banking records</MudAlert>
+                }
+                else
+                {
+                    <MudTable Items="@_report.Bankings" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+                        <HeaderContent>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Description</MudTh>
+                            <MudTh>Reference</MudTh>
+                            <MudTh Style="text-align: right">Amount</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Date">@context.BankingDate?.ToString("dd/MM/yy")</MudTd>
+                            <MudTd DataLabel="Description">@context.Item</MudTd>
+                            <MudTd DataLabel="Reference">
+                                <MudText Typo="Typo.caption">@context.RefCode</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Amount" Style="text-align: right">
+                                <MudText Typo="Typo.body2" Class="font-weight-medium">KES @context.AmountBanked.ToString("N1")</MudText>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+    }
+    else if (!_reportGenerated)
+    {
+        <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info">
+            Select a date and click "Get Report" to generate your daily sales report
+        </MudAlert>
+    }
+</MudContainer>
+
+<style>
+    .report-header {
+        border-radius: 20px;
+        background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%);
+        color: white;
+        box-shadow: 0 8px 24px rgba(25, 118, 210, 0.25);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .report-header:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 32px rgba(25, 118, 210, 0.35);
+    }
+
+    .summary-card {
+        border-radius: 20px;
+        border: 1px solid #E3F2FD;
+        background: linear-gradient(to bottom, #ffffff 0%, #f8fafb 100%);
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    }
+
+    .summary-item {
+        padding: 20px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border: 1px solid #e2e8f0;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .summary-item::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, #1976D2 0%, #42A5F5 100%);
+        transform: scaleX(0);
+        transition: transform 0.3s ease;
+    }
+
+    .summary-item:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(25, 118, 210, 0.15);
+        border-color: #1976D2;
+    }
+
+    .summary-item:hover::before {
+        transform: scaleX(1);
+    }
+
+    .banked-highlight {
+        background: linear-gradient(135deg, rgba(25, 118, 210, 0.18) 0%, rgba(21, 101, 192, 0.12) 100%);
+        border: 3px solid #1976D2;
+        box-shadow: 0 8px 32px rgba(25, 118, 210, 0.35);
+        position: relative;
+        overflow: visible;
+    }
+
+    .banked-highlight::before {
+        background: linear-gradient(90deg, #1976D2 0%, #0D47A1 100%);
+        height: 5px;
+        transform: scaleX(1);
+    }
+
+    .banked-highlight::after {
+        content: '⭐';
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        font-size: 1.5rem;
+        animation: pulse 2s ease-in-out infinite;
+    }
+
+    @@keyframes pulse {
+        0%, 100% {
+            opacity: 0.6;
+            transform: scale(1);
+        }
+        50% {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+    }
+
+    .banked-highlight:hover {
+        box-shadow: 0 12px 48px rgba(25, 118, 210, 0.45);
+        transform: translateY(-8px) scale(1.02);
+        border-color: #0D47A1;
+    }
+
+    .closing-balance {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border: 1px solid #cbd5e1;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    .closing-balance::before {
+        background: linear-gradient(90deg, #94a3b8 0%, #64748b 100%);
+        height: 2px;
+    }
+
+    .closing-balance:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+    }
+
+    .unpaid-highlight {
+        background: linear-gradient(135deg, rgba(244, 67, 54, 0.12) 0%, rgba(244, 67, 54, 0.06) 100%);
+        border: 2px solid #F44336;
+        box-shadow: 0 4px 16px rgba(244, 67, 54, 0.15);
+    }
+
+    .unpaid-highlight::before {
+        background: linear-gradient(90deg, #F44336 0%, #D32F2F 100%);
+    }
+
+    .unpaid-amount {
+        background: linear-gradient(135deg, rgba(244, 67, 54, 0.1) 0%, rgba(244, 67, 54, 0.05) 100%);
+        border-left: 4px solid #F44336;
+    }
+</style>
+
+@code {
+    private DateTime? _selectedDate = DateTime.Today;
+    private bool _generating = false;
+    private bool _reportGenerated = false;
+    private string _userId = "";
+    private string _quarryId = "";
+    private ClerkReportData? _report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get user info from auth state
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+
+                // Get user's quarry context from database
+                var userContext = await UserService.GetUserQuarryContextAsync(_userId);
+
+                if (userContext != null)
+                {
+                    _quarryId = userContext.QuarryId;
+                }
+                else
+                {
+                    Snackbar.Add("No quarry assigned to your account. Please contact your manager.", Severity.Warning);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error initializing: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task GenerateReport()
+    {
+        if (!_selectedDate.HasValue)
+        {
+            Snackbar.Add("Please select a date", Severity.Warning);
+            return;
+        }
+
+        _generating = true;
+        _reportGenerated = false;
+
+        try
+        {
+            // Use the same date for both from and to (single day report)
+            _report = await ReportService.GenerateClerkReportAsync(
+                _selectedDate.Value,
+                _selectedDate.Value,
+                _quarryId,
+                _userId
+            );
+
+            _reportGenerated = true;
+            Snackbar.Add("Report generated successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _generating = false;
+        }
+    }
+
+    private Color GetExpenseTypeColor(string lineType)
+    {
+        return lineType switch
+        {
+            "Commission Expense" => Color.Warning,
+            "Loaders Fee Expense" => Color.Info,
+            "Land Rate Fee Expense" => Color.Tertiary,
+            "User Expense" => Color.Default,
+            _ => Color.Default
+        };
+    }
+
+    private string GetExpenseTypeLabel(string lineType)
+    {
+        return lineType switch
+        {
+            "Commission Expense" => "Commission",
+            "Loaders Fee Expense" => "Loaders Fee",
+            "Land Rate Fee Expense" => "Land Rate",
+            "User Expense" => "Manual",
+            _ => "Other"
+        };
+    }
+
+    private async Task ShareReportText()
+    {
+        if (_report == null)
+            return;
+
+        try
+        {
+            // Get daily notes
+            var dailyNotes = await GetDailyNotesAsync();
+
+            // Build PDF download URL with quarryId and userId parameters
+            var pdfUrl = NavigationManager.ToAbsoluteUri(
+                $"/api/reports/clerk/pdf?fromDate={_report.FromDate:yyyy-MM-dd}&toDate={_report.ToDate:yyyy-MM-dd}&quarryId={_quarryId}&userId={_userId}").ToString();
+
+            // Build markdown report text
+            var reportText = ExportService.GenerateMarkdownReport(_report, dailyNotes, pdfUrl);
+
+            // Use Web Share API if available
+            await JSRuntime.InvokeVoidAsync("navigator.share", new
+            {
+                title = $"Sales Report - {_report.ReportTitle}",
+                text = reportText
+            });
+        }
+        catch (Exception)
+        {
+            // Fallback: Copy to clipboard
+            try
+            {
+                var dailyNotes = await GetDailyNotesAsync();
+                var pdfUrl = NavigationManager.ToAbsoluteUri(
+                    $"/api/reports/clerk/pdf?fromDate={_report.FromDate:yyyy-MM-dd}&toDate={_report.ToDate:yyyy-MM-dd}&quarryId={_quarryId}&userId={_userId}").ToString();
+                var reportText = ExportService.GenerateMarkdownReport(_report, dailyNotes, pdfUrl);
+
+                await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", reportText);
+                Snackbar.Add("Report copied to clipboard", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error sharing report: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+
+    private void DownloadPdf()
+    {
+        if (_report == null)
+            return;
+
+        try
+        {
+            var url = $"/api/reports/clerk/pdf?fromDate={_report.FromDate:yyyy-MM-dd}&toDate={_report.ToDate:yyyy-MM-dd}&quarryId={_quarryId}&userId={_userId}";
+            NavigationManager.NavigateTo(url, forceLoad: true);
+            Snackbar.Add("Generating PDF...", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error downloading PDF: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void DownloadExcel()
+    {
+        if (_report == null)
+            return;
+
+        try
+        {
+            var url = $"/api/reports/clerk/excel?fromDate={_report.FromDate:yyyy-MM-dd}&toDate={_report.ToDate:yyyy-MM-dd}&quarryId={_quarryId}&userId={_userId}";
+            NavigationManager.NavigateTo(url, forceLoad: true);
+            Snackbar.Add("Generating Excel...", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error downloading Excel: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task<string?> GetDailyNotesAsync()
+    {
+        if (_report == null || !_report.IsSingleDay)
+            return null;
+
+        try
+        {
+            var dateStamp = _report.FromDate.ToString("yyyyMMdd");
+            var note = await DbContext.DailyNotes
+                .Where(n => n.DateStamp == dateStamp)
+                .Where(n => n.QId == _quarryId)
+                .Where(n => n.IsActive)
+                .FirstOrDefaultAsync();
+
+            return note?.Notes;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+}

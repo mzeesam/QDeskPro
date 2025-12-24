@@ -1,0 +1,338 @@
+@page "/clerk/dashboard"
+@using Microsoft.AspNetCore.Authorization
+@using QDeskPro.Features.Dashboard.Services
+@using QDeskPro.Features.Admin.Services
+@using QDeskPro.Domain.Entities
+@attribute [Authorize(Roles = "Clerk")]
+@rendermode InteractiveServer
+@inject DashboardService DashboardService
+@inject UserService UserService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+
+<PageTitle>Dashboard - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    @if (_loading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else
+    {
+        @* User Profile Section *@
+        <MudPaper Class="pa-6 mb-4 qdp-card-gradient" Elevation="0">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="4">
+                <MudAvatar Color="Color.Primary" Size="Size.Large" Class="qdp-avatar-shadow">
+                    <MudIcon Icon="@Icons.Material.Rounded.Person" Size="Size.Large" />
+                </MudAvatar>
+                <div>
+                    <MudText Typo="Typo.h5" Class="font-weight-bold">@_userFullName</MudText>
+                    <MudText Typo="Typo.body2" Style="opacity: 0.85;">@_userPosition</MudText>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mt-1">
+                        <MudIcon Icon="@Icons.Material.Rounded.Terrain" Size="Size.Small" Style="color: rgba(255, 255, 255, 0.9);" />
+                        <MudText Typo="Typo.caption" Class="font-weight-medium" Style="opacity: 0.9;">@_quarryName</MudText>
+                    </MudStack>
+                </div>
+            </MudStack>
+        </MudPaper>
+
+        @* Current Date and Refresh Section *@
+        <MudPaper Class="pa-4 mb-4" Elevation="0">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Rounded.CalendarToday" Color="Color.Primary" />
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Today</MudText>
+                        <MudText Typo="Typo.body1" Class="font-weight-bold">@DateTime.Today.ToString("dddd, dd MMMM yyyy")</MudText>
+                    </div>
+                </MudStack>
+                <MudIconButton Icon="@Icons.Material.Rounded.Refresh"
+                              Color="Color.Primary"
+                              OnClick="RefreshDashboard"
+                              Title="Refresh Dashboard"
+                              Size="Size.Medium" />
+            </MudStack>
+        </MudPaper>
+
+        @* Balance B/F *@
+        <MudPaper Class="pa-4 mb-4" Elevation="0">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.subtitle1" Class="font-weight-medium">Balance B/F</MudText>
+                <MudText Typo="Typo.h6" Color="Color.Primary" Class="font-weight-bold">
+                    KES @_stats.OpeningBalance.ToString("N0")
+                </MudText>
+            </MudStack>
+        </MudPaper>
+
+        @* Today's Summary Cards *@
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4 qdp-stat-card" Elevation="0">
+                    <MudStack Spacing="2">
+                        <div class="d-flex align-center justify-space-between">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Sales Qty</MudText>
+                            <MudIcon Icon="@Icons.Material.Rounded.Inventory" Color="Color.Primary" />
+                        </div>
+                        <MudText Typo="Typo.h5" Class="font-weight-bold">
+                            @_stats.TotalQuantity.ToString("N0")
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true">pcs</MudText>
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4 qdp-stat-card" Elevation="0">
+                    <MudStack Spacing="2">
+                        <div class="d-flex align-center justify-space-between">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Sales Amount</MudText>
+                            <MudIcon Icon="@Icons.Material.Rounded.TrendingUp" Color="Color.Success" />
+                        </div>
+                        <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Success">
+                            KES @_stats.TotalSales.ToString("N0")
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4 qdp-stat-card" Elevation="0">
+                    <MudStack Spacing="2">
+                        <div class="d-flex align-center justify-space-between">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Expenses</MudText>
+                            <MudIcon Icon="@Icons.Material.Rounded.Receipt" Color="Color.Error" />
+                        </div>
+                        <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Error">
+                            KES @_stats.TotalExpenses.ToString("N0")
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        @* Last Order Info *@
+        @if (!string.IsNullOrWhiteSpace(_stats.LastSaleDescription))
+        {
+            <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.ShoppingCart" Class="mb-4" Elevation="0">
+                <MudText Typo="Typo.body2">Last Sale: @_stats.LastSaleDescription</MudText>
+            </MudAlert>
+        }
+
+        @* Daily Notes Section *@
+        <MudExpansionPanels Class="mb-4">
+            <MudExpansionPanel Text="Daily Notes" Icon="@Icons.Material.Rounded.Notes">
+                <MudStack Spacing="3" Class="pt-2">
+                    <MudTextField @bind-Value="_dailyNote.Notes"
+                                  Label="Notes for today"
+                                  Variant="Variant.Outlined"
+                                  Lines="4"
+                                  Placeholder="Enter your daily notes here..." />
+                    <div class="d-flex justify-end">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Rounded.Save"
+                                   OnClick="SaveDailyNote"
+                                   Disabled="_savingNote">
+                            @if (_savingNote)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            }
+                            Save Note
+                        </MudButton>
+                    </div>
+                </MudStack>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+
+        @* Quick Action Buttons *@
+        <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">Quick Actions</MudText>
+        <MudGrid>
+            <MudItem xs="6" sm="3">
+                <MudButton Href="/clerk/sales/new"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           FullWidth="true"
+                           StartIcon="@Icons.Material.Rounded.AddShoppingCart"
+                           Class="qdp-action-btn py-4">
+                    New Sale
+                </MudButton>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudButton Href="/clerk/expenses"
+                           Variant="Variant.Outlined"
+                           Color="Color.Warning"
+                           FullWidth="true"
+                           StartIcon="@Icons.Material.Rounded.Receipt"
+                           Class="qdp-action-btn py-4">
+                    Expenses
+                </MudButton>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudButton Href="/clerk/banking"
+                           Variant="Variant.Outlined"
+                           Color="Color.Tertiary"
+                           FullWidth="true"
+                           StartIcon="@Icons.Material.Rounded.AccountBalance"
+                           Class="qdp-action-btn py-4">
+                    Banking
+                </MudButton>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudButton Href="/clerk/fuel"
+                           Variant="Variant.Outlined"
+                           Color="Color.Error"
+                           FullWidth="true"
+                           StartIcon="@Icons.Material.Rounded.LocalGasStation"
+                           Class="qdp-action-btn py-4">
+                    Fuel Usage
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+
+        <MudButton Href="/clerk/reports"
+                   Variant="Variant.Text"
+                   Color="Color.Info"
+                   FullWidth="true"
+                   StartIcon="@Icons.Material.Rounded.Assessment"
+                   Class="qdp-action-btn">
+            View Daily Report
+        </MudButton>
+    }
+</MudContainer>
+
+<style>
+    .qdp-card-gradient {
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        color: white;
+        border-radius: 16px;
+        box-shadow: 0 8px 24px rgba(21, 101, 192, 0.3);
+    }
+
+    .qdp-avatar-shadow {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .qdp-stat-card {
+        border-radius: 16px;
+        border: 1px solid #E0E6ED;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .qdp-stat-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .qdp-action-btn {
+        border-radius: 12px;
+        font-weight: 600;
+        text-transform: none;
+    }
+</style>
+
+@code {
+    private bool _loading = true;
+    private bool _savingNote = false;
+    private string _userId = "";
+    private string _userFullName = "";
+    private string _userPosition = "";
+    private string _quarryId = "";
+    private string _quarryName = "";
+    private DashboardStats _stats = new();
+    private DailyNote _dailyNote = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get user info from auth state
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+
+                // Get user's quarry context from database
+                var userContext = await UserService.GetUserQuarryContextAsync(_userId);
+
+                if (userContext != null)
+                {
+                    _userFullName = userContext.UserFullName;
+                    _userPosition = userContext.UserPosition;
+                    _quarryId = userContext.QuarryId;
+                    _quarryName = userContext.QuarryName;
+
+                    // Load dashboard stats
+                    _stats = await DashboardService.GetDashboardStatsAsync(_userId, _quarryId);
+
+                    // Load or create today's note
+                    _dailyNote = await DashboardService.GetOrCreateTodayNoteAsync(_quarryId, _userId);
+                }
+                else
+                {
+                    Snackbar.Add("No quarry assigned to your account. Please contact your manager.", Severity.Warning);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading dashboard: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveDailyNote()
+    {
+        _savingNote = true;
+        try
+        {
+            var success = await DashboardService.SaveDailyNoteAsync(_dailyNote, _userId);
+
+            if (success)
+            {
+                Snackbar.Add("Daily note has been saved/updated...", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Failed to save note", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving note: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _savingNote = false;
+        }
+    }
+
+    private async Task RefreshDashboard()
+    {
+        _loading = true;
+        try
+        {
+            // Reload dashboard stats
+            _stats = await DashboardService.GetDashboardStatsAsync(_userId, _quarryId);
+
+            // Reload today's note
+            _dailyNote = await DashboardService.GetOrCreateTodayNoteAsync(_quarryId, _userId);
+
+            Snackbar.Add("Dashboard refreshed", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error refreshing dashboard: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

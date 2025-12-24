@@ -1,28 +1,50 @@
+@*
+    Routes.razor - Central router component for QDeskPro
+
+    ARCHITECTURE (Pure Blazor Server):
+    - MudBlazor providers are at the top of this component for circuit sharing
+    - All interactive components share the same Blazor circuit
+    - Account pages use [ExcludeFromInteractiveRouting] for SSR-only auth
+    - Uses AuthorizeRouteView for role-based access control
+*@
+
 @using MudBlazor
 
-<MudThemeProvider Theme="@QDeskTheme" IsDarkMode="@_isDarkMode" />
+@* MudBlazor Theme Provider with theme state *@
+<MudThemeProvider Theme="_theme" @bind-IsDarkMode="@_isDarkMode" />
+
+@* MudBlazor UI Providers - required for popups, dialogs, and snackbars *@
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
-<Router AppAssembly="typeof(Program).Assembly" AdditionalAssemblies="new[] { typeof(Client._Imports).Assembly }" NotFoundPage="typeof(Pages.NotFound)">
-    <Found Context="routeData">
-        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
-            <NotAuthorized>
-                <RedirectToLogin />
-            </NotAuthorized>
-        </AuthorizeRouteView>
-        <FocusOnNavigate RouteData="routeData" Selector="h1" />
-    </Found>
-</Router>
+@* Main Router with Theme Cascading and Authentication State *@
+<CascadingAuthenticationState>
+    <CascadingValue Value="_isDarkMode" Name="IsDarkMode">
+        <CascadingValue Value="this" Name="ThemeService">
+            <Router AppAssembly="typeof(Program).Assembly">
+                <Found Context="routeData">
+                    <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+                        <NotAuthorized>
+                            <RedirectToLogin />
+                        </NotAuthorized>
+                    </AuthorizeRouteView>
+                    <FocusOnNavigate RouteData="routeData" Selector="h1" />
+                </Found>
+                <NotFound>
+                    <LayoutView Layout="typeof(Layout.MainLayout)">
+                        <QDeskPro.Components.Pages.NotFound />
+                    </LayoutView>
+                </NotFound>
+            </Router>
+        </CascadingValue>
+    </CascadingValue>
+</CascadingAuthenticationState>
 
 @code {
     private bool _isDarkMode = false;
 
-    /// <summary>
-    /// Custom MudBlazor theme for QDeskPro
-    /// </summary>
-    public static MudTheme QDeskTheme = new MudTheme
+    private MudTheme _theme = new MudTheme
     {
         PaletteLight = new PaletteLight
         {
@@ -40,6 +62,8 @@
             DrawerBackground = "#FFFFFF",
             DrawerText = "#424242",
             DrawerIcon = "#757575",
+            TextPrimary = "#1a1a2e",
+            TextSecondary = "#64748b",
         },
         PaletteDark = new PaletteDark
         {
@@ -49,11 +73,19 @@
             Background = "#121212",
             Surface = "#1E1E1E",
             AppbarBackground = "#1E1E1E",
+            TextPrimary = "#f1f5f9",
+            TextSecondary = "#94a3b8",
         },
         LayoutProperties = new LayoutProperties
         {
-            DefaultBorderRadius = "8px",    // Rounded corners
+            DefaultBorderRadius = "8px",
             AppbarHeight = "64px",
-        },
+            DrawerWidthLeft = "280px"
+        }
     };
+
+    public void ToggleTheme()
+    {
+        _isDarkMode = !_isDarkMode;
+    }
 }

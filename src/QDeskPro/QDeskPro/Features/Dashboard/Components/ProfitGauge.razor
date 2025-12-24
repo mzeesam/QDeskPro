@@ -1,0 +1,49 @@
+@inject IJSRuntime JS
+
+<div class="profit-gauge-container" style="position: relative; height: @Height; width: 100%;">
+    <canvas id="@CanvasId"></canvas>
+    <div class="gauge-label" style="position: absolute; bottom: 10%; left: 50%; transform: translateX(-50%); text-align: center;">
+        <MudText Typo="Typo.h4" Color="@GetProfitColor()">@ProfitMargin.ToString("N1")%</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Default">Profit Margin</MudText>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string CanvasId { get; set; } = "profitGauge";
+    [Parameter] public string Height { get; set; } = "250px";
+    [Parameter] public double ProfitMargin { get; set; }
+
+    private bool _dataChanged = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || _dataChanged)
+        {
+            try
+            {
+                // Clamp profit margin between 0 and 100 for gauge display
+                var clampedMargin = Math.Max(0, Math.Min(100, ProfitMargin));
+                await JS.InvokeVoidAsync("QDeskCharts.createProfitGauge", CanvasId, clampedMargin);
+                _dataChanged = false;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating profit gauge: {ex.Message}");
+            }
+        }
+    }
+
+    public async Task UpdateMarginAsync(double margin)
+    {
+        ProfitMargin = margin;
+        _dataChanged = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Color GetProfitColor()
+    {
+        if (ProfitMargin >= 40) return Color.Success;
+        if (ProfitMargin >= 20) return Color.Warning;
+        return Color.Error;
+    }
+}

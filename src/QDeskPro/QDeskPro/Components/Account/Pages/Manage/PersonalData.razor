@@ -1,31 +1,184 @@
-﻿@page "/Account/Manage/PersonalData"
-
+@page "/Account/Manage/PersonalData"
+@using MudBlazor
 @using Microsoft.AspNetCore.Identity
 @using QDeskPro.Domain.Entities
 
 @inject UserManager<ApplicationUser> UserManager
 @inject IdentityRedirectManager RedirectManager
 
-<PageTitle>Personal Data</PageTitle>
+<PageTitle>Personal Data - QDeskPro</PageTitle>
 
-<StatusMessage />
-<h3>Personal Data</h3>
+<div class="personal-data-page">
+    <MudPaper Class="data-card" Elevation="0">
+        <div class="data-card-header">
+            <div class="data-icon">
+                <MudIcon Icon="@Icons.Material.Rounded.FolderShared" />
+            </div>
+            <MudText Typo="Typo.h5" Class="data-title">Your Personal Data</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Download or delete your account data
+            </MudText>
+        </div>
 
-<div class="row">
-    <div class="col-md-6">
-        <p>Your account contains personal data that you have given us. This page allows you to download or delete that data.</p>
-        <p>
-            <strong>Deleting this data will permanently remove your account, and this cannot be recovered.</strong>
-        </p>
-        <form action="Account/Manage/DownloadPersonalData" method="post">
-            <AntiforgeryToken />
-            <button class="btn btn-primary" type="submit">Download</button>
-        </form>
-        <p>
-            <a href="Account/Manage/DeletePersonalData" class="btn btn-danger">Delete</a>
-        </p>
-    </div>
+        <StatusMessage />
+
+        <MudPaper Class="data-info-section" Elevation="0">
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                <MudIcon Icon="@Icons.Material.Rounded.Info" Color="Color.Info" />
+                <div>
+                    <MudText Typo="Typo.body2">
+                        Your account contains personal data that you have provided to us. This page allows you to
+                        download or delete that data. Your privacy matters to us.
+                    </MudText>
+                </div>
+            </MudStack>
+        </MudPaper>
+
+        <MudDivider Class="my-4" />
+
+        <MudStack Spacing="3">
+            <MudPaper Class="action-card download-section" Elevation="0">
+                <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                    <MudAvatar Color="Color.Primary" Size="Size.Large" Variant="Variant.Outlined">
+                        <MudIcon Icon="@Icons.Material.Rounded.CloudDownload" />
+                    </MudAvatar>
+                    <div class="flex-grow-1">
+                        <MudText Typo="Typo.body1" Class="font-weight-semibold">Download Your Data</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Get a copy of all your personal information in JSON format
+                        </MudText>
+                    </div>
+                </MudStack>
+
+                <form action="Account/Manage/DownloadPersonalData" method="post" class="mt-3">
+                    <AntiforgeryToken />
+                    <MudButton ButtonType="ButtonType.Submit"
+                               Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               FullWidth="true"
+                               StartIcon="@Icons.Material.Rounded.Download"
+                               Class="action-button">
+                        Download Data
+                    </MudButton>
+                </form>
+            </MudPaper>
+
+            <MudPaper Class="action-card delete-section" Elevation="0">
+                <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                    <MudAvatar Color="Color.Error" Size="Size.Large" Variant="Variant.Outlined">
+                        <MudIcon Icon="@Icons.Material.Rounded.DeleteForever" />
+                    </MudAvatar>
+                    <div class="flex-grow-1">
+                        <MudText Typo="Typo.body1" Class="font-weight-semibold">Delete Your Account</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Permanently remove your account and all associated data
+                        </MudText>
+                    </div>
+                </MudStack>
+
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3" Icon="@Icons.Material.Rounded.Warning">
+                    <MudText Typo="Typo.caption">
+                        This action is permanent and cannot be undone
+                    </MudText>
+                </MudAlert>
+
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Error"
+                           FullWidth="true"
+                           Href="Account/Manage/DeletePersonalData"
+                           StartIcon="@Icons.Material.Rounded.DeleteForever"
+                           Class="action-button mt-3">
+                    Delete My Account
+                </MudButton>
+            </MudPaper>
+        </MudStack>
+
+        <MudPaper Class="privacy-notice" Elevation="0">
+            <MudStack Spacing="2">
+                <MudText Typo="Typo.body2" Class="font-weight-semibold">
+                    <MudIcon Icon="@Icons.Material.Rounded.Shield" Size="Size.Small" Class="mr-1" />
+                    Privacy Commitment
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    We are committed to protecting your privacy. Your data is securely stored and processed
+                    in accordance with our privacy policy. You have full control over your personal information.
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    </MudPaper>
 </div>
+
+<style>
+    .personal-data-page {
+        max-width: 500px;
+    }
+
+    .data-card {
+        background: white !important;
+        border-radius: 20px;
+        padding: 32px;
+        border: 1px solid #e0e6ed;
+    }
+
+    .data-card-header {
+        text-align: center;
+        margin-bottom: 28px;
+    }
+
+    .data-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #7E57C2 0%, #5E35B1 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+        color: white;
+        box-shadow: 0 6px 24px rgba(94, 53, 177, 0.3);
+    }
+
+    .data-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 8px;
+    }
+
+    .data-info-section {
+        background: #E3F2FD !important;
+        border-radius: 12px;
+        padding: 16px;
+    }
+
+    .action-card {
+        border-radius: 12px;
+        padding: 20px;
+    }
+
+    .download-section {
+        background: #E8F5E9 !important;
+        border: 1px solid rgba(46, 125, 50, 0.2);
+    }
+
+    .delete-section {
+        background: #FFF3E0 !important;
+        border: 1px solid rgba(230, 81, 0, 0.2);
+    }
+
+    .action-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+    }
+
+    .privacy-notice {
+        background: #f5f7fa !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 24px;
+    }
+</style>
 
 @code {
     [CascadingParameter]
@@ -33,7 +186,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var user  = await UserManager.GetUserAsync(HttpContext.User);
+        var user = await UserManager.GetUserAsync(HttpContext.User);
         if (user is null)
         {
             RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);

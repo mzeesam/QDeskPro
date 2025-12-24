@@ -1,0 +1,129 @@
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Domain.Services
+@using MudBlazor
+@inject SaleCalculationService CalculationService
+
+<MudDialog>
+    <DialogContent>
+        @if (Sale != null)
+        {
+            <MudStack Spacing="3">
+                @* Vehicle and Client Info *@
+                <MudPaper Class="pa-3" Elevation="0" Style="background: #f5f5f5;">
+                    <MudText Typo="Typo.h6" Class="mb-2">
+                        <MudIcon Icon="@Icons.Material.Rounded.DirectionsCar" Class="mr-2" />
+                        @Sale.VehicleRegistration
+                    </MudText>
+                    @if (!string.IsNullOrWhiteSpace(Sale.ClientName))
+                    {
+                        <MudText Typo="Typo.body2">Client: @Sale.ClientName</MudText>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Sale.ClientPhone))
+                    {
+                        <MudText Typo="Typo.body2">Phone: @Sale.ClientPhone</MudText>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Sale.Destination))
+                    {
+                        <MudText Typo="Typo.body2">Destination: @Sale.Destination</MudText>
+                    }
+                </MudPaper>
+
+                @* Product Details *@
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Product</MudText>
+                        <MudText Typo="Typo.body1">@Sale.Product?.ProductName</MudText>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Layer</MudText>
+                        <MudText Typo="Typo.body1">@Sale.Layer?.LayerLevel</MudText>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Quantity</MudText>
+                        <MudText Typo="Typo.body1">@Sale.Quantity.ToString("N0") pieces</MudText>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Price Per Unit</MudText>
+                        <MudText Typo="Typo.body1">KES @Sale.PricePerUnit.ToString("N1")</MudText>
+                    </MudItem>
+                </MudGrid>
+
+                @* Broker Details *@
+                @if (Sale.Broker != null || Sale.CommissionPerUnit > 0)
+                {
+                    <MudDivider />
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Broker</MudText>
+                        <MudText Typo="Typo.body1">@(Sale.Broker?.BrokerName ?? "N/A")</MudText>
+                        <MudText Typo="Typo.body2">Commission: KES @Sale.CommissionPerUnit.ToString("N1") per unit</MudText>
+                    </div>
+                }
+
+                @* Payment Details *@
+                <MudDivider />
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Payment Status</MudText>
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(Sale.PaymentStatus == "Paid" ? Color.Success : Color.Error)">
+                            @Sale.PaymentStatus
+                        </MudChip>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Payment Mode</MudText>
+                        <MudText Typo="Typo.body1">@Sale.PaymentMode</MudText>
+                    </MudItem>
+                    @if (!string.IsNullOrWhiteSpace(Sale.PaymentReference))
+                    {
+                        <MudItem xs="12">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Payment Reference</MudText>
+                            <MudText Typo="Typo.body1">@Sale.PaymentReference</MudText>
+                        </MudItem>
+                    }
+                </MudGrid>
+
+                @* Order Summary *@
+                <MudDivider />
+                <MudPaper Class="pa-3" Elevation="0" Style="border: 2px solid #1976D2; background: rgba(25, 118, 210, 0.05);">
+                    <MudText Typo="Typo.h6" Class="mb-2">Order Summary</MudText>
+                    <MudStack Spacing="1">
+                        <div class="d-flex justify-space-between">
+                            <MudText>Total Amount</MudText>
+                            <MudText>KES @Sale.GrossSaleAmount.ToString("N1")</MudText>
+                        </div>
+                        <div class="d-flex justify-space-between">
+                            <MudText Color="Color.Secondary">Gross Amount</MudText>
+                            <MudText Color="Color.Secondary">KES @(Sale.Quantity * Sale.PricePerUnit).ToString("N1")</MudText>
+                        </div>
+                    </MudStack>
+                </MudPaper>
+
+                @* Metadata *@
+                <MudDivider />
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Sale Date</MudText>
+                        <MudText Typo="Typo.body2">@Sale.SaleDate?.ToString("dddd, dd MMMM yyyy HH:mm")</MudText>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Recorded By</MudText>
+                        <MudText Typo="Typo.body2">@(Sale.ClerkName ?? "N/A")</MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public Sale? Sale { get; set; }
+
+    private void Close() => MudDialog?.Close();
+}

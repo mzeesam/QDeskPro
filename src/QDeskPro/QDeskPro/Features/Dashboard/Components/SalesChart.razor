@@ -1,0 +1,41 @@
+@inject IJSRuntime JS
+
+<div class="chart-container" style="height: @Height; width: 100%;">
+    <canvas id="@CanvasId"></canvas>
+</div>
+
+@code {
+    [Parameter] public string CanvasId { get; set; } = "salesChart";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public List<string> Labels { get; set; } = new();
+    [Parameter] public List<double> RevenueData { get; set; } = new();
+    [Parameter] public List<double> ExpensesData { get; set; } = new();
+
+    private bool _dataChanged = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || _dataChanged)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("QDeskCharts.createSalesChart",
+                    CanvasId, Labels, RevenueData, ExpensesData);
+                _dataChanged = false;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating sales chart: {ex.Message}");
+            }
+        }
+    }
+
+    public async Task UpdateDataAsync(List<string> labels, List<double> revenue, List<double> expenses)
+    {
+        Labels = labels;
+        RevenueData = revenue;
+        ExpensesData = expenses;
+        _dataChanged = true;
+        await InvokeAsync(StateHasChanged);
+    }
+}

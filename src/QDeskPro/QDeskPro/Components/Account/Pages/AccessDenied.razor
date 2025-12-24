@@ -1,8 +1,191 @@
-﻿@page "/Account/AccessDenied"
+@page "/Account/AccessDenied"
+@using MudBlazor
 
-<PageTitle>Access denied</PageTitle>
+<PageTitle>Access Denied - QDeskPro</PageTitle>
 
-<header>
-    <h1 class="text-danger">Access denied</h1>
-    <p class="text-danger">You do not have access to this resource.</p>
-</header>
+<div class="access-denied-page">
+    <div class="access-denied-background">
+        <div class="access-denied-pattern"></div>
+    </div>
+
+    <MudContainer MaxWidth="MaxWidth.Small" Class="access-denied-container">
+        <MudPaper Class="access-denied-card" Elevation="0">
+            <div class="access-denied-icon-container">
+                <MudIcon Icon="@Icons.Material.Rounded.Lock" Size="Size.Large" />
+            </div>
+
+            <MudText Typo="Typo.h3" Class="access-denied-title">
+                Access Denied
+            </MudText>
+
+            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="access-denied-description">
+                You don't have permission to access this resource.
+                Please contact your administrator if you believe this is an error.
+            </MudText>
+
+            <MudPaper Class="access-denied-info" Elevation="0">
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@Icons.Material.Rounded.Info" Size="Size.Small" Color="Color.Warning" />
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Your current role may not have access to this feature.
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+
+            <MudStack Spacing="3" Class="access-denied-actions">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           Href="/"
+                           StartIcon="@Icons.Material.Rounded.Home"
+                           Class="access-denied-button">
+                    Go to Home
+                </MudButton>
+
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           Href="Account/Login"
+                           StartIcon="@Icons.Material.Rounded.SwitchAccount"
+                           Class="access-denied-button-secondary">
+                    Switch Account
+                </MudButton>
+            </MudStack>
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="access-denied-help">
+                Need access?
+                <MudLink Href="mailto:admin@qdeskpro.com" Color="Color.Primary">
+                    Request from Administrator
+                </MudLink>
+            </MudText>
+        </MudPaper>
+    </MudContainer>
+</div>
+
+<style>
+    .access-denied-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        padding: 24px;
+    }
+
+    .access-denied-background {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
+        z-index: -1;
+    }
+
+    .access-denied-pattern {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image:
+            radial-gradient(circle at 20% 80%, rgba(245, 124, 0, 0.05) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(245, 124, 0, 0.03) 0%, transparent 50%);
+    }
+
+    .access-denied-container {
+        display: flex;
+        justify-content: center;
+    }
+
+    .access-denied-card {
+        background: white !important;
+        border-radius: 24px;
+        padding: 48px;
+        text-align: center;
+        max-width: 480px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+    }
+
+    .access-denied-icon-container {
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 24px;
+        animation: shake 0.5s ease-in-out;
+    }
+
+    .access-denied-icon-container .mud-icon-root {
+        font-size: 3rem !important;
+        color: #F57C00;
+    }
+
+    @@keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+        20%, 40%, 60%, 80% { transform: translateX(5px); }
+    }
+
+    .access-denied-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 16px;
+    }
+
+    .access-denied-description {
+        line-height: 1.7;
+        margin-bottom: 24px;
+    }
+
+    .access-denied-info {
+        background: #FFF8E1 !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 24px;
+        border: 1px solid #FFE082;
+    }
+
+    .access-denied-actions {
+        margin-bottom: 24px;
+    }
+
+    .access-denied-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+    }
+
+    .access-denied-button-secondary {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        text-transform: none !important;
+    }
+
+    .access-denied-help {
+        margin-top: 24px;
+        padding-top: 24px;
+        border-top: 1px solid #e0e6ed;
+    }
+
+    @@media (max-width: 600px) {
+        .access-denied-card {
+            padding: 32px 24px;
+        }
+
+        .access-denied-icon-container {
+            width: 80px;
+            height: 80px;
+        }
+
+        .access-denied-icon-container .mud-icon-root {
+            font-size: 2.5rem !important;
+        }
+    }
+</style>

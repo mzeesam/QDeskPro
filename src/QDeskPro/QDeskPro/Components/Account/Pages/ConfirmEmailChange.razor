@@ -1,5 +1,5 @@
-﻿@page "/Account/ConfirmEmailChange"
-
+@page "/Account/ConfirmEmailChange"
+@using MudBlazor
 @using System.Text
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.WebUtilities
@@ -9,14 +9,253 @@
 @inject SignInManager<ApplicationUser> SignInManager
 @inject IdentityRedirectManager RedirectManager
 
-<PageTitle>Confirm email change</PageTitle>
+<PageTitle>Confirm Email Change - QDeskPro</PageTitle>
 
-<h1>Confirm email change</h1>
+<div class="email-change-page">
+    <div class="email-change-background">
+        <div class="email-change-pattern"></div>
+    </div>
 
-<StatusMessage Message="@message" />
+    <MudContainer MaxWidth="MaxWidth.Small" Class="email-change-container">
+        <MudPaper Class="email-change-card" Elevation="0">
+            @if (_isSuccess)
+            {
+                <div class="email-change-icon-container success">
+                    <MudIcon Icon="@Icons.Material.Rounded.MarkEmailRead" Size="Size.Large" />
+                </div>
+
+                <MudText Typo="Typo.h3" Class="email-change-title">
+                    Email Updated!
+                </MudText>
+
+                <MudText Typo="Typo.body1" Color="Color.Secondary" Class="email-change-description">
+                    Your email address has been successfully changed.
+                    You can now use your new email to sign in.
+                </MudText>
+
+                <MudPaper Class="email-change-info success-info" Elevation="0">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Size="Size.Small" Color="Color.Success" />
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @message
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+            }
+            else
+            {
+                <div class="email-change-icon-container error">
+                    <MudIcon Icon="@Icons.Material.Rounded.ErrorOutline" Size="Size.Large" />
+                </div>
+
+                <MudText Typo="Typo.h3" Class="email-change-title">
+                    Confirmation Failed
+                </MudText>
+
+                <MudText Typo="Typo.body1" Color="Color.Secondary" Class="email-change-description">
+                    We were unable to confirm your email change.
+                    Please try again or contact support.
+                </MudText>
+
+                <MudPaper Class="email-change-info error-info" Elevation="0">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.Warning" Size="Size.Small" Color="Color.Error" />
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @message
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+            }
+
+            <MudStack Spacing="3" Class="email-change-actions">
+                @if (_isSuccess)
+                {
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Size="Size.Large"
+                               FullWidth="true"
+                               Href="/"
+                               StartIcon="@Icons.Material.Rounded.Home"
+                               Class="email-change-button">
+                        Go to Dashboard
+                    </MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Size="Size.Large"
+                               FullWidth="true"
+                               Href="Account/Manage/Email"
+                               StartIcon="@Icons.Material.Rounded.Refresh"
+                               Class="email-change-button">
+                        Try Again
+                    </MudButton>
+                }
+
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           Size="Size.Large"
+                           FullWidth="true"
+                           Href="Account/Manage"
+                           StartIcon="@Icons.Material.Rounded.Settings"
+                           Class="email-change-button-secondary">
+                    Account Settings
+                </MudButton>
+            </MudStack>
+        </MudPaper>
+    </MudContainer>
+</div>
+
+<style>
+    .email-change-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        padding: 24px;
+    }
+
+    .email-change-background {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8eef5 100%);
+        z-index: -1;
+    }
+
+    .email-change-pattern {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image:
+            radial-gradient(circle at 30% 70%, rgba(21, 101, 192, 0.08) 0%, transparent 50%),
+            radial-gradient(circle at 70% 30%, rgba(21, 101, 192, 0.05) 0%, transparent 50%);
+    }
+
+    .email-change-container {
+        display: flex;
+        justify-content: center;
+    }
+
+    .email-change-card {
+        background: white !important;
+        border-radius: 24px;
+        padding: 48px;
+        text-align: center;
+        max-width: 480px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+    }
+
+    .email-change-icon-container {
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 24px;
+    }
+
+    .email-change-icon-container.success {
+        background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+        animation: successPulse 2s ease-in-out infinite;
+    }
+
+    .email-change-icon-container.success .mud-icon-root {
+        font-size: 3rem !important;
+        color: #2E7D32;
+    }
+
+    .email-change-icon-container.error {
+        background: linear-gradient(135deg, #FFEBEE 0%, #FFCDD2 100%);
+        animation: errorShake 0.5s ease-in-out;
+    }
+
+    .email-change-icon-container.error .mud-icon-root {
+        font-size: 3rem !important;
+        color: #C62828;
+    }
+
+    @@keyframes successPulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.3); }
+        50% { transform: scale(1.02); box-shadow: 0 0 0 15px rgba(46, 125, 50, 0); }
+    }
+
+    @@keyframes errorShake {
+        0%, 100% { transform: translateX(0); }
+        20% { transform: translateX(-5px); }
+        40% { transform: translateX(5px); }
+        60% { transform: translateX(-5px); }
+        80% { transform: translateX(5px); }
+    }
+
+    .email-change-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 16px;
+    }
+
+    .email-change-description {
+        line-height: 1.7;
+        margin-bottom: 24px;
+    }
+
+    .email-change-info {
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 24px;
+    }
+
+    .email-change-info.success-info {
+        background: #E8F5E9 !important;
+    }
+
+    .email-change-info.error-info {
+        background: #FFEBEE !important;
+    }
+
+    .email-change-actions {
+        margin-top: 8px;
+    }
+
+    .email-change-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+    }
+
+    .email-change-button-secondary {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        text-transform: none !important;
+    }
+
+    @@media (max-width: 600px) {
+        .email-change-card {
+            padding: 32px 24px;
+        }
+
+        .email-change-icon-container {
+            width: 80px;
+            height: 80px;
+        }
+
+        .email-change-icon-container .mud-icon-root {
+            font-size: 2.5rem !important;
+        }
+    }
+</style>
 
 @code {
     private string? message;
+    private bool _isSuccess = false;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
@@ -42,7 +281,8 @@
         var user = await UserManager.FindByIdAsync(UserId);
         if (user is null)
         {
-            message = "Unable to find user with Id '{userId}'";
+            message = "Unable to find user with the specified ID.";
+            _isSuccess = false;
             return;
         }
 
@@ -50,7 +290,8 @@
         var result = await UserManager.ChangeEmailAsync(user, Email, code);
         if (!result.Succeeded)
         {
-            message = "Error changing email.";
+            message = "Error changing email. The link may have expired.";
+            _isSuccess = false;
             return;
         }
 
@@ -59,11 +300,13 @@
         var setUserNameResult = await UserManager.SetUserNameAsync(user, Email);
         if (!setUserNameResult.Succeeded)
         {
-            message = "Error changing user name.";
+            message = "Error updating user name.";
+            _isSuccess = false;
             return;
         }
 
         await SignInManager.RefreshSignInAsync(user);
         message = "Thank you for confirming your email change.";
+        _isSuccess = true;
     }
 }

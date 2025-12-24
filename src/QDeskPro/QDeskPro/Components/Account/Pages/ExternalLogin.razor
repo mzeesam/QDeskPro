@@ -1,5 +1,5 @@
-﻿@page "/Account/ExternalLogin"
-
+@page "/Account/ExternalLogin"
+@using MudBlazor
 @using System.ComponentModel.DataAnnotations
 @using System.Security.Claims
 @using System.Text
@@ -16,33 +16,250 @@
 @inject IdentityRedirectManager RedirectManager
 @inject ILogger<ExternalLogin> Logger
 
-<PageTitle>Register</PageTitle>
+<PageTitle>Complete Registration - QDeskPro</PageTitle>
 
-<StatusMessage Message="@message" />
-<h1>Register</h1>
-<h2>Associate your @ProviderDisplayName account.</h2>
-<hr />
-
-<div  class="alert alert-info">
-    You've successfully authenticated with <strong>@ProviderDisplayName</strong>.
-    Please enter an email address for this site below and click the Register button to finish
-    logging in.
-</div>
-
-<div class="row">
-    <div class="col-md-4">
-        <EditForm Model="Input" OnValidSubmit="OnValidSubmitAsync" FormName="confirmation" method="post">
-            <DataAnnotationsValidator />
-            <ValidationSummary class="text-danger" role="alert" />
-            <div class="form-floating mb-3">
-                <InputText @bind-Value="Input.Email" id="Input.Email" class="form-control" autocomplete="email" placeholder="Please enter your email." />
-                <label for="Input.Email" class="form-label">Email</label>
-                <ValidationMessage For="() => Input.Email" />
-            </div>
-            <button type="submit" class="w-100 btn btn-lg btn-primary">Register</button>
-        </EditForm>
+<div class="external-page">
+    <div class="external-background">
+        <div class="external-pattern"></div>
     </div>
+
+    <MudContainer MaxWidth="MaxWidth.Small" Class="external-container">
+        <MudPaper Class="external-card" Elevation="0">
+            <div class="external-header">
+                <div class="external-icon">
+                    <MudIcon Icon="@Icons.Material.Rounded.PersonAdd" Size="Size.Large" />
+                </div>
+                <MudText Typo="Typo.h4" Class="external-title">Complete Registration</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Link your @ProviderDisplayName account to QDeskPro
+                </MudText>
+            </div>
+
+            <MudPaper Class="external-success-notice" Elevation="0">
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Size="Size.Small" Color="Color.Success" />
+                    <MudText Typo="Typo.body2">
+                        Successfully authenticated with <strong>@ProviderDisplayName</strong>
+                    </MudText>
+                </MudStack>
+            </MudPaper>
+
+            <div class="external-form-container">
+                <StatusMessage Message="@message" />
+
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                    Please enter an email address for your QDeskPro account to complete the registration.
+                </MudText>
+
+                <EditForm Model="Input" OnValidSubmit="OnValidSubmitAsync" FormName="confirmation" method="post" Enhance>
+                    <DataAnnotationsValidator />
+
+                    <MudStack Spacing="3">
+                        <MudTextField @bind-Value="Input.Email"
+                                      Label="Email Address"
+                                      Variant="Variant.Outlined"
+                                      InputType="InputType.Email"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Rounded.Email"
+                                      AdornmentColor="Color.Primary"
+                                      autocomplete="email"
+                                      Required="true"
+                                      RequiredError="Email address is required"
+                                      Class="external-input" />
+
+                        <MudButton ButtonType="ButtonType.Submit"
+                                   Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Size="Size.Large"
+                                   FullWidth="true"
+                                   Class="external-button"
+                                   StartIcon="@Icons.Material.Rounded.HowToReg">
+                            Complete Registration
+                        </MudButton>
+                    </MudStack>
+                </EditForm>
+
+                <MudPaper Class="external-info" Elevation="0">
+                    <MudStack Spacing="2">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="font-weight-semibold">
+                            What happens next:
+                        </MudText>
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Rounded.Link" Size="Size.Small" Color="Color.Primary" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Your @ProviderDisplayName account will be linked
+                            </MudText>
+                        </MudStack>
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Rounded.Email" Size="Size.Small" Color="Color.Primary" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                You'll receive a verification email
+                            </MudText>
+                        </MudStack>
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Rounded.Login" Size="Size.Small" Color="Color.Primary" />
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Sign in with @ProviderDisplayName in the future
+                            </MudText>
+                        </MudStack>
+                    </MudStack>
+                </MudPaper>
+            </div>
+
+            <div class="external-footer">
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Already have an account?
+                    <MudLink Href="Account/Login" Color="Color.Primary" Typo="Typo.body2" Class="font-weight-semibold">
+                        Sign in instead
+                    </MudLink>
+                </MudText>
+            </div>
+        </MudPaper>
+    </MudContainer>
 </div>
+
+<style>
+    .external-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+        padding: 24px;
+    }
+
+    .external-background {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 50%, #1A237E 100%);
+        z-index: -1;
+    }
+
+    .external-pattern {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image:
+            radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(255,255,255,0.05) 0%, transparent 50%);
+        animation: patternFloat 20s ease-in-out infinite;
+    }
+
+    @@keyframes patternFloat {
+        0%, 100% { transform: translateY(0) scale(1); }
+        50% { transform: translateY(-20px) scale(1.02); }
+    }
+
+    .external-container {
+        display: flex;
+        justify-content: center;
+    }
+
+    .external-card {
+        background: rgba(255, 255, 255, 0.98) !important;
+        border-radius: 24px;
+        padding: 48px;
+        max-width: 480px;
+        width: 100%;
+        box-shadow: 0 25px 80px rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(20px);
+    }
+
+    .external-header {
+        text-align: center;
+        margin-bottom: 24px;
+    }
+
+    .external-icon {
+        width: 72px;
+        height: 72px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 20px;
+        color: white;
+        box-shadow: 0 8px 32px rgba(21, 101, 192, 0.3);
+        animation: iconPulse 2s ease-in-out infinite;
+    }
+
+    @@keyframes iconPulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+    }
+
+    .external-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 8px;
+    }
+
+    .external-success-notice {
+        background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%) !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 24px;
+        border: 1px solid rgba(46, 125, 50, 0.3);
+    }
+
+    .external-form-container {
+        margin-bottom: 24px;
+    }
+
+    .external-input .mud-input-outlined-border {
+        border-radius: 12px !important;
+    }
+
+    .external-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+        letter-spacing: 0.02em;
+        box-shadow: 0 4px 16px rgba(21, 101, 192, 0.3) !important;
+        margin-top: 8px;
+    }
+
+    .external-button:hover {
+        box-shadow: 0 6px 24px rgba(21, 101, 192, 0.4) !important;
+        transform: translateY(-1px);
+    }
+
+    .external-info {
+        background: #f5f7fa !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 24px;
+    }
+
+    .external-footer {
+        text-align: center;
+        padding-top: 24px;
+        border-top: 1px solid #e0e6ed;
+    }
+
+    @@media (max-width: 600px) {
+        .external-page {
+            padding: 12px;
+        }
+
+        .external-card {
+            padding: 32px 24px;
+        }
+
+        .external-icon {
+            width: 60px;
+            height: 60px;
+        }
+    }
+</style>
 
 @code {
     public const string LoginCallbackAction = "LoginCallback";

@@ -1,73 +1,603 @@
-/* QDeskPro - Mobile-First Responsive Design */
+/* ==========================================================================
+   QDeskPro - Modern Design System
+   A stunning, professional UI for quarry management
+   ========================================================================== */
 
-/* Base styles (mobile) */
-html, body {
-    font-family: 'Inter', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+/* ==========================================================================
+   CSS Custom Properties (Design Tokens)
+   ========================================================================== */
+:root {
+    /* Primary Colors */
+    --primary: #1976D2;
+    --primary-light: #42A5F5;
+    --primary-dark: #1565C0;
+    --primary-rgb: 25, 118, 210;
+
+    /* Secondary Colors */
+    --secondary: #424242;
+    --secondary-light: #616161;
+    --secondary-dark: #212121;
+
+    /* Accent Colors */
+    --accent-success: #4CAF50;
+    --accent-warning: #FF9800;
+    --accent-error: #F44336;
+    --accent-info: #2196F3;
+    --accent-purple: #7B1FA2;
+    --accent-teal: #00897B;
+
+    /* Neutral Colors */
+    --surface: #FFFFFF;
+    --background: #FAFAFA;
+    --background-alt: #F5F7FA;
+    --border: #E0E6ED;
+    --border-light: #F0F4F8;
+    --text-primary: #1A1A2E;
+    --text-secondary: #64748B;
+    --text-muted: #94A3B8;
+
+    /* Spacing */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+    --spacing-2xl: 48px;
+
+    /* Border Radius */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-2xl: 24px;
+    --radius-full: 9999px;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+    --shadow-xl: 0 16px 48px rgba(0,0,0,0.15);
+    --shadow-primary: 0 8px 24px rgba(25,118,210,0.25);
+    --shadow-success: 0 6px 20px rgba(76,175,80,0.25);
+    --shadow-warning: 0 6px 20px rgba(255,152,0,0.25);
+    --shadow-error: 0 6px 20px rgba(244,67,54,0.25);
+
+    /* Transitions */
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.25s ease;
+    --transition-slow: 0.35s ease;
+    --transition-bounce: 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    /* Typography */
+    --font-family: 'Inter', 'Segoe UI', 'Roboto', system-ui, -apple-system, sans-serif;
+    --font-mono: 'Consolas', 'Monaco', 'Fira Code', monospace;
 }
 
+/* ==========================================================================
+   Base Styles
+   ========================================================================== */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    font-family: var(--font-family);
+    background: var(--background);
+    color: var(--text-primary);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+    background: rgba(25, 118, 210, 0.2);
+    color: var(--primary-dark);
+}
+
+/* ==========================================================================
+   Global Animations
+   ========================================================================== */
+
+/* Fade In Animation */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Fade In Up Animation */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Fade In Down Animation */
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Scale In Animation */
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Slide In Right Animation */
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Slide In Left Animation */
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Pulse Animation */
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+/* Subtle Pulse Animation */
+@keyframes subtlePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* Float Animation */
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+
+/* Shimmer Animation (for loading states) */
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+/* Spin Animation */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Bounce Animation */
+@keyframes bounce {
+    0%, 20%, 53%, 80%, 100% {
+        animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1);
+        transform: translateY(0);
+    }
+    40%, 43% {
+        animation-timing-function: cubic-bezier(0.755, 0.05, 0.855, 0.06);
+        transform: translateY(-15px);
+    }
+    70% {
+        animation-timing-function: cubic-bezier(0.755, 0.05, 0.855, 0.06);
+        transform: translateY(-8px);
+    }
+    90% {
+        transform: translateY(-3px);
+    }
+}
+
+/* Gradient Shift Animation */
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Glow Animation */
+@keyframes glow {
+    0%, 100% {
+        box-shadow: 0 0 20px rgba(25, 118, 210, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 40px rgba(25, 118, 210, 0.5);
+    }
+}
+
+/* ==========================================================================
+   Animation Utility Classes
+   ========================================================================== */
+.animate-fade-in {
+    animation: fadeIn 0.4s ease forwards;
+}
+
+.animate-fade-in-up {
+    animation: fadeInUp 0.5s ease forwards;
+}
+
+.animate-fade-in-down {
+    animation: fadeInDown 0.5s ease forwards;
+}
+
+.animate-scale-in {
+    animation: scaleIn 0.4s ease forwards;
+}
+
+.animate-slide-in-right {
+    animation: slideInRight 0.5s ease forwards;
+}
+
+.animate-slide-in-left {
+    animation: slideInLeft 0.5s ease forwards;
+}
+
+.animate-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.animate-float {
+    animation: float 3s ease-in-out infinite;
+}
+
+.animate-bounce {
+    animation: bounce 1s;
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Staggered Animation Delays */
+.animate-delay-1 { animation-delay: 0.1s; }
+.animate-delay-2 { animation-delay: 0.2s; }
+.animate-delay-3 { animation-delay: 0.3s; }
+.animate-delay-4 { animation-delay: 0.4s; }
+.animate-delay-5 { animation-delay: 0.5s; }
+
+/* ==========================================================================
+   Enhanced MudBlazor Component Overrides
+   ========================================================================== */
+
+/* Cards */
+.mud-paper {
+    transition: all var(--transition-normal);
+}
+
+.mud-card {
+    border-radius: var(--radius-lg) !important;
+    transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.mud-card:hover {
+    transform: translateY(-2px);
+}
+
+/* Buttons */
+.mud-button-root {
+    transition: all var(--transition-fast) !important;
+    font-weight: 500 !important;
+}
+
+.mud-button-filled:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.mud-button-filled:active {
+    transform: translateY(0);
+}
+
+.mud-fab {
+    transition: all var(--transition-normal) !important;
+}
+
+.mud-fab:hover {
+    transform: scale(1.1);
+}
+
+/* Text Fields */
+.mud-input-outlined .mud-input-outlined-border {
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.mud-input-outlined:focus-within .mud-input-outlined-border {
+    box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.15);
+}
+
+/* Chips */
+.mud-chip {
+    transition: all var(--transition-fast);
+}
+
+.mud-chip:hover {
+    transform: translateY(-1px);
+}
+
+/* Avatars */
+.mud-avatar {
+    transition: transform var(--transition-fast);
+}
+
+.mud-avatar:hover {
+    transform: scale(1.05);
+}
+
+/* Navigation */
+.mud-nav-link {
+    transition: all var(--transition-fast);
+    border-radius: var(--radius-sm);
+    margin: 2px 8px;
+}
+
+.mud-nav-link:hover {
+    background: rgba(25, 118, 210, 0.08) !important;
+}
+
+.mud-nav-link.active {
+    background: rgba(25, 118, 210, 0.12) !important;
+}
+
+/* Tables */
+.mud-table-row {
+    transition: background-color var(--transition-fast);
+}
+
+.mud-table-row:hover {
+    background-color: rgba(25, 118, 210, 0.04) !important;
+}
+
+/* Alerts */
+.mud-alert {
+    border-radius: var(--radius-md) !important;
+    animation: fadeInUp 0.4s ease;
+}
+
+/* Dialogs */
+.mud-dialog {
+    border-radius: var(--radius-xl) !important;
+    animation: scaleIn 0.3s ease;
+}
+
+/* Snackbars */
+.mud-snackbar {
+    border-radius: var(--radius-md) !important;
+    animation: slideInRight 0.4s ease;
+}
+
+/* Skeleton Loading */
+.mud-skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--border-light) 25%,
+        var(--background) 50%,
+        var(--border-light) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ==========================================================================
+   MudBlazor Layout Overrides - Fix drawer/content gap
+   ========================================================================== */
+
+/* Remove gap between drawer and main content */
+.mud-layout {
+    gap: 0 !important;
+}
+
+.mud-layout-content {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+}
+
+/* Main content should have no left padding/margin */
+.mud-main-content {
+    padding-left: 0 !important;
+    margin-left: 0 !important;
+}
+
+/* Drawer should not create visual gap */
+.mud-drawer {
+    box-shadow: none !important;
+}
+
+/* Ensure drawer container doesn't add spacing */
+.mud-drawer-container {
+    margin-right: 0 !important;
+    padding-right: 0 !important;
+}
+
+/* Fix for responsive drawer in all states */
+.mud-drawer-responsive ~ .mud-main-content,
+.mud-drawer--open ~ .mud-main-content,
+.mud-drawer--closed ~ .mud-main-content {
+    padding-left: 0 !important;
+}
+
+/* ==========================================================================
+   Layout Components
+   ========================================================================== */
+
+/* Clerk Container */
 .clerk-container {
-    padding: 12px;
+    padding: var(--spacing-md);
     max-width: 100%;
+    animation: fadeIn 0.4s ease;
 }
 
-/* Small tablets (>=600px) */
 @media (min-width: 600px) {
     .clerk-container {
-        padding: 16px;
+        padding: var(--spacing-lg);
         max-width: 600px;
         margin: 0 auto;
     }
 }
 
-/* Tablets/Small laptops (>=960px) */
 @media (min-width: 960px) {
     .clerk-container {
-        padding: 24px;
+        padding: var(--spacing-xl);
         max-width: 800px;
     }
 }
 
-/* Desktop (>=1280px) */
-@media (min-width: 1280px) {
-    .manager-container {
-        max-width: 1400px;
-        margin: 0 auto;
-    }
+/* Manager Container */
+.manager-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: var(--spacing-lg);
+    animation: fadeIn 0.4s ease;
 }
+
+/* Page Transitions */
+.page-enter {
+    animation: fadeInUp 0.4s ease forwards;
+}
+
+/* ==========================================================================
+   Custom Components
+   ========================================================================== */
 
 /* Touch-friendly targets */
 .touch-target {
     min-height: 44px;
     min-width: 44px;
-    padding: 12px;
+    padding: var(--spacing-md);
 }
 
-/* Card styling */
+/* Summary Card */
 .summary-card {
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    transition: box-shadow 0.2s ease;
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    transition: all var(--transition-normal);
 }
 
 .summary-card:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+    border-color: var(--primary-light);
+}
+
+/* Metric Card */
+.metric-card {
+    background: var(--surface);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-lg);
+    border: 1px solid var(--border);
+    transition: all var(--transition-normal);
+}
+
+.metric-card:hover {
+    border-color: var(--primary);
+    box-shadow: var(--shadow-primary);
 }
 
 /* Highlight unpaid orders */
 .unpaid-row {
     background-color: rgba(244, 67, 54, 0.08) !important;
-    border-left: 3px solid #F44336;
+    border-left: 3px solid var(--accent-error);
 }
 
 /* Floating action button positioning */
 .fab-container {
     position: fixed;
-    bottom: 80px; /* Above bottom nav */
-    right: 16px;
+    bottom: 80px;
+    right: var(--spacing-md);
     z-index: 100;
 }
 
-/* PWA-specific styles */
+/* Gradient Icon Box */
+.icon-box {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    transition: all var(--transition-normal);
+}
+
+.icon-box:hover {
+    transform: scale(1.05);
+}
+
+.icon-box-primary {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    box-shadow: var(--shadow-primary);
+}
+
+.icon-box-success {
+    background: linear-gradient(135deg, var(--accent-success) 0%, #388E3C 100%);
+    box-shadow: var(--shadow-success);
+}
+
+.icon-box-warning {
+    background: linear-gradient(135deg, var(--accent-warning) 0%, #F57C00 100%);
+    box-shadow: var(--shadow-warning);
+}
+
+.icon-box-error {
+    background: linear-gradient(135deg, var(--accent-error) 0%, #D32F2F 100%);
+    box-shadow: var(--shadow-error);
+}
+
+.icon-box-purple {
+    background: linear-gradient(135deg, var(--accent-purple) 0%, #6A1B9A 100%);
+    box-shadow: 0 6px 20px rgba(123, 31, 162, 0.25);
+}
+
+/* Glass Effect */
+.glass {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Gradient Text */
+.gradient-text {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--accent-purple) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* ==========================================================================
+   PWA-specific Styles
+   ========================================================================== */
 
 /* Hide install prompt when app is installed */
 @media all and (display-mode: standalone) {
@@ -86,7 +616,7 @@ html, body {
 
 /* Bottom navigation should respect safe area */
 .bottom-nav {
-    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom));
 }
 
 /* Prevent pull-to-refresh on mobile (when not needed) */
@@ -94,24 +624,57 @@ body.no-pull-refresh {
     overscroll-behavior-y: contain;
 }
 
+/* ==========================================================================
+   Blazor Framework Styles
+   ========================================================================== */
+
 /* Blazor reconnect UI */
 #blazor-error-ui {
-    background: lightyellow;
+    background: linear-gradient(135deg, #FFF8E1 0%, #FFECB3 100%);
     bottom: 0;
-    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
     display: none;
     left: 0;
-    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    padding: var(--spacing-md) var(--spacing-lg);
     position: fixed;
     width: 100%;
     z-index: 1000;
+    border-top: 2px solid var(--accent-warning);
+    animation: slideInUp 0.3s ease;
+}
+
+@keyframes slideInUp {
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
 }
 
 #blazor-error-ui .dismiss {
     cursor: pointer;
     position: absolute;
-    right: 0.75rem;
-    top: 0.5rem;
+    right: var(--spacing-md);
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--accent-warning);
+    color: white;
+    border: none;
+    border-radius: var(--radius-full);
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
+}
+
+#blazor-error-ui .dismiss:hover {
+    background: #F57C00;
+    transform: translateY(-50%) scale(1.1);
 }
 
 /* Loading spinner */
@@ -121,18 +684,19 @@ body.no-pull-refresh {
     width: 8rem;
     height: 8rem;
     margin: 20vh auto 1rem auto;
+    animation: pulse 1.5s ease-in-out infinite;
 }
 
 .loading-progress circle {
     fill: none;
-    stroke: #1976D2;
+    stroke: var(--primary);
     stroke-width: 0.6rem;
     transform-origin: 50% 50%;
     transform: rotate(-90deg);
 }
 
 .loading-progress circle:last-child {
-    stroke: #FAFAFA;
+    stroke: var(--background);
     stroke-dasharray: calc(3.141 * var(--blazor-load-percentage, 0%) * 0.8), 500%;
     transition: stroke-dasharray 0.05s ease-in-out;
 }
@@ -140,7 +704,8 @@ body.no-pull-refresh {
 .loading-progress-text {
     position: absolute;
     text-align: center;
-    font-weight: bold;
+    font-weight: 600;
+    color: var(--primary);
     inset: calc(20vh + 3.25rem) 0 auto 0.2rem;
 }
 
@@ -148,17 +713,150 @@ body.no-pull-refresh {
     content: var(--blazor-load-percentage-text, "Loading");
 }
 
-/* Utility classes */
-.cursor-pointer {
-    cursor: pointer;
+/* ==========================================================================
+   Utility Classes
+   ========================================================================== */
+
+/* Cursor */
+.cursor-pointer { cursor: pointer; }
+.cursor-default { cursor: default; }
+.cursor-not-allowed { cursor: not-allowed; }
+
+/* Text Colors */
+.text-muted { color: var(--text-muted) !important; }
+.text-secondary { color: var(--text-secondary) !important; }
+.text-primary { color: var(--primary) !important; }
+.text-success { color: var(--accent-success) !important; }
+.text-warning { color: var(--accent-warning) !important; }
+.text-error { color: var(--accent-error) !important; }
+
+/* Font Weights */
+.font-weight-light { font-weight: 300 !important; }
+.font-weight-normal { font-weight: 400 !important; }
+.font-weight-medium { font-weight: 500 !important; }
+.font-weight-semibold { font-weight: 600 !important; }
+.font-weight-bold { font-weight: 700 !important; }
+
+/* Border Radius */
+.rounded-sm { border-radius: var(--radius-sm) !important; }
+.rounded-md { border-radius: var(--radius-md) !important; }
+.rounded-lg { border-radius: var(--radius-lg) !important; }
+.rounded-xl { border-radius: var(--radius-xl) !important; }
+.rounded-full { border-radius: var(--radius-full) !important; }
+
+/* Shadows */
+.shadow-sm { box-shadow: var(--shadow-sm) !important; }
+.shadow-md { box-shadow: var(--shadow-md) !important; }
+.shadow-lg { box-shadow: var(--shadow-lg) !important; }
+.shadow-xl { box-shadow: var(--shadow-xl) !important; }
+.shadow-none { box-shadow: none !important; }
+
+/* Transitions */
+.transition-fast { transition: all var(--transition-fast) !important; }
+.transition-normal { transition: all var(--transition-normal) !important; }
+.transition-slow { transition: all var(--transition-slow) !important; }
+
+/* Hover Effects */
+.hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
 }
 
-.text-muted {
-    color: #757575 !important;
+.hover-scale:hover {
+    transform: scale(1.02);
+}
+
+.hover-glow:hover {
+    box-shadow: 0 0 30px rgba(25, 118, 210, 0.3);
 }
 
 /* Chart container */
 .chart-container {
     position: relative;
     min-height: 300px;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+/* Divider with text */
+.divider-text {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.divider-text::before,
+.divider-text::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--background-alt);
+    border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: var(--radius-full);
+    transition: background var(--transition-fast);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Focus Visible Styles */
+:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* Print Styles */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+
+    body {
+        background: white !important;
+    }
+
+    .mud-paper {
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+    }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Dark Mode Preparation (for future) */
+@media (prefers-color-scheme: dark) {
+    /* Will be enabled when dark mode is implemented */
+    /* :root {
+        --surface: #1E1E1E;
+        --background: #121212;
+        --text-primary: #FFFFFF;
+        --text-secondary: #B0B0B0;
+        --border: #333333;
+    } */
 }

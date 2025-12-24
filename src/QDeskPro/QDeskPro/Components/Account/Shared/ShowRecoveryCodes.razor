@@ -1,23 +1,169 @@
-﻿<StatusMessage Message="@StatusMessage" />
-<h3>Recovery codes</h3>
-<div class="alert alert-warning" role="alert">
-    <p>
-        <strong>Put these codes in a safe place.</strong>
-    </p>
-    <p>
-        If you lose your device and don't have the recovery codes you will lose access to your account.
-    </p>
-</div>
-<div class="row">
-    <div class="col-md-12">
-        @foreach (var recoveryCode in RecoveryCodes)
-        {
-            <div>
-                <code class="recovery-code">@recoveryCode</code>
+@using MudBlazor
+
+<div class="recovery-codes-page">
+    <MudPaper Class="codes-card" Elevation="0">
+        <div class="codes-card-header">
+            <div class="codes-icon">
+                <MudIcon Icon="@Icons.Material.Rounded.Key" />
             </div>
-        }
-    </div>
+            <MudText Typo="Typo.h5" Class="codes-title">Recovery Codes</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Save these codes securely
+            </MudText>
+        </div>
+
+        <StatusMessage Message="@StatusMessage" />
+
+        <MudAlert Severity="Severity.Warning" Class="mb-4" Icon="@Icons.Material.Rounded.Warning">
+            <MudText Typo="Typo.body1" Class="font-weight-semibold">Store These Codes Safely</MudText>
+            <MudText Typo="Typo.body2">
+                If you lose your device and don't have the recovery codes, you will lose access to your account.
+            </MudText>
+        </MudAlert>
+
+        <MudPaper Class="codes-container" Elevation="0">
+            <MudGrid Spacing="2">
+                @foreach (var recoveryCode in RecoveryCodes)
+                {
+                    <MudItem xs="6">
+                        <MudPaper Class="code-item" Elevation="0">
+                            <code>@recoveryCode</code>
+                        </MudPaper>
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudPaper>
+
+        <MudStack Row="true" Spacing="2" Class="mt-4 action-buttons">
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Rounded.ContentCopy"
+                       OnClick="CopyToClipboard"
+                       Class="action-button">
+                Copy All
+            </MudButton>
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Default"
+                       StartIcon="@Icons.Material.Rounded.Print"
+                       OnClick="PrintCodes"
+                       Class="action-button">
+                Print
+            </MudButton>
+        </MudStack>
+
+        <MudPaper Class="info-section" Elevation="0">
+            <MudStack Spacing="2">
+                <MudText Typo="Typo.body2" Class="font-weight-semibold">
+                    <MudIcon Icon="@Icons.Material.Rounded.Info" Size="Size.Small" Class="mr-1" />
+                    About Recovery Codes
+                </MudText>
+                <MudStack Spacing="1">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Size="Size.Small" Color="Color.Success" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Each code can only be used once</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.Lock" Size="Size.Small" Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Store in a password manager or safe location</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Rounded.Refresh" Size="Size.Small" Color="Color.Warning" />
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Generate new codes if you suspect they're compromised</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudStack>
+        </MudPaper>
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   FullWidth="true"
+                   Href="Account/Manage/TwoFactorAuthentication"
+                   StartIcon="@Icons.Material.Rounded.ArrowBack"
+                   Class="done-button mt-4">
+            Done - Back to 2FA Settings
+        </MudButton>
+    </MudPaper>
 </div>
+
+<style>
+    .recovery-codes-page {
+        max-width: 500px;
+    }
+
+    .codes-card {
+        background: white !important;
+        border-radius: 20px;
+        padding: 32px;
+        border: 1px solid #e0e6ed;
+    }
+
+    .codes-card-header {
+        text-align: center;
+        margin-bottom: 28px;
+    }
+
+    .codes-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #5E35B1 0%, #4527A0 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+        color: white;
+        box-shadow: 0 6px 24px rgba(94, 53, 177, 0.3);
+    }
+
+    .codes-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 8px;
+    }
+
+    .codes-container {
+        background: #f8fafc !important;
+        border-radius: 12px;
+        padding: 16px;
+        border: 1px solid #e0e6ed;
+    }
+
+    .code-item {
+        background: white !important;
+        border-radius: 8px;
+        padding: 12px;
+        text-align: center;
+        border: 1px solid #e0e6ed;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #5E35B1;
+        letter-spacing: 0.5px;
+    }
+
+    .action-buttons {
+        justify-content: center;
+    }
+
+    .action-button {
+        border-radius: 10px !important;
+        text-transform: none !important;
+    }
+
+    .info-section {
+        background: #EDE7F6 !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 24px;
+    }
+
+    .done-button {
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+    }
+</style>
 
 @code {
     [Parameter]
@@ -25,4 +171,18 @@
 
     [Parameter]
     public string? StatusMessage { get; set; }
+
+    [Inject]
+    private IJSRuntime JS { get; set; } = default!;
+
+    private async Task CopyToClipboard()
+    {
+        var codesText = string.Join("\n", RecoveryCodes);
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", codesText);
+    }
+
+    private async Task PrintCodes()
+    {
+        await JS.InvokeVoidAsync("window.print");
+    }
 }

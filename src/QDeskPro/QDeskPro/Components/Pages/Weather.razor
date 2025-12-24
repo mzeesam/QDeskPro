@@ -1,40 +1,280 @@
-﻿@page "/weather"
-@attribute [StreamRendering]
+@page "/weather"
+@using MudBlazor
 
-<PageTitle>Weather</PageTitle>
+<PageTitle>Weather Forecast - QDeskPro</PageTitle>
 
-<h1>Weather</h1>
+<div class="weather-page">
+    <MudPaper Class="weather-card" Elevation="0">
+        <div class="weather-card-header">
+            <div class="weather-icon">
+                <MudIcon Icon="@Icons.Material.Rounded.WbSunny" Size="Size.Large" />
+            </div>
+            <MudText Typo="Typo.h4" Class="weather-title">Weather Forecast</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                5-Day Weather Overview
+            </MudText>
+        </div>
 
-<p>This component demonstrates showing data.</p>
+        @if (forecasts == null)
+        {
+            <MudStack Spacing="3">
+                @for (int i = 0; i < 5; i++)
+                {
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="80px" Class="rounded-lg" />
+                }
+            </MudStack>
+        }
+        else
+        {
+            <MudStack Spacing="3" Class="forecast-list">
+                @foreach (var forecast in forecasts)
+                {
+                    <MudPaper Class="forecast-item" Elevation="0">
+                        <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                                <MudAvatar Size="Size.Large" Class="@GetWeatherAvatarClass(forecast.TemperatureC)">
+                                    <MudIcon Icon="@GetWeatherIcon(forecast.Summary)" />
+                                </MudAvatar>
+                                <div>
+                                    <MudText Typo="Typo.body1" Class="font-weight-semibold">
+                                        @forecast.Date.ToString("dddd, MMM d")
+                                    </MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                        @forecast.Summary
+                                    </MudText>
+                                </div>
+                            </MudStack>
 
-@if (forecasts == null)
-{
-    <p><em>Loading...</em></p>
-}
-else
-{
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th aria-label="Temperature in Celsius">Temp. (C)</th>
-                <th aria-label="Temperature in Fahrenheit">Temp. (F)</th>
-                <th>Summary</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var forecast in forecasts)
-            {
-                <tr>
-                    <td>@forecast.Date.ToShortDateString()</td>
-                    <td>@forecast.TemperatureC</td>
-                    <td>@forecast.TemperatureF</td>
-                    <td>@forecast.Summary</td>
-                </tr>
-            }
-        </tbody>
-    </table>
-}
+                            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                <MudChip T="string"
+                                         Color="@GetTemperatureColor(forecast.TemperatureC)"
+                                         Size="Size.Medium"
+                                         Class="temp-chip">
+                                    @forecast.TemperatureC&deg;C
+                                </MudChip>
+                                <MudChip T="string"
+                                         Variant="Variant.Outlined"
+                                         Color="Color.Default"
+                                         Size="Size.Small"
+                                         Class="temp-chip-f">
+                                    @forecast.TemperatureF&deg;F
+                                </MudChip>
+                            </MudStack>
+                        </MudStack>
+                    </MudPaper>
+                }
+            </MudStack>
+
+            <MudDivider Class="my-4" />
+
+            <MudPaper Class="stats-section" Elevation="0">
+                <MudText Typo="Typo.subtitle2" Class="mb-3 font-weight-semibold">
+                    <MudIcon Icon="@Icons.Material.Rounded.Analytics" Size="Size.Small" Class="mr-2" />
+                    Weekly Statistics
+                </MudText>
+                <MudGrid Spacing="3">
+                    <MudItem xs="6" sm="3">
+                        <MudPaper Class="stat-card" Elevation="0">
+                            <MudIcon Icon="@Icons.Material.Rounded.ThermostatAuto" Color="Color.Primary" />
+                            <MudText Typo="Typo.h6" Class="font-weight-bold">@GetAverageTemp()&deg;C</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Average</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudPaper Class="stat-card" Elevation="0">
+                            <MudIcon Icon="@Icons.Material.Rounded.KeyboardArrowUp" Color="Color.Error" />
+                            <MudText Typo="Typo.h6" Class="font-weight-bold">@GetMaxTemp()&deg;C</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">High</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudPaper Class="stat-card" Elevation="0">
+                            <MudIcon Icon="@Icons.Material.Rounded.KeyboardArrowDown" Color="Color.Info" />
+                            <MudText Typo="Typo.h6" Class="font-weight-bold">@GetMinTemp()&deg;C</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Low</MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudPaper Class="stat-card" Elevation="0">
+                            <MudIcon Icon="@Icons.Material.Rounded.CalendarMonth" Color="Color.Success" />
+                            <MudText Typo="Typo.h6" Class="font-weight-bold">@forecasts.Length</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Days</MudText>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+        }
+
+        <MudPaper Class="info-section" Elevation="0">
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                <MudIcon Icon="@Icons.Material.Rounded.Info" Size="Size.Small" Color="Color.Primary" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    This component demonstrates streaming rendering with simulated weather data.
+                    Data is loaded asynchronously to showcase the loading state.
+                </MudText>
+            </MudStack>
+        </MudPaper>
+    </MudPaper>
+</div>
+
+<style>
+    .weather-page {
+        max-width: 700px;
+        margin: 0 auto;
+        padding: 24px 16px;
+    }
+
+    .weather-card {
+        background: white !important;
+        border-radius: 24px;
+        padding: 32px;
+        border: 1px solid #e0e6ed;
+    }
+
+    .weather-card-header {
+        text-align: center;
+        margin-bottom: 32px;
+    }
+
+    .weather-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, #FF9800 0%, #F57C00 50%, #FF5722 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+        color: white;
+        box-shadow: 0 8px 32px rgba(255, 152, 0, 0.35);
+        animation: sunGlow 3s ease-in-out infinite;
+    }
+
+    @@keyframes sunGlow {
+        0%, 100% {
+            box-shadow: 0 8px 32px rgba(255, 152, 0, 0.35);
+            transform: scale(1);
+        }
+        50% {
+            box-shadow: 0 12px 40px rgba(255, 152, 0, 0.5);
+            transform: scale(1.02);
+        }
+    }
+
+    .weather-title {
+        font-weight: 700 !important;
+        color: #1a1a2e;
+        margin-bottom: 8px;
+    }
+
+    .forecast-list {
+        margin-bottom: 8px;
+    }
+
+    .forecast-item {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%) !important;
+        border-radius: 16px;
+        padding: 20px;
+        border: 1px solid #e0e6ed;
+        transition: all 0.3s ease;
+    }
+
+    .forecast-item:hover {
+        transform: translateX(4px);
+        border-color: #FF9800;
+        box-shadow: 0 4px 16px rgba(255, 152, 0, 0.15);
+    }
+
+    .temp-chip {
+        font-weight: 600 !important;
+        min-width: 70px;
+        justify-content: center;
+    }
+
+    .temp-chip-f {
+        font-size: 0.8rem !important;
+        min-width: 60px;
+        justify-content: center;
+    }
+
+    /* Weather Avatar Classes */
+    .weather-hot {
+        background: linear-gradient(135deg, #FF5722 0%, #E64A19 100%) !important;
+        color: white !important;
+    }
+
+    .weather-warm {
+        background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%) !important;
+        color: white !important;
+    }
+
+    .weather-mild {
+        background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%) !important;
+        color: white !important;
+    }
+
+    .weather-cool {
+        background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%) !important;
+        color: white !important;
+    }
+
+    .weather-cold {
+        background: linear-gradient(135deg, #00BCD4 0%, #0097A7 100%) !important;
+        color: white !important;
+    }
+
+    .weather-freezing {
+        background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%) !important;
+        color: white !important;
+    }
+
+    .stats-section {
+        background: transparent !important;
+    }
+
+    .stat-card {
+        background: #f8fafc !important;
+        border-radius: 12px;
+        padding: 16px;
+        text-align: center;
+        border: 1px solid #e0e6ed;
+        transition: all 0.2s ease;
+    }
+
+    .stat-card:hover {
+        border-color: #1976D2;
+        transform: translateY(-2px);
+    }
+
+    .info-section {
+        background: #FFF8E1 !important;
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 24px;
+    }
+
+    /* Responsive adjustments */
+    @@media (max-width: 600px) {
+        .weather-page {
+            padding: 16px 12px;
+        }
+
+        .weather-card {
+            padding: 20px;
+            border-radius: 20px;
+        }
+
+        .forecast-item {
+            padding: 16px;
+        }
+
+        .weather-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 16px;
+        }
+    }
+</style>
 
 @code {
     private WeatherForecast[]? forecasts;
@@ -53,6 +293,52 @@ else
             Summary = summaries[Random.Shared.Next(summaries.Length)]
         }).ToArray();
     }
+
+    private string GetWeatherIcon(string? summary) => summary?.ToLower() switch
+    {
+        "freezing" => Icons.Material.Rounded.AcUnit,
+        "bracing" => Icons.Material.Rounded.SevereCold,
+        "chilly" => Icons.Material.Rounded.Air,
+        "cool" => Icons.Material.Rounded.Cloud,
+        "mild" => Icons.Material.Rounded.FilterDrama,
+        "warm" => Icons.Material.Rounded.WbSunny,
+        "balmy" => Icons.Material.Rounded.Brightness5,
+        "hot" => Icons.Material.Rounded.Brightness7,
+        "sweltering" => Icons.Material.Rounded.LocalFireDepartment,
+        "scorching" => Icons.Material.Rounded.Whatshot,
+        _ => Icons.Material.Rounded.WbSunny
+    };
+
+    private string GetWeatherAvatarClass(int tempC) => tempC switch
+    {
+        >= 35 => "weather-hot",
+        >= 25 => "weather-warm",
+        >= 15 => "weather-mild",
+        >= 5 => "weather-cool",
+        >= -5 => "weather-cold",
+        _ => "weather-freezing"
+    };
+
+    private Color GetTemperatureColor(int tempC) => tempC switch
+    {
+        >= 35 => Color.Error,
+        >= 25 => Color.Warning,
+        >= 15 => Color.Success,
+        >= 5 => Color.Info,
+        _ => Color.Primary
+    };
+
+    private int GetAverageTemp() => forecasts?.Length > 0
+        ? (int)forecasts.Average(f => f.TemperatureC)
+        : 0;
+
+    private int GetMaxTemp() => forecasts?.Length > 0
+        ? forecasts.Max(f => f.TemperatureC)
+        : 0;
+
+    private int GetMinTemp() => forecasts?.Length > 0
+        ? forecasts.Min(f => f.TemperatureC)
+        : 0;
 
     private class WeatherForecast
     {

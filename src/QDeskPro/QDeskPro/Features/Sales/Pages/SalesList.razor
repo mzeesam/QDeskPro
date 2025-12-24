@@ -1,0 +1,334 @@
+@page "/clerk/sales"
+@using Microsoft.AspNetCore.Authorization
+@using QDeskPro.Features.Sales.Services
+@using QDeskPro.Features.Sales.Components
+@using QDeskPro.Features.Admin.Services
+@using QDeskPro.Domain.Entities
+@attribute [Authorize(Roles = "Clerk")]
+@rendermode InteractiveServer
+@inject SaleService SaleService
+@inject UserService UserService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+@inject IDialogService DialogService
+
+<PageTitle>My Sales - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudText Typo="Typo.h4" Class="font-weight-bold mb-4">
+        <MudIcon Icon="@Icons.Material.Rounded.Receipt" Class="mr-2" />
+        My Sales
+    </MudText>
+
+    @* Search and Filter *@
+    <MudPaper Class="pa-4 mb-4" Elevation="0">
+        <MudTextField @bind-Value="_searchText"
+                      Label="Search by Vehicle Registration"
+                      Variant="Variant.Outlined"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Rounded.Search"
+                      OnKeyUp="OnSearchKeyUp"
+                      Immediate="false"
+                      DebounceInterval="500" />
+    </MudPaper>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (!_sales.Any())
+    {
+        <MudPaper Class="pa-8 text-center" Elevation="0">
+            <MudIcon Icon="@Icons.Material.Rounded.Inbox" Size="Size.Large" Color="Color.Default" />
+            <MudText Typo="Typo.h6" Class="mt-2">No sales records to display</MudText>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Href="/clerk/sales/new"
+                       Class="mt-4">
+                Create New Sale
+            </MudButton>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Elevation="0">
+            @foreach (var sale in _sales)
+            {
+                var isEditable = IsEditableWithin72Hours(sale.SaleDate);
+                var isUnpaid = sale.PaymentStatus == "Not Paid";
+
+                <MudCard Class="mb-3 sale-card" Elevation="1">
+                    <MudCardContent>
+                        <MudGrid>
+                            <MudItem xs="12" sm="8">
+                                <div class="d-flex align-center mb-2">
+                                    <MudIcon Icon="@Icons.Material.Rounded.DirectionsCar" Size="Size.Small" Class="mr-2" />
+                                    <MudText Typo="Typo.h6" Class="@(isUnpaid ? "unpaid-text" : "")">
+                                        @sale.VehicleRegistration
+                                    </MudText>
+                                    @if (isUnpaid)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Class="ml-2">Not Paid</MudChip>
+                                    }
+                                </div>
+
+                                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-1">
+                                    Qty: <strong>@sale.Quantity.ToString("N0")</strong> |
+                                    Product: <strong>@sale.Product?.ProductName</strong> |
+                                    Price: <strong>KES @sale.PricePerUnit.ToString("N0")</strong>
+                                </MudText>
+
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    Status: @sale.PaymentStatus |
+                                    Ref: @(sale.PaymentReference ?? "N/A") |
+                                    Mode: @sale.PaymentMode
+                                </MudText>
+                            </MudItem>
+
+                            <MudItem xs="12" sm="4" Class="d-flex flex-column align-end justify-space-between">
+                                <MudText Typo="Typo.h5" Class="@(isUnpaid ? "unpaid-amount" : "paid-amount")">
+                                    KES @sale.GrossSaleAmount.ToString("N1")
+                                </MudText>
+
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                                    @sale.SaleDate?.ToString("dd/MM/yy | HH:mm")
+                                </MudText>
+
+                                <MudStack Row="true" Spacing="1" Class="mt-2">
+                                    <MudButton Size="Size.Small"
+                                               Variant="Variant.Text"
+                                               Color="Color.Info"
+                                               OnClick="@(() => ViewSaleDetails(sale))">
+                                        View
+                                    </MudButton>
+                                    @if (isEditable)
+                                    {
+                                        <MudButton Size="Size.Small"
+                                                   Variant="Variant.Text"
+                                                   Color="Color.Primary"
+                                                   OnClick="@(() => EditSale(sale))">
+                                            Edit
+                                        </MudButton>
+                                        <MudButton Size="Size.Small"
+                                                   Variant="Variant.Text"
+                                                   Color="Color.Error"
+                                                   OnClick="@(() => DeleteSale(sale))">
+                                            Delete
+                                        </MudButton>
+                                    }
+                                    else
+                                    {
+                                        <MudTooltip Text="Can only edit sales within 72 hours">
+                                            <MudButton Size="Size.Small"
+                                                       Variant="Variant.Text"
+                                                       Color="Color.Default"
+                                                       Disabled="true">
+                                                Edit
+                                            </MudButton>
+                                        </MudTooltip>
+                                    }
+                                </MudStack>
+                            </MudItem>
+                        </MudGrid>
+                    </MudCardContent>
+                </MudCard>
+            }
+
+            @* Load More Button *@
+            @if (_hasMore && !_loading)
+            {
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           FullWidth="true"
+                           OnClick="LoadMore"
+                           Class="mt-4">
+                    Load More
+                </MudButton>
+            }
+        </MudPaper>
+    }
+
+    @* FAB for New Sale *@
+    <MudFab Color="Color.Primary"
+            StartIcon="@Icons.Material.Rounded.Add"
+            Href="/clerk/sales/new"
+            Style="position: fixed; bottom: 80px; right: 16px;"
+            Label="New Sale" />
+</MudContainer>
+
+<style>
+    .sale-card {
+        border-left: 4px solid #1976D2;
+        transition: all 0.2s ease;
+    }
+
+    .sale-card:hover {
+        box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    }
+
+    .unpaid-text {
+        color: #F44336;
+        font-weight: 600;
+    }
+
+    .unpaid-amount {
+        color: #F44336;
+        font-weight: 700;
+    }
+
+    .paid-amount {
+        color: #1976D2;
+        font-weight: 700;
+    }
+</style>
+
+@code {
+    private bool _loading = true;
+    private string _userId = "";
+    private string _quarryId = "";
+    private string _searchText = "";
+
+    private List<Sale> _allSales = new();
+    private List<Sale> _sales = new();
+    private bool _hasMore = false;
+    private int _pageSize = 20;
+    private int _currentPage = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get user info from auth state
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+
+                // Get user's quarry context from database
+                var userContext = await UserService.GetUserQuarryContextAsync(_userId);
+
+                if (userContext != null)
+                {
+                    _quarryId = userContext.QuarryId;
+
+                    // Load sales
+                    await LoadSales();
+                }
+                else
+                {
+                    Snackbar.Add("No quarry assigned to your account. Please contact your manager.", Severity.Warning);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading sales: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadSales()
+    {
+        _loading = true;
+        try
+        {
+            // Get all sales for this clerk
+            _allSales = await SaleService.GetSalesForClerkAsync(_userId, _searchText);
+
+            // Sort by date descending
+            _allSales = _allSales.OrderByDescending(s => s.SaleDate).ToList();
+
+            // Reset pagination
+            _currentPage = 0;
+            _sales = _allSales.Take(_pageSize).ToList();
+            _hasMore = _allSales.Count > _pageSize;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void LoadMore()
+    {
+        _currentPage++;
+        var skip = _currentPage * _pageSize;
+        var moreSales = _allSales.Skip(skip).Take(_pageSize).ToList();
+        _sales.AddRange(moreSales);
+        _hasMore = _allSales.Count > _sales.Count;
+    }
+
+    private async Task OnSearchKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || string.IsNullOrWhiteSpace(_searchText))
+        {
+            await LoadSales();
+        }
+    }
+
+    private bool IsEditableWithin72Hours(DateTime? saleDate)
+    {
+        if (!saleDate.HasValue)
+            return false;
+
+        var hoursSinceSale = (DateTime.Now - saleDate.Value).TotalHours;
+        return hoursSinceSale <= 72;
+    }
+
+    private async Task ViewSaleDetails(Sale sale)
+    {
+        var parameters = new DialogParameters
+        {
+            { "Sale", sale }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true,
+            CloseButton = true
+        };
+
+        await DialogService.ShowAsync<SaleDetailsDialog>("Sale Details", parameters, options);
+    }
+
+    private void EditSale(Sale sale)
+    {
+        NavigationManager.NavigateTo($"/clerk/sales/edit/{sale.Id}");
+    }
+
+    private async Task DeleteSale(Sale sale)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Delete Sale",
+            $"Are you sure you want to delete this sale: {sale.VehicleRegistration}?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (result == true)
+        {
+            try
+            {
+                var deleteResult = await SaleService.DeleteSaleAsync(sale.Id, _userId);
+                if (deleteResult.Success)
+                {
+                    Snackbar.Add("Sale deleted successfully", Severity.Success);
+                    await LoadSales();
+                }
+                else
+                {
+                    Snackbar.Add(deleteResult.Message, Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error deleting sale: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}

@@ -1,0 +1,490 @@
+@page "/clerk/fuel"
+@using Microsoft.AspNetCore.Authorization
+@using QDeskPro.Features.FuelUsage.Services
+@using QDeskPro.Features.Admin.Services
+@using QDeskPro.Domain.Entities
+@attribute [Authorize(Roles = "Clerk")]
+@rendermode InteractiveServer
+@inject FuelUsageService FuelUsageService
+@inject UserService UserService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Fuel Usage - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudText Typo="Typo.h4" Class="font-weight-bold mb-4">
+        <MudIcon Icon="@Icons.Material.Rounded.LocalGasStation" Class="mr-2" />
+        Fuel Usage Tracking
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else
+    {
+        @* Fuel Usage Entry Form *@
+        <MudPaper Class="pa-4 mb-4" Elevation="0">
+            <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">
+                @(_isEditMode ? "Update Fuel Usage" : "Record Fuel Usage")
+            </MudText>
+
+            <MudForm @ref="_form" @bind-IsValid="_isValid">
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudDatePicker @bind-Date="_usageDate"
+                                       Label="Usage Date"
+                                       Variant="Variant.Outlined"
+                                       Required="true"
+                                       MaxDate="@DateTime.Today"
+                                       MinDate="@DateTime.Today.AddDays(-14)"
+                                       DateFormat="dd/MM/yyyy" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField Value="_fuelUsage.OldStock"
+                                         Label="Old Stock (B/F)"
+                                         Variant="Variant.Outlined"
+                                         Min="0"
+                                         Required="true"
+                                         Adornment="Adornment.End"
+                                         AdornmentText="liters"
+                                         ValueChanged="@((double val) => { _fuelUsage.OldStock = val; CalculateFuelBalance(); })" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField Value="_fuelUsage.NewStock"
+                                         Label="New Stock Added"
+                                         Variant="Variant.Outlined"
+                                         Min="0"
+                                         Adornment="Adornment.End"
+                                         AdornmentText="liters"
+                                         ValueChanged="@((double val) => { _fuelUsage.NewStock = val; CalculateFuelBalance(); })" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField Value="_fuelUsage.MachinesLoaded"
+                                         Label="Machines Loaded"
+                                         Variant="Variant.Outlined"
+                                         Min="0"
+                                         Required="true"
+                                         Adornment="Adornment.End"
+                                         AdornmentText="liters"
+                                         ValueChanged="@((double val) => { _fuelUsage.MachinesLoaded = val; CalculateFuelBalance(); })" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField Value="_fuelUsage.WheelLoadersLoaded"
+                                         Label="Wheel Loaders Loaded"
+                                         Variant="Variant.Outlined"
+                                         Min="0"
+                                         Required="true"
+                                         Adornment="Adornment.End"
+                                         AdornmentText="liters"
+                                         ValueChanged="@((double val) => { _fuelUsage.WheelLoadersLoaded = val; CalculateFuelBalance(); })" />
+                    </MudItem>
+                </MudGrid>
+
+                @* Calculated Fields Display *@
+                <MudDivider Class="my-4" />
+                <MudGrid>
+                    <MudItem xs="12" sm="4">
+                        <MudPaper Class="pa-4 calc-card" Elevation="0">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-2">Total Stock</MudText>
+                            <MudText Typo="Typo.h6" Class="font-weight-bold">
+                                @_totalStock.ToString("N1") <span class="ltrs-suffix">ltrs</span>
+                            </MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudPaper Class="pa-4 calc-card" Elevation="0">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-2">Used</MudText>
+                            <MudText Typo="Typo.h6" Class="font-weight-bold" Color="Color.Error">
+                                @_used.ToString("N1") <span class="ltrs-suffix">ltrs</span>
+                            </MudText>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudPaper Class="pa-4 calc-card balance-card" Elevation="0">
+                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-2">Balance</MudText>
+                            <MudText Typo="Typo.h5" Class="font-weight-bold" Color="@(_balance < 0 ? Color.Error : Color.Success)">
+                                @_balance.ToString("N1") <span class="ltrs-suffix">ltrs</span>
+                            </MudText>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+
+                @if (_balance < 0)
+                {
+                    <MudAlert Severity="Severity.Error" Class="mt-3" Icon="@Icons.Material.Rounded.Warning">
+                        Fuel usage exceeds available stock. Please check your entries.
+                    </MudAlert>
+                }
+
+                @* Action Buttons *@
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2" Class="mt-4">
+                    @if (_isEditMode)
+                    {
+                        <MudButton Variant="Variant.Text"
+                                   Color="Color.Error"
+                                   OnClick="DeleteFuelUsage"
+                                   Disabled="_processing">
+                            Delete
+                        </MudButton>
+                        <MudButton Variant="Variant.Text"
+                                   OnClick="CancelEdit"
+                                   Disabled="_processing">
+                            Cancel
+                        </MudButton>
+                    }
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Disabled="@(!_isValid || _processing || _balance < 0)"
+                               OnClick="SaveFuelUsage"
+                               StartIcon="@Icons.Material.Rounded.Save">
+                        @if (_processing)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        @(_isEditMode ? "Update" : "Save")
+                    </MudButton>
+                </MudStack>
+            </MudForm>
+        </MudPaper>
+
+        @* Fuel Usage History *@
+        <MudPaper Class="pa-4" Elevation="0">
+            <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">Fuel Usage History (Last 14 Days)</MudText>
+
+            @if (!_usages.Any())
+            {
+                <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info">
+                    No fuel usage records yet
+                </MudAlert>
+            }
+            else
+            {
+                <MudTable Items="@_usages"
+                          T="QDeskPro.Domain.Entities.FuelUsage"
+                          Hover="true"
+                          Breakpoint="Breakpoint.Sm"
+                          Dense="true"
+                          Loading="@_loadingList"
+                          RowClass="cursor-pointer"
+                          OnRowClick="@(args => SelectFuelUsageForEdit(args.Item))">
+                    <HeaderContent>
+                        <MudTh>Date</MudTh>
+                        <MudTh Style="text-align: right">Old Stock</MudTh>
+                        <MudTh Style="text-align: right">New Stock</MudTh>
+                        <MudTh Style="text-align: right">Total</MudTh>
+                        <MudTh Style="text-align: right">Machines</MudTh>
+                        <MudTh Style="text-align: right">W/Loaders</MudTh>
+                        <MudTh Style="text-align: right">Balance</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Date">
+                            <MudText Typo="Typo.body2">@context.UsageDate?.ToString("dd/MM/yy")</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Old Stock" Style="text-align: right">
+                            <MudText Typo="Typo.body2">@context.OldStock.ToString("N1")</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="New Stock" Style="text-align: right">
+                            <MudText Typo="Typo.body2">@context.NewStock.ToString("N1")</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Total" Style="text-align: right">
+                            <MudText Typo="Typo.body2" Class="font-weight-medium">@context.TotalStock.ToString("N1")</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Machines" Style="text-align: right">
+                            <MudText Typo="Typo.body2">@context.MachinesLoaded.ToString("N1")</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="W/Loaders" Style="text-align: right">
+                            <MudText Typo="Typo.body2">@context.WheelLoadersLoaded.ToString("N1")</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Balance" Style="text-align: right">
+                            <MudText Typo="Typo.body1" Color="Color.Success" Class="font-weight-bold">
+                                @context.Balance.ToString("N1")
+                            </MudText>
+                        </MudTd>
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager PageSizeOptions="new int[] { 12, 25, 50 }" />
+                    </PagerContent>
+                </MudTable>
+            }
+        </MudPaper>
+    }
+</MudContainer>
+
+<style>
+    .cursor-pointer {
+        cursor: pointer;
+    }
+
+    .cursor-pointer:hover {
+        background-color: rgba(0, 0, 0, 0.04);
+    }
+
+    .calc-card {
+        border-radius: 12px;
+        border: 1px solid #E0E6ED;
+        background: #F5F7FA;
+    }
+
+    .balance-card {
+        border: 2px solid #4CAF50;
+        background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%);
+    }
+
+    .ltrs-suffix {
+        font-size: 0.875rem;
+        font-weight: normal;
+        color: #666;
+    }
+</style>
+
+@code {
+    private MudForm? _form;
+    private bool _isValid = false;
+    private bool _loading = true;
+    private bool _loadingList = false;
+    private bool _processing = false;
+    private bool _isEditMode = false;
+    private string _userId = "";
+    private string _quarryId = "";
+
+    private Domain.Entities.FuelUsage _fuelUsage = new()
+    {
+        UsageDate = DateTime.Now,
+        OldStock = 0,
+        NewStock = 0,
+        MachinesLoaded = 0,
+        WheelLoadersLoaded = 0
+    };
+
+    private DateTime? _usageDate = DateTime.Now;
+    private List<Domain.Entities.FuelUsage> _usages = new();
+
+    // Calculated fields
+    private double _totalStock = 0;
+    private double _used = 0;
+    private double _balance = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get user info from auth state
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+
+                // Get user's quarry context from database
+                var userContext = await UserService.GetUserQuarryContextAsync(_userId);
+
+                if (userContext != null)
+                {
+                    _quarryId = userContext.QuarryId;
+
+                    // Try to get previous day's balance as today's OldStock
+                    await TrySetOldStockFromPreviousDay();
+
+                    // Load existing fuel usage records
+                    await RefreshFuelUsageList();
+                }
+                else
+                {
+                    Snackbar.Add("No quarry assigned to your account. Please contact your manager.", Severity.Warning);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading fuel usage: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task TrySetOldStockFromPreviousDay()
+    {
+        try
+        {
+            var allUsages = await FuelUsageService.GetFuelUsageForQuarryAsync(_quarryId);
+            var previousDay = DateTime.Today.AddDays(-1);
+            var previousUsage = allUsages.FirstOrDefault(u => u.UsageDate?.Date == previousDay.Date);
+
+            if (previousUsage != null)
+            {
+                _fuelUsage.OldStock = previousUsage.Balance;
+                CalculateFuelBalance();
+            }
+        }
+        catch
+        {
+            // Ignore errors, just use 0 as default
+        }
+    }
+
+    private void CalculateFuelBalance()
+    {
+        // Real-time calculations as per specification
+        _totalStock = _fuelUsage.OldStock + _fuelUsage.NewStock;
+        _used = _fuelUsage.MachinesLoaded + _fuelUsage.WheelLoadersLoaded;
+        _balance = _totalStock - _used;
+
+        // Prevent negative balance (safety check from MAUI app)
+        if (_balance < 0)
+            _balance = 0.00;
+
+        // Force UI update
+        StateHasChanged();
+    }
+
+    private async Task RefreshFuelUsageList()
+    {
+        _loadingList = true;
+        try
+        {
+            _usages = await FuelUsageService.GetFuelUsageForQuarryAsync(_quarryId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading fuel usage list: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingList = false;
+        }
+    }
+
+    private async Task SaveFuelUsage()
+    {
+        // Sync usage date
+        _fuelUsage.UsageDate = _usageDate;
+
+        // Validate balance is not negative
+        if (_balance < 0)
+        {
+            Snackbar.Add("Fuel usage exceeds available stock", Severity.Error);
+            return;
+        }
+
+        _processing = true;
+        try
+        {
+            bool success;
+            string message;
+
+            if (_isEditMode)
+            {
+                (success, message) = await FuelUsageService.UpdateFuelUsageAsync(_fuelUsage, _userId);
+            }
+            else
+            {
+                (success, message, _) = await FuelUsageService.CreateFuelUsageAsync(_fuelUsage, _userId, _quarryId);
+            }
+
+            if (success)
+            {
+                Snackbar.Add(message, Severity.Success);
+                await RefreshFuelUsageList();
+                ResetForm();
+            }
+            else
+            {
+                Snackbar.Add(message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving fuel usage: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private async Task DeleteFuelUsage()
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Delete Fuel Usage",
+            "Are you sure you want to delete this fuel usage record?",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (result != true)
+            return;
+
+        _processing = true;
+        try
+        {
+            var (success, message) = await FuelUsageService.DeleteFuelUsageAsync(_fuelUsage.Id, _userId);
+
+            if (success)
+            {
+                Snackbar.Add(message, Severity.Success);
+                await RefreshFuelUsageList();
+                ResetForm();
+            }
+            else
+            {
+                Snackbar.Add(message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting fuel usage: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private void SelectFuelUsageForEdit(Domain.Entities.FuelUsage usage)
+    {
+        _fuelUsage = new Domain.Entities.FuelUsage
+        {
+            Id = usage.Id,
+            UsageDate = usage.UsageDate,
+            OldStock = usage.OldStock,
+            NewStock = usage.NewStock,
+            MachinesLoaded = usage.MachinesLoaded,
+            WheelLoadersLoaded = usage.WheelLoadersLoaded
+        };
+        _usageDate = usage.UsageDate;
+        CalculateFuelBalance();
+        _isEditMode = true;
+    }
+
+    private void CancelEdit()
+    {
+        ResetForm();
+    }
+
+    private async void ResetForm()
+    {
+        _fuelUsage = new Domain.Entities.FuelUsage
+        {
+            UsageDate = DateTime.Now,
+            OldStock = 0,
+            NewStock = 0,
+            MachinesLoaded = 0,
+            WheelLoadersLoaded = 0
+        };
+        _usageDate = DateTime.Now;
+
+        // Try to set old stock from previous day
+        await TrySetOldStockFromPreviousDay();
+
+        _isEditMode = false;
+        _form?.ResetAsync();
+    }
+}

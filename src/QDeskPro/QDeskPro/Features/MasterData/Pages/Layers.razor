@@ -1,0 +1,377 @@
+@page "/manager/layers"
+@page "/admin/layers"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.MasterData.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject MasterDataService MasterDataService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Layers - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
+    <MudStack Spacing="3">
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.h4">Layer Management</MudText>
+        </MudStack>
+
+        @* Quarry Selector *@
+        <MudPaper Class="pa-4">
+            <MudGrid>
+                <MudItem xs="12" sm="8">
+                    <MudSelect T="string"
+                              @bind-Value="_selectedQuarryId"
+                              Label="Select Quarry"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Terrain"
+                              OnValueChanged="OnQuarryChangedAsync">
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4" Class="d-flex align-end">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.Add"
+                              OnClick="OpenAddDialog"
+                              FullWidth="true"
+                              Disabled="@(string.IsNullOrEmpty(_selectedQuarryId) || _userRole == "Administrator")">
+                        New Layer
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @if (string.IsNullOrEmpty(_selectedQuarryId))
+        {
+            <MudAlert Severity="Severity.Info">
+                Please select a quarry to view and manage its layers.
+            </MudAlert>
+        }
+        else
+        {
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+
+            <MudTable Items="_layers"
+                     Hover="true"
+                     Breakpoint="Breakpoint.Sm"
+                     Dense="true"
+                     Loading="_loading"
+                     LoadingProgressColor="Color.Primary">
+                <HeaderContent>
+                    <MudTh>Layer Level</MudTh>
+                    <MudTh>Date Started</MudTh>
+                    <MudTh>Length (meters)</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Layer Level">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Layers" Color="Color.Primary" Size="Size.Small" />
+                            <MudText>@context.LayerLevel</MudText>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Date Started">
+                        @(context.DateStarted.HasValue ? context.DateStarted.Value.ToString("dd MMM yyyy") : "-")
+                    </MudTd>
+                    <MudTd DataLabel="Length">
+                        @(context.LayerLength.HasValue ? $"{context.LayerLength.Value:N2} m" : "-")
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudStack Row="true" Spacing="1">
+                            @if (_userRole == "Manager" && _canEditCurrentQuarry)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                              Size="Size.Small"
+                                              Color="Color.Primary"
+                                              OnClick="@(() => OpenEditDialog(context))" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                              Size="Size.Small"
+                                              Color="Color.Error"
+                                              OnClick="@(() => DeleteLayerAsync(context))" />
+                            }
+                        </MudStack>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Align="Align.Center" Class="pa-4">
+                        @if (_userRole == "Manager" && _canEditCurrentQuarry)
+                        {
+                            <span>No layers found for this quarry. Click "New Layer" to add one.</span>
+                        }
+                        else
+                        {
+                            <span>No layers found for this quarry.</span>
+                        }
+                    </MudText>
+                </NoRecordsContent>
+            </MudTable>
+        }
+    </MudStack>
+</MudContainer>
+
+@* Add/Edit Dialog *@
+<MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(_isEditing ? "Edit Layer" : "New Layer")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formValid">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_editModel.LayerLevel"
+                             Label="Layer Level"
+                             Variant="Variant.Outlined"
+                             Required="true"
+                             Placeholder="e.g., Layer -1, Layer -2"
+                             RequiredError="Layer level is required"
+                             HelperText="Enter the layer designation (e.g., Layer -1)" />
+
+                <MudDatePicker @bind-Date="_layerStartDate"
+                              Label="Date Started"
+                              Variant="Variant.Outlined"
+                              MaxDate="DateTime.Today" />
+
+                <MudNumericField @bind-Value="_editModel.LayerLength"
+                                Label="Layer Length (meters)"
+                                Variant="Variant.Outlined"
+                                Min="0"
+                                Adornment="Adornment.End"
+                                AdornmentText="m"
+                                HelperText="Optional: Length of the layer" />
+            </MudStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                  Color="Color.Primary"
+                  Disabled="@(!_formValid || _saving)"
+                  OnClick="SaveLayerAsync">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @(_isEditing ? "Update" : "Create")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Quarry> _quarries = new();
+    private List<Layer> _layers = new();
+    private Layer _editModel = new();
+    private string? _selectedQuarryId;
+    private DateTime? _layerStartDate;
+    private bool _loading = false;
+    private bool _dialogVisible = false;
+    private bool _isEditing = false;
+    private bool _formValid = false;
+    private bool _saving = false;
+    private bool _canEditCurrentQuarry = false;
+    private string? _userId;
+    private string _userRole = string.Empty;
+    private MudForm? _form;
+
+    private readonly DialogOptions _dialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseButton = true
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+
+        await LoadQuarriesAsync();
+    }
+
+    private async Task LoadQuarriesAsync()
+    {
+        try
+        {
+            if (_userRole == "Administrator")
+            {
+                _quarries = await MasterDataService.GetAllQuarriesAsync();
+            }
+            else if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
+            {
+                _quarries = await MasterDataService.GetQuarriesForManagerAsync(_userId);
+            }
+
+            // Auto-select first quarry if available
+            if (_quarries.Any() && string.IsNullOrEmpty(_selectedQuarryId))
+            {
+                _selectedQuarryId = _quarries.First().Id;
+                await LoadLayersAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OnQuarryChangedAsync(string? quarryId)
+    {
+        _selectedQuarryId = quarryId;
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            await LoadLayersAsync();
+        }
+    }
+
+    private async Task LoadLayersAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId)) return;
+
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Check if user can edit this quarry
+            if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
+            {
+                _canEditCurrentQuarry = await MasterDataService.UserHasQuarryAccessAsync(_userId, _selectedQuarryId, false);
+            }
+            else
+            {
+                _canEditCurrentQuarry = false;
+            }
+
+            _layers = await MasterDataService.GetLayersForQuarryAsync(_selectedQuarryId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading layers: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenAddDialog()
+    {
+        _editModel = new Layer();
+        _layerStartDate = DateTime.Today;
+        _isEditing = false;
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Layer layer)
+    {
+        _editModel = new Layer
+        {
+            Id = layer.Id,
+            LayerLevel = layer.LayerLevel,
+            LayerLength = layer.LayerLength
+        };
+        _layerStartDate = layer.DateStarted;
+        _isEditing = true;
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog()
+    {
+        _dialogVisible = false;
+        _editModel = new();
+        _layerStartDate = null;
+        _isEditing = false;
+    }
+
+    private async Task SaveLayerAsync()
+    {
+        if (!_formValid || string.IsNullOrEmpty(_selectedQuarryId)) return;
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            _editModel.DateStarted = _layerStartDate;
+
+            if (_isEditing)
+            {
+                var result = await MasterDataService.UpdateLayerAsync(_editModel, _userId!);
+                if (result.Success)
+                {
+                    Snackbar.Add(result.Message, Severity.Success);
+                    CloseDialog();
+                    await LoadLayersAsync();
+                }
+                else
+                {
+                    Snackbar.Add(result.Message, Severity.Error);
+                }
+            }
+            else
+            {
+                var result = await MasterDataService.CreateLayerAsync(_editModel, _userId!, _selectedQuarryId);
+                if (result.Success)
+                {
+                    Snackbar.Add(result.Message, Severity.Success);
+                    CloseDialog();
+                    await LoadLayersAsync();
+                }
+                else
+                {
+                    Snackbar.Add(result.Message, Severity.Error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving layer: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteLayerAsync(Layer layer)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "Delete Layer",
+            $"Are you sure you want to delete '{layer.LayerLevel}'? This action cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (confirm == true)
+        {
+            var result = await MasterDataService.DeleteLayerAsync(layer.Id, _userId!);
+            if (result.Success)
+            {
+                Snackbar.Add(result.Message, Severity.Success);
+                await LoadLayersAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+    }
+}
