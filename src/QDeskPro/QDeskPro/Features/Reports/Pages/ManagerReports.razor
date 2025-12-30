@@ -220,7 +220,16 @@
                                 <MudTh Style="text-align: right">Net</MudTh>
                             </HeaderContent>
                             <RowTemplate>
-                                <MudTd DataLabel="Date">@context.Date.ToString("ddd, dd MMM")</MudTd>
+                                <MudTd DataLabel="Date">
+                                    <MudButton Variant="Variant.Text"
+                                              Color="Color.Primary"
+                                              Size="Size.Small"
+                                              OnClick="@(() => NavigateToDaily(context.Date))"
+                                              Class="px-2"
+                                              Style="text-transform: none;">
+                                        @context.Date.ToString("ddd, dd MMM")
+                                    </MudButton>
+                                </MudTd>
                                 <MudTd DataLabel="Orders" Style="text-align: right">@context.OrderCount</MudTd>
                                 <MudTd DataLabel="Quantity" Style="text-align: right">@context.Quantity.ToString("N0")</MudTd>
                                 <MudTd DataLabel="Revenue" Style="text-align: right">@context.Revenue.ToString("N0")</MudTd>
@@ -905,18 +914,11 @@
 
         try
         {
-            // Load all report data in parallel
-            var salesTask = ReportService.GetSalesReportAsync(_selectedQuarryId, _fromDate.Value, _toDate.Value);
-            var expensesTask = ReportService.GetExpensesReportAsync(_selectedQuarryId, _fromDate.Value, _toDate.Value);
-            var fuelTask = ReportService.GetFuelReportAsync(_selectedQuarryId, _fromDate.Value, _toDate.Value);
-            var bankingTask = ReportService.GetBankingReportAsync(_selectedQuarryId, _fromDate.Value, _toDate.Value);
-
-            await Task.WhenAll(salesTask, expensesTask, fuelTask, bankingTask);
-
-            _reportData = await salesTask;
-            _expensesData = await expensesTask;
-            _fuelData = await fuelTask;
-            _bankingData = await bankingTask;
+            // Load all report data sequentially to avoid DbContext threading issues
+            _reportData = await ReportService.GetSalesReportAsync(_selectedQuarryId, _fromDate.Value, _toDate.Value);
+            _expensesData = await ReportService.GetExpensesReportAsync(_selectedQuarryId, _fromDate.Value, _toDate.Value);
+            _fuelData = await ReportService.GetFuelReportAsync(_selectedQuarryId, _fromDate.Value, _toDate.Value);
+            _bankingData = await ReportService.GetBankingReportAsync(_selectedQuarryId, _fromDate.Value, _toDate.Value);
 
             _reportGenerated = true;
             _shouldRenderCharts = true;
@@ -1085,6 +1087,14 @@
             "Other Expenses" => Color.Default,
             _ => Color.Default
         };
+    }
+
+    private void NavigateToDaily(DateTime date)
+    {
+        // Navigate to daily report detail page with date and quarry parameters
+        var dateParam = date.ToString("yyyy-MM-dd");
+        var url = $"/manager/daily-report-detail?Date={dateParam}&QuarryId={_selectedQuarryId}";
+        NavigationManager.NavigateTo(url);
     }
 
     private class ReportHistoryItem

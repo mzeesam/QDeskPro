@@ -63,14 +63,75 @@ public class DashboardService
                     $"{lastSale.Quantity:N0} pieces of {lastSale.Product.ProductName} on {lastSale.SaleDate:dd/MM/yy} at {lastSale.SaleDate:hh:mm tt}";
             }
 
-            // Get today's expenses (manual expenses only, not calculated ones)
+            // Get today's manual expenses
             var todayExpenses = await _context.Expenses
                 .Where(e => e.ApplicationUserId == userId)
                 .Where(e => e.DateStamp == todayStamp)
                 .Where(e => e.IsActive)
                 .ToListAsync();
 
-            stats.TotalExpenses = todayExpenses.Sum(e => e.Amount);
+            var manualExpenses = todayExpenses.Sum(e => e.Amount);
+
+            // Calculate auto-generated expenses from sales
+            // Get quarry fees for calculation
+            var quarry = await _context.Quarries
+                .Where(q => q.Id == quarryId)
+                .Where(q => q.IsActive)
+                .FirstOrDefaultAsync();
+
+            double commissionExpenses = 0;
+            double loadersFeeExpenses = 0;
+            double landRateFeeExpenses = 0;
+
+            if (quarry != null)
+            {
+                // Commission expenses from sales with commission
+                commissionExpenses = todaySales
+                    .Where(s => s.CommissionPerUnit > 0)
+                    .Sum(s => s.Quantity * s.CommissionPerUnit);
+
+                // Loaders fee expenses (if configured for quarry, excluding beam and hardcore products)
+                if (quarry.LoadersFee.HasValue && quarry.LoadersFee > 0)
+                {
+                    loadersFeeExpenses = todaySales
+                        .Where(s =>
+                        {
+                            var productName = s.Product?.ProductName ?? "";
+                            return !productName.Contains("beam", StringComparison.OrdinalIgnoreCase) &&
+                                   !productName.Contains("hardcore", StringComparison.OrdinalIgnoreCase);
+                        })
+                        .Sum(s => s.Quantity * quarry.LoadersFee.Value);
+                }
+
+                // Land rate fee expenses (if configured for quarry)
+                if (quarry.LandRateFee.HasValue && quarry.LandRateFee > 0)
+                {
+                    foreach (var sale in todaySales)
+                    {
+                        // Skip if land rate is excluded for this sale
+                        if (!sale.IncludeLandRate)
+                            continue;
+
+                        var productName = sale.Product?.ProductName ?? "";
+                        double feeRate;
+
+                        // Use RejectsFee for reject products
+                        if (productName.Contains("reject", StringComparison.OrdinalIgnoreCase))
+                        {
+                            feeRate = quarry.RejectsFee ?? 0;
+                        }
+                        else
+                        {
+                            feeRate = quarry.LandRateFee.Value;
+                        }
+
+                        landRateFeeExpenses += sale.Quantity * feeRate;
+                    }
+                }
+            }
+
+            // Total expenses = manual + commission + loaders fee + land rate
+            stats.TotalExpenses = manualExpenses + commissionExpenses + loadersFeeExpenses + landRateFeeExpenses;
 
             // Get opening balance (previous day's closing from DailyNote)
             var previousDay = today.AddDays(-1);
@@ -82,6 +143,36 @@ public class DashboardService
                 .FirstOrDefaultAsync();
 
             stats.OpeningBalance = previousDayNote?.ClosingBalance ?? 0;
+
+            // Get today's prepayments (customer deposits received today)
+            var todayPrepayments = await _context.Prepayments
+                .Where(p => p.QId == quarryId)
+                .Where(p => p.DateStamp == todayStamp)
+                .Where(p => p.IsActive)
+                .SumAsync(p => p.TotalAmountPaid);
+
+            stats.TotalPrepayments = todayPrepayments;
+
+            // Get today's collections (payments received today for sales made before today)
+            var todayCollections = await _context.Sales
+                .Where(s => s.QId == quarryId)
+                .Where(s => s.IsActive)
+                .Where(s => s.PaymentStatus == "Paid")
+                .Where(s => s.PaymentReceivedDate.HasValue)
+                .Where(s => s.PaymentReceivedDate.Value.Date == today)
+                .Where(s => s.SaleDate.HasValue && s.SaleDate.Value.Date < today)
+                .SumAsync(s => s.Quantity * s.PricePerUnit);
+
+            stats.TotalCollections = todayCollections;
+
+            // Get total unpaid orders (all unpaid sales for this clerk)
+            var totalUnpaid = await _context.Sales
+                .Where(s => s.ApplicationUserId == userId)
+                .Where(s => s.IsActive)
+                .Where(s => s.PaymentStatus == "NotPaid")
+                .SumAsync(s => s.Quantity * s.PricePerUnit);
+
+            stats.TotalUnpaid = totalUnpaid;
 
             return stats;
         }, CacheExpirations.Dashboard); // Cache for 1 minute
@@ -181,4 +272,7 @@ public class DashboardStats
     public double TotalExpenses { get; set; }
     public double OpeningBalance { get; set; }
     public string? LastSaleDescription { get; set; }
+    public double TotalPrepayments { get; set; }
+    public double TotalCollections { get; set; }
+    public double TotalUnpaid { get; set; }
 }

@@ -17,6 +17,7 @@ public static class EndpointExtensions
         app.MapMasterDataEndpoints();
         app.MapDashboardEndpoints();
         app.MapAIEndpoints();
+        app.MapAccountingEndpoints();
 
         return app;
     }

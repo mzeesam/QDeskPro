@@ -1,0 +1,41 @@
+@inject IJSRuntime JS
+
+<div style="height: @Height">
+    <canvas id="@CanvasId"></canvas>
+</div>
+
+@code {
+    [Parameter] public string CanvasId { get; set; } = "costBreakdownChart";
+    [Parameter] public string Height { get; set; } = "400px";
+    [Parameter] public List<string> Labels { get; set; } = new();
+    [Parameter] public List<double> ManualData { get; set; } = new();
+    [Parameter] public List<double> CommissionData { get; set; } = new();
+    [Parameter] public List<double> LoadersData { get; set; } = new();
+    [Parameter] public List<double> LandRateData { get; set; } = new();
+    [Parameter] public List<double> FuelData { get; set; } = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || _dataChanged)
+        {
+            await JS.InvokeVoidAsync("QDeskDataAnalyticsCharts.createCostBreakdownChart",
+                CanvasId, Labels, ManualData, CommissionData, LoadersData, LandRateData, FuelData);
+            _dataChanged = false;
+        }
+    }
+
+    private bool _dataChanged = true;
+
+    public void UpdateData(List<string> labels, List<double> manual, List<double> commission,
+                          List<double> loaders, List<double> landRate, List<double> fuel)
+    {
+        Labels = labels;
+        ManualData = manual;
+        CommissionData = commission;
+        LoadersData = loaders;
+        LandRateData = landRate;
+        FuelData = fuel;
+        _dataChanged = true;
+        StateHasChanged();
+    }
+}

@@ -1,0 +1,62 @@
+@* Quick action links dropdown for a quarry *@
+
+<MudMenu Icon="@Icons.Material.Filled.MoreVert"
+         Size="Size.Small"
+         Dense="true"
+         AnchorOrigin="Origin.BottomLeft"
+         TransformOrigin="Origin.TopLeft"
+         Class="quarry-quick-links">
+
+    <MudMenuItem Icon="@Icons.Material.Filled.Analytics"
+                 Href="@GetAnalyticsUrl()">
+        Analytics
+    </MudMenuItem>
+
+    <MudMenuItem Icon="@Icons.Material.Filled.CalendarMonth"
+                 Href="@GetWeeklyReportUrl()">
+        Last 7 Days
+    </MudMenuItem>
+
+    <MudMenuItem Icon="@Icons.Material.Filled.Assessment"
+                 Href="@GetDailyReportsUrl()">
+        Daily Reports
+    </MudMenuItem>
+
+    <MudDivider />
+
+    <MudMenuItem Icon="@Icons.Material.Filled.Settings"
+                 Href="@GetManageQuarryUrl()">
+        Manage Quarry
+    </MudMenuItem>
+</MudMenu>
+
+@code {
+    [Parameter]
+    public string QuarryId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string QuarryName { get; set; } = string.Empty;
+
+    private string GetAnalyticsUrl()
+    {
+        return $"/manager/analytics?quarryId={Uri.EscapeDataString(QuarryId)}";
+    }
+
+    private string GetWeeklyReportUrl()
+    {
+        var toDate = DateTime.Today.ToString("yyyy-MM-dd");
+        var fromDate = DateTime.Today.AddDays(-6).ToString("yyyy-MM-dd");
+        return $"/manager/daily-reports?quarryId={Uri.EscapeDataString(QuarryId)}&from={fromDate}&to={toDate}";
+    }
+
+    private string GetDailyReportsUrl()
+    {
+        return $"/manager/daily-reports?quarryId={Uri.EscapeDataString(QuarryId)}";
+    }
+
+    private string GetManageQuarryUrl()
+    {
+        // Assuming there's a quarry management page
+        return $"/manager/quarries?selected={Uri.EscapeDataString(QuarryId)}";
+    }
+}

@@ -403,6 +403,28 @@ public class SalesQueryService : ISalesQueryService
             ? await context.Quarries.FindAsync(quarryId)
             : null;
 
+        // Get collections for this day (payments received today for sales made before today)
+        var collectionsQuery = context.Sales
+            .Where(s => s.IsActive)
+            .Where(s => s.PaymentStatus == "Paid")
+            .Where(s => s.PaymentReceivedDate == reportDate)
+            .Where(s => s.SaleDate < reportDate);
+
+        if (!string.IsNullOrEmpty(quarryId))
+            collectionsQuery = collectionsQuery.Where(s => s.QId == quarryId);
+
+        var collections = await collectionsQuery.SumAsync(s => s.GrossSaleAmount);
+
+        // Get prepayments for this day (customer deposits received today)
+        var prepaymentsQuery = context.Prepayments
+            .Where(p => p.IsActive)
+            .Where(p => p.PrepaymentDate == reportDate);
+
+        if (!string.IsNullOrEmpty(quarryId))
+            prepaymentsQuery = prepaymentsQuery.Where(p => p.QId == quarryId);
+
+        var prepayments = await prepaymentsQuery.SumAsync(p => p.TotalAmountPaid);
+
         // Calculate totals
         var totalSales = sales.Sum(s => s.Quantity * s.PricePerUnit);
         var totalQuantity = sales.Sum(s => s.Quantity);
@@ -413,7 +435,9 @@ public class SalesQueryService : ISalesQueryService
         var unpaidAmount = sales.Where(s => s.PaymentStatus == "NotPaid").Sum(s => s.Quantity * s.PricePerUnit);
         var openingBalance = prevNote?.ClosingBalance ?? 0;
         var earnings = totalSales - totalExpenses;
-        var netEarnings = earnings + openingBalance - unpaidAmount;
+
+        // Net Earnings formula: (Earnings + Opening Balance + Collections + Prepayments) - Unpaid Orders
+        var netEarnings = (earnings + openingBalance + collections + prepayments) - unpaidAmount;
         var closingBalance = netEarnings - banked;
 
         var result = new

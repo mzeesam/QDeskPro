@@ -1,10 +1,22 @@
 @using MudBlazor
 
 <MudNavMenu Class="qdp-nav-list">
-    @* Home - Always visible *@
-    <MudNavLink Href="/" Icon="@Icons.Material.Rounded.Home" IconColor="Color.Primary" Match="NavLinkMatch.All">
-        <span class="nav-label">Home</span>
-    </MudNavLink>
+    @* Home - Role-specific *@
+    <AuthorizeView Roles="Administrator">
+        <MudNavLink Href="admin/dashboard" Icon="@Icons.Material.Rounded.Speed" IconColor="Color.Primary" Match="NavLinkMatch.All">
+            <span class="nav-label">Today</span>
+        </MudNavLink>
+    </AuthorizeView>
+    <AuthorizeView Roles="Manager">
+        <MudNavLink Href="manager/dashboard" Icon="@Icons.Material.Rounded.Speed" IconColor="Color.Primary" Match="NavLinkMatch.All">
+            <span class="nav-label">Today</span>
+        </MudNavLink>
+    </AuthorizeView>
+    <AuthorizeView Roles="Clerk">
+        <MudNavLink Href="clerk/dashboard" Icon="@Icons.Material.Rounded.Dashboard" IconColor="Color.Primary" Match="NavLinkMatch.All">
+            <span class="nav-label">Dashboard</span>
+        </MudNavLink>
+    </AuthorizeView>
 
     @* Administrator Navigation *@
     <AuthorizeView Roles="Administrator">
@@ -18,26 +30,92 @@
         <MudNavLink Href="admin/quarries" Icon="@Icons.Material.Rounded.Terrain" IconColor="Color.Tertiary">
             <span class="nav-label">All Quarries</span>
         </MudNavLink>
-        <MudNavLink Href="admin/reports" Icon="@Icons.Material.Rounded.Assessment" IconColor="Color.Info">
-            <span class="nav-label">Reports</span>
-        </MudNavLink>
+
+        <div class="nav-section-header mt-4">
+            <MudText Typo="Typo.overline" Class="nav-section-title">Analytics & Reports</MudText>
+        </div>
+
+        <MudNavGroup Title="Analytics" Icon="@Icons.Material.Rounded.Analytics" IconColor="Color.Primary">
+            <MudNavLink Href="admin/data-analytics" Icon="@Icons.Material.Rounded.QueryStats" IconColor="Color.Tertiary">
+                <span class="nav-label">Data Analytics</span>
+                <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="nav-badge">New</MudChip>
+            </MudNavLink>
+            <MudNavLink Href="admin/roi-analysis" Icon="@Icons.Material.Rounded.TrendingUp" IconColor="Color.Success">
+                <span class="nav-label">ROI Analysis</span>
+                <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="nav-badge">New</MudChip>
+            </MudNavLink>
+        </MudNavGroup>
+
+        <MudNavGroup Title="Reports" Icon="@Icons.Material.Rounded.Assessment" IconColor="Color.Info">
+            <MudNavLink Href="admin/reports" Icon="@Icons.Material.Rounded.BarChart" IconColor="Color.Info">
+                <span class="nav-label">All Reports</span>
+            </MudNavLink>
+            <MudNavLink Href="reports/unpaid-orders" Icon="@Icons.Material.Rounded.CreditCardOff" IconColor="Color.Error">
+                <span class="nav-label">Unpaid Orders</span>
+            </MudNavLink>
+        </MudNavGroup>
+
+        <div class="nav-section-header mt-4">
+            <MudText Typo="Typo.overline" Class="nav-section-title">Accounting</MudText>
+        </div>
+
+        <MudNavGroup Title="Financial Reports" Icon="@Icons.Material.Rounded.AccountBalance" IconColor="Color.Success">
+            <MudNavLink Href="admin/accounting" Icon="@Icons.Material.Rounded.Dashboard" IconColor="Color.Primary">
+                <span class="nav-label">Dashboard</span>
+            </MudNavLink>
+            <MudNavLink Href="admin/accounting/profit-loss" Icon="@Icons.Material.Rounded.TrendingUp" IconColor="Color.Success">
+                <span class="nav-label">Profit & Loss</span>
+            </MudNavLink>
+            <MudNavLink Href="admin/accounting/balance-sheet" Icon="@Icons.Material.Rounded.Balance" IconColor="Color.Info">
+                <span class="nav-label">Balance Sheet</span>
+            </MudNavLink>
+            <MudNavLink Href="admin/accounting/cash-flow" Icon="@Icons.Material.Rounded.Payments" IconColor="Color.Tertiary">
+                <span class="nav-label">Cash Flow</span>
+            </MudNavLink>
+            <MudNavLink Href="admin/accounting/trial-balance" Icon="@Icons.Material.Rounded.Calculate" IconColor="Color.Secondary">
+                <span class="nav-label">Trial Balance</span>
+            </MudNavLink>
+        </MudNavGroup>
+
+        <MudNavGroup Title="Receivables & Payables" Icon="@Icons.Material.Rounded.Receipt" IconColor="Color.Warning">
+            <MudNavLink Href="admin/accounting/ar-aging" Icon="@Icons.Material.Rounded.AccountBalanceWallet" IconColor="Color.Warning">
+                <span class="nav-label">AR Aging</span>
+            </MudNavLink>
+            <MudNavLink Href="admin/accounting/ap-summary" Icon="@Icons.Material.Rounded.RequestQuote" IconColor="Color.Error">
+                <span class="nav-label">AP Summary</span>
+            </MudNavLink>
+        </MudNavGroup>
+
+        <MudNavGroup Title="Accounting Setup" Icon="@Icons.Material.Rounded.Settings" IconColor="Color.Secondary">
+            <MudNavLink Href="admin/accounting/chart-of-accounts" Icon="@Icons.Material.Rounded.AccountTree" IconColor="Color.Info">
+                <span class="nav-label">Chart of Accounts</span>
+            </MudNavLink>
+            <MudNavLink Href="admin/accounting/journal-entries" Icon="@Icons.Material.Rounded.MenuBook" IconColor="Color.Secondary">
+                <span class="nav-label">Journal Entries</span>
+            </MudNavLink>
+        </MudNavGroup>
 
         <div class="nav-section-header mt-4">
             <MudText Typo="Typo.overline" Class="nav-section-title">Master Data</MudText>
         </div>
 
-        <MudNavLink Href="admin/products" Icon="@Icons.Material.Rounded.Inventory" IconColor="Color.Warning">
-            <span class="nav-label">Products</span>
-        </MudNavLink>
-        <MudNavLink Href="admin/layers" Icon="@Icons.Material.Rounded.Layers" IconColor="Color.Success">
-            <span class="nav-label">Layers</span>
-        </MudNavLink>
-        <MudNavLink Href="admin/brokers" Icon="@Icons.Material.Rounded.Groups" IconColor="Color.Secondary">
-            <span class="nav-label">Brokers</span>
-        </MudNavLink>
-        <MudNavLink Href="admin/prices" Icon="@Icons.Material.Rounded.AttachMoney" IconColor="Color.Success">
-            <span class="nav-label">Prices</span>
-        </MudNavLink>
+        <MudNavGroup Title="Configuration" Icon="@Icons.Material.Rounded.Settings" IconColor="Color.Secondary">
+            <MudNavLink Href="admin/products" Icon="@Icons.Material.Rounded.Inventory" IconColor="Color.Warning">
+                <span class="nav-label">Products</span>
+            </MudNavLink>
+            <MudNavLink Href="admin/layers" Icon="@Icons.Material.Rounded.Layers" IconColor="Color.Success">
+                <span class="nav-label">Layers</span>
+            </MudNavLink>
+            <MudNavLink Href="admin/brokers" Icon="@Icons.Material.Rounded.Groups" IconColor="Color.Secondary">
+                <span class="nav-label">Brokers</span>
+            </MudNavLink>
+            <MudNavLink Href="admin/prices" Icon="@Icons.Material.Rounded.AttachMoney" IconColor="Color.Success">
+                <span class="nav-label">Prices</span>
+            </MudNavLink>
+            <MudNavLink Href="admin/data" Icon="@Icons.Material.Rounded.Storage" IconColor="Color.Error">
+                <span class="nav-label">Data</span>
+            </MudNavLink>
+        </MudNavGroup>
     </AuthorizeView>
 
     @* Manager Navigation *@
@@ -46,36 +124,101 @@
             <MudText Typo="Typo.overline" Class="nav-section-title">Overview</MudText>
         </div>
 
-        <MudNavLink Href="manager/dashboard" Icon="@Icons.Material.Rounded.Dashboard" IconColor="Color.Primary">
-            <span class="nav-label">Analytics</span>
-            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="nav-badge">New</MudChip>
-        </MudNavLink>
         <MudNavLink Href="manager/quarries" Icon="@Icons.Material.Rounded.Terrain" IconColor="Color.Tertiary">
             <span class="nav-label">My Quarries</span>
         </MudNavLink>
         <MudNavLink Href="manager/users" Icon="@Icons.Material.Rounded.People" IconColor="Color.Secondary">
             <span class="nav-label">Users</span>
         </MudNavLink>
-        <MudNavLink Href="manager/reports" Icon="@Icons.Material.Rounded.Assessment" IconColor="Color.Info">
-            <span class="nav-label">Reports</span>
-        </MudNavLink>
+
+        <div class="nav-section-header mt-4">
+            <MudText Typo="Typo.overline" Class="nav-section-title">Analytics & Reports</MudText>
+        </div>
+
+        <MudNavGroup Title="Analytics" Icon="@Icons.Material.Rounded.Analytics" IconColor="Color.Primary">
+            <MudNavLink Href="manager/data-analytics" Icon="@Icons.Material.Rounded.QueryStats" IconColor="Color.Tertiary">
+                <span class="nav-label">Data Analytics</span>
+                <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="nav-badge">New</MudChip>
+            </MudNavLink>
+            <MudNavLink Href="manager/roi-analysis" Icon="@Icons.Material.Rounded.TrendingUp" IconColor="Color.Success">
+                <span class="nav-label">ROI Analysis</span>
+                <MudChip T="string" Size="Size.Small" Color="Color.Success" Class="nav-badge">New</MudChip>
+            </MudNavLink>
+        </MudNavGroup>
+
+        <MudNavGroup Title="Reports" Icon="@Icons.Material.Rounded.Assessment" IconColor="Color.Info">
+            <MudNavLink Href="manager/daily-reports" Icon="@Icons.Material.Rounded.Summarize" IconColor="Color.Info">
+                <span class="nav-label">Daily Reports</span>
+            </MudNavLink>
+            <MudNavLink Href="manager/reports" Icon="@Icons.Material.Rounded.BarChart" IconColor="Color.Info">
+                <span class="nav-label">All Reports</span>
+            </MudNavLink>
+            <MudNavLink Href="manager/unpaid-orders" Icon="@Icons.Material.Rounded.CreditCardOff" IconColor="Color.Error">
+                <span class="nav-label">Unpaid Orders</span>
+            </MudNavLink>
+        </MudNavGroup>
+
+        <div class="nav-section-header mt-4">
+            <MudText Typo="Typo.overline" Class="nav-section-title">Accounting</MudText>
+        </div>
+
+        <MudNavGroup Title="Financial Reports" Icon="@Icons.Material.Rounded.AccountBalance" IconColor="Color.Success">
+            <MudNavLink Href="manager/accounting" Icon="@Icons.Material.Rounded.Dashboard" IconColor="Color.Primary">
+                <span class="nav-label">Dashboard</span>
+            </MudNavLink>
+            <MudNavLink Href="manager/accounting/profit-loss" Icon="@Icons.Material.Rounded.TrendingUp" IconColor="Color.Success">
+                <span class="nav-label">Profit & Loss</span>
+            </MudNavLink>
+            <MudNavLink Href="manager/accounting/balance-sheet" Icon="@Icons.Material.Rounded.Balance" IconColor="Color.Info">
+                <span class="nav-label">Balance Sheet</span>
+            </MudNavLink>
+            <MudNavLink Href="manager/accounting/cash-flow" Icon="@Icons.Material.Rounded.Payments" IconColor="Color.Tertiary">
+                <span class="nav-label">Cash Flow</span>
+            </MudNavLink>
+            <MudNavLink Href="manager/accounting/trial-balance" Icon="@Icons.Material.Rounded.Calculate" IconColor="Color.Secondary">
+                <span class="nav-label">Trial Balance</span>
+            </MudNavLink>
+        </MudNavGroup>
+
+        <MudNavGroup Title="Receivables & Payables" Icon="@Icons.Material.Rounded.Receipt" IconColor="Color.Warning">
+            <MudNavLink Href="manager/accounting/ar-aging" Icon="@Icons.Material.Rounded.AccountBalanceWallet" IconColor="Color.Warning">
+                <span class="nav-label">AR Aging</span>
+            </MudNavLink>
+            <MudNavLink Href="manager/accounting/ap-summary" Icon="@Icons.Material.Rounded.RequestQuote" IconColor="Color.Error">
+                <span class="nav-label">AP Summary</span>
+            </MudNavLink>
+        </MudNavGroup>
+
+        <MudNavGroup Title="Accounting Setup" Icon="@Icons.Material.Rounded.Settings" IconColor="Color.Secondary">
+            <MudNavLink Href="manager/accounting/chart-of-accounts" Icon="@Icons.Material.Rounded.AccountTree" IconColor="Color.Info">
+                <span class="nav-label">Chart of Accounts</span>
+            </MudNavLink>
+            <MudNavLink Href="manager/accounting/journal-entries" Icon="@Icons.Material.Rounded.MenuBook" IconColor="Color.Secondary">
+                <span class="nav-label">Journal Entries</span>
+            </MudNavLink>
+        </MudNavGroup>
 
         <div class="nav-section-header mt-4">
             <MudText Typo="Typo.overline" Class="nav-section-title">Master Data</MudText>
         </div>
 
-        <MudNavLink Href="manager/products" Icon="@Icons.Material.Rounded.Inventory" IconColor="Color.Warning">
-            <span class="nav-label">Products</span>
-        </MudNavLink>
-        <MudNavLink Href="manager/layers" Icon="@Icons.Material.Rounded.Layers" IconColor="Color.Success">
-            <span class="nav-label">Layers</span>
-        </MudNavLink>
-        <MudNavLink Href="manager/brokers" Icon="@Icons.Material.Rounded.Groups" IconColor="Color.Secondary">
-            <span class="nav-label">Brokers</span>
-        </MudNavLink>
-        <MudNavLink Href="manager/prices" Icon="@Icons.Material.Rounded.AttachMoney" IconColor="Color.Success">
-            <span class="nav-label">Prices</span>
-        </MudNavLink>
+        <MudNavGroup Title="Configuration" Icon="@Icons.Material.Rounded.Settings" IconColor="Color.Secondary">
+            <MudNavLink Href="manager/products" Icon="@Icons.Material.Rounded.Inventory" IconColor="Color.Warning">
+                <span class="nav-label">Products</span>
+            </MudNavLink>
+            <MudNavLink Href="manager/layers" Icon="@Icons.Material.Rounded.Layers" IconColor="Color.Success">
+                <span class="nav-label">Layers</span>
+            </MudNavLink>
+            <MudNavLink Href="manager/brokers" Icon="@Icons.Material.Rounded.Groups" IconColor="Color.Secondary">
+                <span class="nav-label">Brokers</span>
+            </MudNavLink>
+            <MudNavLink Href="manager/prices" Icon="@Icons.Material.Rounded.AttachMoney" IconColor="Color.Success">
+                <span class="nav-label">Prices</span>
+            </MudNavLink>
+            <MudNavLink Href="manager/data" Icon="@Icons.Material.Rounded.Storage" IconColor="Color.Error">
+                <span class="nav-label">Data</span>
+            </MudNavLink>
+        </MudNavGroup>
     </AuthorizeView>
 
     @* Clerk Navigation *@
@@ -102,19 +245,29 @@
             <span class="nav-label">My Sales</span>
         </MudNavLink>
 
-        <MudNavLink Href="clerk/expenses" Icon="@Icons.Material.Rounded.Receipt" IconColor="Color.Warning">
-            <span class="nav-label">Expenses</span>
-        </MudNavLink>
-        <MudNavLink Href="clerk/banking" Icon="@Icons.Material.Rounded.AccountBalance" IconColor="Color.Tertiary">
-            <span class="nav-label">Banking</span>
-        </MudNavLink>
-        <MudNavLink Href="clerk/fuel" Icon="@Icons.Material.Rounded.LocalGasStation" IconColor="Color.Error">
-            <span class="nav-label">Fuel Usage</span>
-        </MudNavLink>
+        <MudNavGroup Title="Daily Records" Icon="@Icons.Material.Rounded.LibraryBooks" IconColor="Color.Secondary">
+            <MudNavLink Href="clerk/expenses" Icon="@Icons.Material.Rounded.Receipt" IconColor="Color.Warning">
+                <span class="nav-label">Expenses</span>
+            </MudNavLink>
+            <MudNavLink Href="clerk/banking" Icon="@Icons.Material.Rounded.AccountBalance" IconColor="Color.Tertiary">
+                <span class="nav-label">Banking</span>
+            </MudNavLink>
+            <MudNavLink Href="clerk/fuel" Icon="@Icons.Material.Rounded.LocalGasStation" IconColor="Color.Error">
+                <span class="nav-label">Fuel Usage</span>
+            </MudNavLink>
+        </MudNavGroup>
 
-        <div class="nav-section-header mt-4">
-            <MudText Typo="Typo.overline" Class="nav-section-title">Reporting</MudText>
-        </div>
+        <MudNavGroup Title="Payment Tracking" Icon="@Icons.Material.Rounded.Payments" IconColor="Color.Success">
+            <MudNavLink Href="clerk/unpaid-orders" Icon="@Icons.Material.Rounded.PendingActions" IconColor="Color.Warning">
+                <span class="nav-label">Unpaid Orders</span>
+            </MudNavLink>
+            <MudNavLink Href="clerk/prepayments/new" Icon="@Icons.Material.Rounded.AccountBalanceWallet" IconColor="Color.Success">
+                <span class="nav-label">Record Prepayment</span>
+            </MudNavLink>
+            <MudNavLink Href="clerk/prepayments" Icon="@Icons.Material.Rounded.Savings" IconColor="Color.Success">
+                <span class="nav-label">Prepayments</span>
+            </MudNavLink>
+        </MudNavGroup>
 
         <MudNavLink Href="clerk/reports" Icon="@Icons.Material.Rounded.Assessment" IconColor="Color.Info">
             <span class="nav-label">Daily Report</span>

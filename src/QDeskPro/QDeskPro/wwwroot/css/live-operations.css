@@ -1,0 +1,493 @@
+/* ========================================
+   Live Operations Dashboard Styles
+   ======================================== */
+
+/* Provisional Data Banner */
+.provisional-banner {
+    background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 2px 8px rgba(255, 152, 0, 0.2);
+}
+
+.provisional-banner .mud-icon-root {
+    font-size: 24px;
+}
+
+/* Last Updated Timestamp */
+.last-updated-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 16px;
+}
+
+.last-updated-pulse {
+    width: 8px;
+    height: 8px;
+    background: #4CAF50;
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.5;
+        transform: scale(1.2);
+    }
+}
+
+/* ========================================
+   Desktop Table View
+   ======================================== */
+
+.live-ops-table-container {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    background: white;
+}
+
+.live-ops-scroll-wrapper {
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+}
+
+.live-ops-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    min-width: 800px;
+}
+
+/* Table Header */
+.live-ops-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%);
+    color: white;
+}
+
+.live-ops-table thead th {
+    padding: 16px 12px;
+    border-bottom: 2px solid #0D47A1;
+    vertical-align: top;
+}
+
+.metric-label-column {
+    position: sticky;
+    left: 0;
+    z-index: 11;
+    min-width: 180px;
+    background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%);
+    box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+}
+
+.quarry-column {
+    min-width: 220px;
+    max-width: 280px;
+    text-align: center;
+}
+
+/* Quarry Header */
+.quarry-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.quarry-name {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.quarry-location {
+    font-size: 13px;
+    opacity: 0.9;
+}
+
+.quarry-actions {
+    margin-top: 8px;
+}
+
+/* Table Body */
+.live-ops-table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.live-ops-table tbody tr:hover {
+    background-color: #F5F5F5;
+}
+
+.metric-label {
+    position: sticky;
+    left: 0;
+    background: white;
+    padding: 12px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid #E0E0E0;
+    box-shadow: 2px 0 4px rgba(0, 0, 0, 0.05);
+    z-index: 5;
+}
+
+.metric-label .mud-icon-root {
+    color: #1976D2;
+}
+
+.quarry-metric {
+    padding: 12px;
+    border-bottom: 1px solid #E0E0E0;
+    text-align: center;
+}
+
+/* Metric Row Types */
+.metric-row-priority {
+    background: #F3F9FF;
+}
+
+.metric-row-priority .metric-label {
+    background: #F3F9FF;
+    font-weight: 600;
+}
+
+.metric-row-divider td {
+    height: 16px;
+    background: #FAFAFA;
+    border: none;
+}
+
+/* ========================================
+   Metric Cell Styles
+   ======================================== */
+
+.metric-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.metric-cell-priority {
+    padding: 12px;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.metric-icon {
+    margin-bottom: 4px;
+}
+
+.metric-value {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.metric-cell-priority .metric-value {
+    font-size: 20px;
+}
+
+.metric-subtext {
+    font-size: 12px;
+    color: #666;
+}
+
+/* Metric Cell Color Coding */
+.metric-cell-excellent {
+    background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+    color: #2E7D32;
+    border-left: 4px solid #4CAF50;
+}
+
+.metric-cell-good {
+    background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+    color: #388E3C;
+    border-left: 4px solid #66BB6A;
+}
+
+.metric-cell-warning {
+    background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
+    color: #E65100;
+    border-left: 4px solid #FF9800;
+}
+
+.metric-cell-alert {
+    background: linear-gradient(135deg, #FFEBEE 0%, #FFCDD2 100%);
+    color: #C62828;
+    border-left: 4px solid #F44336;
+}
+
+.metric-cell-neutral {
+    background: #F5F5F5;
+    color: #424242;
+}
+
+.metric-cell-none {
+    background: #FAFAFA;
+    color: #9E9E9E;
+}
+
+/* No Activity State */
+.no-activity-cell {
+    padding: 8px;
+    color: #9E9E9E;
+    font-style: italic;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+/* Active Clerks Display */
+.active-clerks-cell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: center;
+    padding: 4px;
+}
+
+/* Last Activity */
+.last-activity-cell {
+    font-size: 14px;
+    color: #424242;
+}
+
+/* ========================================
+   Mobile Card View
+   ======================================== */
+
+.live-ops-cards-container {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: 1fr;
+}
+
+.live-ops-card {
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.live-ops-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+/* Card Performance Indicators */
+.live-ops-card.performance-excellent {
+    border-left: 5px solid #4CAF50;
+}
+
+.live-ops-card.performance-good {
+    border-left: 5px solid #66BB6A;
+}
+
+.live-ops-card.performance-alert {
+    border-left: 5px solid #F44336;
+}
+
+.live-ops-card.no-activity {
+    border-left: 5px solid #9E9E9E;
+    opacity: 0.7;
+}
+
+/* No Activity Message */
+.no-activity-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+    gap: 12px;
+}
+
+.no-activity-message .mud-icon-root {
+    font-size: 64px;
+    opacity: 0.3;
+}
+
+/* Card Sections */
+.priority-metrics-section,
+.secondary-metrics-section,
+.active-clerks-section {
+    margin-bottom: 16px;
+}
+
+.metric-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px 0;
+    border-bottom: 1px solid #F0F0F0;
+}
+
+.metric-item:last-child {
+    border-bottom: none;
+}
+
+.metric-label-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+    color: #424242;
+}
+
+/* Clerk Chips */
+.clerks-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* Last Activity Footer */
+.last-activity-footer {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #E0E0E0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* ========================================
+   Quick Links Component
+   ======================================== */
+
+.quarry-quick-links .mud-menu {
+    display: inline-block;
+}
+
+/* ========================================
+   Responsive Design
+   ======================================== */
+
+/* Tablet */
+@media (min-width: 600px) and (max-width: 959px) {
+    .live-ops-cards-container {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .quarry-column {
+        min-width: 200px;
+    }
+}
+
+/* Large Desktop */
+@media (min-width: 1280px) {
+    .quarry-column {
+        min-width: 260px;
+    }
+
+    .metric-label-column {
+        min-width: 220px;
+    }
+}
+
+/* Mobile - Hide table, show cards */
+@media (max-width: 959px) {
+    .live-ops-table-container {
+        display: none;
+    }
+}
+
+/* Desktop - Show table, hide cards */
+@media (min-width: 960px) {
+    .live-ops-cards-container {
+        display: none;
+    }
+}
+
+/* ========================================
+   Scroll Shadows (Enhanced UX)
+   ======================================== */
+
+.live-ops-scroll-wrapper::-webkit-scrollbar {
+    height: 8px;
+}
+
+.live-ops-scroll-wrapper::-webkit-scrollbar-track {
+    background: #F5F5F5;
+    border-radius: 4px;
+}
+
+.live-ops-scroll-wrapper::-webkit-scrollbar-thumb {
+    background: #BDBDBD;
+    border-radius: 4px;
+}
+
+.live-ops-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #9E9E9E;
+}
+
+/* ========================================
+   Empty State (No Quarries)
+   ======================================== */
+
+.no-quarries-state {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.no-quarries-state .mud-icon-root {
+    font-size: 80px;
+    opacity: 0.3;
+    margin-bottom: 20px;
+}
+
+/* ========================================
+   Loading State
+   ======================================== */
+
+.live-ops-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    gap: 20px;
+}
+
+/* ========================================
+   Print Styles
+   ======================================== */
+
+@media print {
+    .provisional-banner,
+    .quarry-actions,
+    .quarry-quick-links {
+        display: none;
+    }
+
+    .live-ops-table {
+        font-size: 10px;
+    }
+
+    .live-ops-card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+}

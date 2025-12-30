@@ -10,7 +10,11 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" repo create QDeskPro --public --description \"Quarry Management System - Modern Blazor web application for quarry sales management built on .NET 10\" --source \"c:\\\\Users\\\\Admin\\\\OneDrive\\\\repos\\\\QDeskPro\" --remote origin --push)",
-      "Bash(dotnet tool install:*)"
+      "Bash(dotnet tool install:*)",
+      "Bash(dotnet ef migrations add:*)",
+      "Bash(dotnet publish:*)",
+      "Bash(findstr:*)",
+      "Bash(dotnet clean:*)"
     ]
   }
 }

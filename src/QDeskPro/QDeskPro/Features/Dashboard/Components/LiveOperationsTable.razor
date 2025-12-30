@@ -1,0 +1,325 @@
+@using QDeskPro.Features.Dashboard.Models
+@* Desktop horizontal scrollable table view for Live Operations *@
+
+<div class="live-ops-table-container">
+    <div class="live-ops-scroll-wrapper">
+        <table class="live-ops-table">
+            <thead>
+                <tr>
+                    <th class="metric-label-column">
+                        <div class="metric-header-label">Metric</div>
+                    </th>
+                    @foreach (var quarry in Quarries)
+                    {
+                        <th class="quarry-column">
+                            <div class="quarry-header">
+                                <div class="quarry-name">@quarry.QuarryName</div>
+                                <div class="quarry-location">@quarry.Location</div>
+                                <div class="quarry-actions">
+                                    <QuarryQuickLinks QuarryId="@quarry.QuarryId" QuarryName="@quarry.QuarryName" />
+                                </div>
+                            </div>
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @* PRIORITY METRICS *@
+                <tr class="metric-row metric-row-priority">
+                    <td class="metric-label">
+                        <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Size="Size.Small" />
+                        <span>Total Sales</span>
+                    </td>
+                    @foreach (var quarry in Quarries)
+                    {
+                        <td class="quarry-metric">
+                            @if (quarry.HasActivity)
+                            {
+                                <QuarryMetricCell
+                                    Value="@quarry.TotalSales"
+                                    FormatType="currency"
+                                    ColorStatus="@quarry.SalesPerformanceLevel"
+                                    IsPriority="true" />
+                            }
+                            else
+                            {
+                                <div class="no-activity-cell">
+                                    <MudIcon Icon="@Icons.Material.Filled.Remove" Size="Size.Small" Color="Color.Default" />
+                                    <span>No activity</span>
+                                </div>
+                            }
+                        </td>
+                    }
+                </tr>
+
+                <tr class="metric-row metric-row-priority">
+                    <td class="metric-label">
+                        <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Size="Size.Small" />
+                        <span>Sales Count</span>
+                    </td>
+                    @foreach (var quarry in Quarries)
+                    {
+                        <td class="quarry-metric">
+                            @if (quarry.HasActivity)
+                            {
+                                <QuarryMetricCell
+                                    IntValue="@quarry.SalesCount"
+                                    FormatType="count"
+                                    ColorStatus="@(quarry.SalesCount > 0 ? "good" : "neutral")"
+                                    IsPriority="true" />
+                            }
+                            else
+                            {
+                                <div class="no-activity-cell">-</div>
+                            }
+                        </td>
+                    }
+                </tr>
+
+                <tr class="metric-row metric-row-priority">
+                    <td class="metric-label">
+                        <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Size="Size.Small" />
+                        <span>Est. Cash in Hand</span>
+                    </td>
+                    @foreach (var quarry in Quarries)
+                    {
+                        <td class="quarry-metric">
+                            @if (quarry.HasActivity)
+                            {
+                                <QuarryMetricCell
+                                    Value="@quarry.EstimatedCashInHand"
+                                    FormatType="currency"
+                                    ColorStatus="@(quarry.EstimatedCashInHand >= 0 ? "good" : "alert")"
+                                    IsPriority="true" />
+                            }
+                            else
+                            {
+                                <div class="no-activity-cell">-</div>
+                            }
+                        </td>
+                    }
+                </tr>
+
+                @* SECONDARY METRICS *@
+                <tr class="metric-row-divider">
+                    <td colspan="@(Quarries.Count + 1)"></td>
+                </tr>
+
+                <tr class="metric-row">
+                    <td class="metric-label">
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" />
+                        <span>Unpaid Orders</span>
+                    </td>
+                    @foreach (var quarry in Quarries)
+                    {
+                        <td class="quarry-metric">
+                            @if (quarry.HasActivity)
+                            {
+                                <QuarryMetricCell
+                                    Value="@quarry.UnpaidAmount"
+                                    FormatType="currency"
+                                    Subtext="@($"{quarry.UnpaidCount} orders")"
+                                    ColorStatus="@quarry.UnpaidStatus" />
+                            }
+                            else
+                            {
+                                <div class="no-activity-cell">-</div>
+                            }
+                        </td>
+                    }
+                </tr>
+
+                <tr class="metric-row">
+                    <td class="metric-label">
+                        <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Small" />
+                        <span>Total Expenses</span>
+                    </td>
+                    @foreach (var quarry in Quarries)
+                    {
+                        <td class="quarry-metric">
+                            @if (quarry.HasActivity)
+                            {
+                                <QuarryMetricCell
+                                    Value="@quarry.TotalExpenses"
+                                    FormatType="currency"
+                                    Subtext="@GetExpenseBreakdown(quarry)"
+                                    ColorStatus="neutral" />
+                            }
+                            else
+                            {
+                                <div class="no-activity-cell">-</div>
+                            }
+                        </td>
+                    }
+                </tr>
+
+                <tr class="metric-row">
+                    <td class="metric-label">
+                        <MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Small" />
+                        <span>Collections</span>
+                    </td>
+                    @foreach (var quarry in Quarries)
+                    {
+                        <td class="quarry-metric">
+                            @if (quarry.HasActivity || quarry.CollectionsCount > 0)
+                            {
+                                <QuarryMetricCell
+                                    Value="@quarry.TotalCollections"
+                                    FormatType="currency"
+                                    Subtext="@($"{quarry.CollectionsCount} payments")"
+                                    ColorStatus="@(quarry.TotalCollections > 0 ? "good" : "neutral")" />
+                            }
+                            else
+                            {
+                                <div class="no-activity-cell">-</div>
+                            }
+                        </td>
+                    }
+                </tr>
+
+                <tr class="metric-row">
+                    <td class="metric-label">
+                        <MudIcon Icon="@Icons.Material.Filled.Savings" Size="Size.Small" />
+                        <span>Prepayments</span>
+                    </td>
+                    @foreach (var quarry in Quarries)
+                    {
+                        <td class="quarry-metric">
+                            @if (quarry.HasActivity || quarry.PrepaymentsCount > 0)
+                            {
+                                <QuarryMetricCell
+                                    Value="@quarry.TotalPrepayments"
+                                    FormatType="currency"
+                                    Subtext="@($"{quarry.PrepaymentsCount} deposits")"
+                                    ColorStatus="@(quarry.TotalPrepayments > 0 ? "good" : "neutral")" />
+                            }
+                            else
+                            {
+                                <div class="no-activity-cell">-</div>
+                            }
+                        </td>
+                    }
+                </tr>
+
+                <tr class="metric-row">
+                    <td class="metric-label">
+                        <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Size="Size.Small" />
+                        <span>Banking</span>
+                    </td>
+                    @foreach (var quarry in Quarries)
+                    {
+                        <td class="quarry-metric">
+                            @if (quarry.HasActivity || quarry.BankingCount > 0)
+                            {
+                                <QuarryMetricCell
+                                    Value="@quarry.TotalBanked"
+                                    FormatType="currency"
+                                    Subtext="@($"{quarry.BankingCount} transactions")"
+                                    ColorStatus="neutral" />
+                            }
+                            else
+                            {
+                                <div class="no-activity-cell">-</div>
+                            }
+                        </td>
+                    }
+                </tr>
+
+                <tr class="metric-row">
+                    <td class="metric-label">
+                        <MudIcon Icon="@Icons.Material.Filled.LocalGasStation" Size="Size.Small" />
+                        <span>Fuel Consumed</span>
+                    </td>
+                    @foreach (var quarry in Quarries)
+                    {
+                        <td class="quarry-metric">
+                            @if (quarry.HasActivity || quarry.FuelConsumed > 0)
+                            {
+                                <QuarryMetricCell
+                                    Value="@quarry.FuelConsumed"
+                                    FormatType="number"
+                                    Subtext="liters"
+                                    ColorStatus="neutral" />
+                            }
+                            else
+                            {
+                                <div class="no-activity-cell">-</div>
+                            }
+                        </td>
+                    }
+                </tr>
+
+                <tr class="metric-row">
+                    <td class="metric-label">
+                        <MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Small" />
+                        <span>Active Clerks</span>
+                    </td>
+                    @foreach (var quarry in Quarries)
+                    {
+                        <td class="quarry-metric">
+                            @if (quarry.HasActivity)
+                            {
+                                <div class="active-clerks-cell">
+                                    @foreach (var clerk in quarry.ActiveClerks)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined" Text="@clerk" />
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="no-activity-cell">-</div>
+                            }
+                        </td>
+                    }
+                </tr>
+
+                <tr class="metric-row">
+                    <td class="metric-label">
+                        <MudIcon Icon="@Icons.Material.Filled.Update" Size="Size.Small" />
+                        <span>Last Activity</span>
+                    </td>
+                    @foreach (var quarry in Quarries)
+                    {
+                        <td class="quarry-metric">
+                            @if (quarry.LastActivityTime.HasValue)
+                            {
+                                <div class="last-activity-cell">
+                                    @quarry.LastActivityTime.Value.ToString("hh:mm tt")
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="no-activity-cell">No activity yet</div>
+                            }
+                        </td>
+                    }
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public List<QuarryLiveOperations> Quarries { get; set; } = new();
+
+    private string GetExpenseBreakdown(QuarryLiveOperations quarry)
+    {
+        var parts = new List<string>();
+
+        if (quarry.CommissionExpenses > 0)
+            parts.Add($"Com: {quarry.CommissionExpenses:N0}");
+
+        if (quarry.LoadersFeeExpenses > 0)
+            parts.Add($"Ldr: {quarry.LoadersFeeExpenses:N0}");
+
+        if (quarry.LandRateExpenses > 0)
+            parts.Add($"LR: {quarry.LandRateExpenses:N0}");
+
+        if (quarry.ManualExpenses > 0)
+            parts.Add($"Manual: {quarry.ManualExpenses:N0}");
+
+        return string.Join(" | ", parts);
+    }
+}

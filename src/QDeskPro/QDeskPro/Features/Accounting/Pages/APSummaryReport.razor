@@ -1,0 +1,383 @@
+@page "/manager/accounting/ap-summary"
+@page "/admin/accounting/ap-summary"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.Accounting.Services
+@using QDeskPro.Features.Accounting.Models
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject IFinancialReportService ReportService
+@inject IFinancialReportExportService ExportService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>AP Summary Report - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4 mb-8">
+    <MudStack Spacing="4">
+        @* Header *@
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <div>
+                <MudBreadcrumbs Items="_breadcrumbs" Class="pa-0" />
+                <MudText Typo="Typo.h4" Class="fw-bold mt-2">
+                    <MudIcon Icon="@Icons.Material.Filled.RequestQuote" Class="mr-2" Style="vertical-align: middle;" />
+                    Accounts Payable Summary
+                </MudText>
+                <MudText Typo="Typo.body2" Class="text-muted">
+                    Broker commissions and accrued fees payable
+                </MudText>
+            </div>
+            @if (_report != null)
+            {
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.PictureAsPdf" OnClick="ExportToPdf" Disabled="_exporting">
+                        Export PDF
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Success"
+                              StartIcon="@Icons.Material.Filled.TableChart" OnClick="ExportToExcel" Disabled="_exporting">
+                        Export Excel
+                    </MudButton>
+                </MudStack>
+            }
+        </MudStack>
+
+        @* Filters *@
+        <MudPaper Elevation="0" Class="pa-4 rounded-lg" Style="background: var(--mud-palette-background-gray);">
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect T="string" @bind-Value="_selectedQuarryId" Label="Quarry"
+                              Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Dense="true">
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="2">
+                    <MudDatePicker @bind-Date="_asOfDate" Label="As of Date"
+                                  Variant="Variant.Outlined" MaxDate="DateTime.Today" Dense="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                              OnClick="GenerateReport" Disabled="_loading || string.IsNullOrEmpty(_selectedQuarryId)"
+                              StartIcon="@Icons.Material.Filled.PlayArrow" Style="height: 40px;">
+                        @if (_loading) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                        Generate
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @* Report Content *@
+        @if (_report != null)
+        {
+            @* Summary Cards *@
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="2" Style="border-left: 4px solid var(--mud-palette-warning);">
+                        <MudText Typo="Typo.body2" Class="text-muted">Broker Commissions Payable</MudText>
+                        <MudText Typo="Typo.h5" Class="fw-bold" Color="Color.Warning">KES @_report.TotalBrokerCommissions.ToString("N0")</MudText>
+                        <MudText Typo="Typo.caption" Class="text-muted">@_report.BrokerPayables.Count broker(s)</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="2" Style="border-left: 4px solid var(--mud-palette-info);">
+                        <MudText Typo="Typo.body2" Class="text-muted">Accrued Operating Fees</MudText>
+                        <MudText Typo="Typo.h5" Class="fw-bold" Color="Color.Info">KES @_report.TotalAccruedFees.ToString("N0")</MudText>
+                        <MudText Typo="Typo.caption" Class="text-muted">Loaders + Land Rate</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="2" Style="border-left: 4px solid var(--mud-palette-error);">
+                        <MudText Typo="Typo.body2" Class="text-muted">Total Accounts Payable</MudText>
+                        <MudText Typo="Typo.h5" Class="fw-bold" Color="Color.Error">KES @_report.TotalAccountsPayable.ToString("N0")</MudText>
+                        <MudText Typo="Typo.caption" Class="text-muted">All amounts due</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* Broker Commissions Payable *@
+            <MudPaper Class="pa-4 rounded-lg" Elevation="2">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudText Typo="Typo.h6">
+                        <MudIcon Icon="@Icons.Material.Filled.People" Class="mr-2" Style="vertical-align: middle;" />
+                        Broker Commissions Payable
+                    </MudText>
+                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">
+                        KES @_report.TotalBrokerCommissions.ToString("N0")
+                    </MudChip>
+                </MudStack>
+
+                @if (_report.BrokerPayables.Any())
+                {
+                    <MudTable Items="@_report.BrokerPayables" Dense="true" Hover="true" Bordered="true">
+                        <HeaderContent>
+                            <MudTh>Broker Name</MudTh>
+                            <MudTh>Phone</MudTh>
+                            <MudTh Style="text-align: right;">Sales Count</MudTh>
+                            <MudTh Style="text-align: right;">Total Quantity</MudTh>
+                            <MudTh Style="text-align: right;">Commission Due</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Broker Name">
+                                <MudText Typo="Typo.body2" Class="fw-bold">@context.BrokerName</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Phone">@(context.Phone ?? "-")</MudTd>
+                            <MudTd DataLabel="Sales Count" Style="text-align: right;">@context.SalesCount</MudTd>
+                            <MudTd DataLabel="Total Quantity" Style="text-align: right;">@context.TotalQuantity.ToString("N0") pcs</MudTd>
+                            <MudTd DataLabel="Commission Due" Style="text-align: right; font-weight: bold; color: var(--mud-palette-warning);">
+                                KES @context.CommissionAmount.ToString("N0")
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Success">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Class="mr-2" />
+                        No broker commissions pending payment.
+                    </MudAlert>
+                }
+            </MudPaper>
+
+            @* Accrued Operating Fees *@
+            <MudPaper Class="pa-4 rounded-lg" Elevation="2">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudText Typo="Typo.h6">
+                        <MudIcon Icon="@Icons.Material.Filled.Engineering" Class="mr-2" Style="vertical-align: middle;" />
+                        Accrued Operating Fees
+                    </MudText>
+                    <MudChip T="string" Color="Color.Info" Size="Size.Small">
+                        KES @_report.TotalAccruedFees.ToString("N0")
+                    </MudChip>
+                </MudStack>
+
+                @if (_report.AccruedFees.Any())
+                {
+                    <MudTable Items="@_report.AccruedFees" Dense="true" Hover="true" Bordered="true">
+                        <HeaderContent>
+                            <MudTh>Fee Type</MudTh>
+                            <MudTh>Description</MudTh>
+                            <MudTh Style="text-align: right;">Total Quantity</MudTh>
+                            <MudTh Style="text-align: right;">Rate</MudTh>
+                            <MudTh Style="text-align: right;">Amount Due</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Fee Type">
+                                <MudChip T="string" Size="Size.Small" Color="@GetFeeTypeColor(context.FeeType)">
+                                    @context.FeeType
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Description">@context.Description</MudTd>
+                            <MudTd DataLabel="Total Quantity" Style="text-align: right;">@context.TotalQuantity.ToString("N0") pcs</MudTd>
+                            <MudTd DataLabel="Rate" Style="text-align: right;">KES @context.Rate.ToString("N0")/pc</MudTd>
+                            <MudTd DataLabel="Amount Due" Style="text-align: right; font-weight: bold; color: var(--mud-palette-info);">
+                                KES @context.Amount.ToString("N0")
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">
+                        No accrued operating fees in this period.
+                    </MudAlert>
+                }
+            </MudPaper>
+
+            @* Commission Details by Sale (Expandable) *@
+            @if (_report.CommissionDetails.Any())
+            {
+                <MudExpansionPanels>
+                    <MudExpansionPanel Text="@($"Commission Details by Sale ({_report.CommissionDetails.Count} sales with commission)")">
+                        <MudTable Items="@_report.CommissionDetails" Dense="true" Hover="true" Bordered="true">
+                            <HeaderContent>
+                                <MudTh>Date</MudTh>
+                                <MudTh>Vehicle</MudTh>
+                                <MudTh>Broker</MudTh>
+                                <MudTh>Product</MudTh>
+                                <MudTh Style="text-align: right;">Qty</MudTh>
+                                <MudTh Style="text-align: right;">Rate</MudTh>
+                                <MudTh Style="text-align: right;">Commission</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Date">@context.SaleDate.ToString("dd/MM/yyyy")</MudTd>
+                                <MudTd DataLabel="Vehicle">@context.VehicleRegistration</MudTd>
+                                <MudTd DataLabel="Broker">@context.BrokerName</MudTd>
+                                <MudTd DataLabel="Product">@context.ProductName</MudTd>
+                                <MudTd DataLabel="Qty" Style="text-align: right;">@context.Quantity.ToString("N0")</MudTd>
+                                <MudTd DataLabel="Rate" Style="text-align: right;">KES @context.CommissionPerUnit.ToString("N0")</MudTd>
+                                <MudTd DataLabel="Commission" Style="text-align: right; font-weight: bold;">
+                                    KES @context.TotalCommission.ToString("N0")
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
+
+            @* Summary Table *@
+            <MudPaper Class="pa-4 rounded-lg" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3 text-center">Accounts Payable Summary</MudText>
+                <MudSimpleTable Dense="true" Bordered="true" Style="max-width: 500px; margin: 0 auto;">
+                    <tbody>
+                        <tr>
+                            <td style="padding: 12px;">Broker Commissions Payable</td>
+                            <td style="text-align: right; padding: 12px;">KES @_report.TotalBrokerCommissions.ToString("N2")</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 12px;">Accrued Loaders Fees</td>
+                            <td style="text-align: right; padding: 12px;">KES @_report.AccruedLoadersFees.ToString("N2")</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 12px;">Accrued Land Rate Fees</td>
+                            <td style="text-align: right; padding: 12px;">KES @_report.AccruedLandRateFees.ToString("N2")</td>
+                        </tr>
+                        <tr style="font-weight: bold; background: var(--mud-palette-error-lighten);">
+                            <td style="padding: 12px;">TOTAL ACCOUNTS PAYABLE</td>
+                            <td style="text-align: right; padding: 12px; color: var(--mud-palette-error);">
+                                KES @_report.TotalAccountsPayable.ToString("N2")
+                            </td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+
+            <MudText Typo="Typo.caption" Class="text-muted text-center">
+                Report generated on @_report.GeneratedAt.ToString("MMMM dd, yyyy HH:mm") | @_report.QuarryName | As of @_report.AsOfDate.ToString("MMMM dd, yyyy")
+            </MudText>
+        }
+        else if (!_loading)
+        {
+            <MudPaper Class="pa-8 text-center rounded-lg" Elevation="0" Style="background: var(--mud-palette-background-gray);">
+                <MudIcon Icon="@Icons.Material.Filled.RequestQuote" Style="font-size: 64px;" Color="Color.Warning" />
+                <MudText Typo="Typo.h6" Class="mt-4">Select a quarry and date to generate the AP Summary Report</MudText>
+                <MudText Typo="Typo.body2" Class="text-muted">
+                    This report shows amounts owed to brokers and accrued operating fees
+                </MudText>
+            </MudPaper>
+        }
+    </MudStack>
+</MudContainer>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthStateTask { get; set; }
+    [SupplyParameterFromQuery] public string? QuarryId { get; set; }
+
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new BreadcrumbItem("Accounting", "/manager/accounting", false, Icons.Material.Filled.AccountBalance),
+        new BreadcrumbItem("AP Summary", null, true)
+    };
+
+    private List<Quarry> _quarries = new();
+    private string? _selectedQuarryId;
+    private DateTime? _asOfDate = DateTime.Today;
+    private string? _userId;
+    private string? _userRole;
+    private bool _loading;
+    private bool _exporting;
+    private QDeskPro.Features.Accounting.Models.APSummaryReport? _report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserInfo();
+        await LoadQuarries();
+        if (!string.IsNullOrEmpty(QuarryId)) _selectedQuarryId = QuarryId;
+    }
+
+    private async Task LoadUserInfo()
+    {
+        if (AuthStateTask != null)
+        {
+            var authState = await AuthStateTask;
+            _userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            _userRole = authState.User.FindFirst(ClaimTypes.Role)?.Value;
+        }
+    }
+
+    private async Task LoadQuarries()
+    {
+        try
+        {
+            if (_userRole == "Administrator")
+            {
+                _quarries = await DbContext.Quarries.Where(q => q.IsActive).OrderBy(q => q.QuarryName).ToListAsync();
+            }
+            else
+            {
+                var owned = await DbContext.Quarries.Where(q => q.ManagerId == _userId && q.IsActive).ToListAsync();
+                var assignedIds = await DbContext.UserQuarries.Where(uq => uq.UserId == _userId).Select(uq => uq.QuarryId).ToListAsync();
+                var assigned = await DbContext.Quarries.Where(q => assignedIds.Contains(q.Id) && q.IsActive).ToListAsync();
+                _quarries = owned.Union(assigned).Distinct().OrderBy(q => q.QuarryName).ToList();
+            }
+            if (_quarries.Count == 1 && string.IsNullOrEmpty(_selectedQuarryId)) _selectedQuarryId = _quarries[0].Id;
+        }
+        catch (Exception ex) { Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task GenerateReport()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId) || !_asOfDate.HasValue)
+        {
+            Snackbar.Add("Please select a quarry and date", Severity.Warning);
+            return;
+        }
+        _loading = true;
+        _report = null;
+        try
+        {
+            _report = await ReportService.GenerateAPSummaryAsync(_selectedQuarryId, _asOfDate.Value);
+            Snackbar.Add("AP Summary Report generated successfully", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+        finally { _loading = false; }
+    }
+
+    private Color GetFeeTypeColor(string feeType) => feeType switch
+    {
+        "Loaders Fee" => Color.Primary,
+        "Land Rate Fee" => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private async Task ExportToPdf()
+    {
+        if (_report == null) return;
+        _exporting = true;
+        try
+        {
+            var bytes = ExportService.ExportAPSummaryToPdf(_report);
+            var fileName = $"APSummary_{_report.QuarryName}_{_report.AsOfDate:yyyyMMdd}.pdf";
+            await DownloadFile(bytes, fileName, "application/pdf");
+            Snackbar.Add("PDF exported successfully", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+        finally { _exporting = false; }
+    }
+
+    private async Task ExportToExcel()
+    {
+        if (_report == null) return;
+        _exporting = true;
+        try
+        {
+            var bytes = ExportService.ExportAPSummaryToExcel(_report);
+            var fileName = $"APSummary_{_report.QuarryName}_{_report.AsOfDate:yyyyMMdd}.xlsx";
+            await DownloadFile(bytes, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Snackbar.Add("Excel exported successfully", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+        finally { _exporting = false; }
+    }
+
+    private async Task DownloadFile(byte[] bytes, string fileName, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", fileName, contentType, base64);
+    }
+}

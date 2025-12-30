@@ -1,0 +1,463 @@
+@page "/manager/accounting"
+@page "/admin/accounting"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.Accounting.Services
+@using QDeskPro.Features.Accounting.Models
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject IFinancialReportService ReportService
+@inject IAccountingService AccountingService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Accounting - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4 mb-8">
+    <MudStack Spacing="4">
+        @* Header Section *@
+        <div class="accounting-header">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <div>
+                    <MudText Typo="Typo.h4" Class="fw-bold">
+                        <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Class="mr-2" Style="vertical-align: middle;" />
+                        Accounting & Financial Reports
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted mt-1">
+                        Generate professional financial statements for auditors and financial experts
+                    </MudText>
+                </div>
+            </MudStack>
+        </div>
+
+        @* Quarry Selection *@
+        <MudPaper Elevation="0" Class="pa-4 rounded-lg" Style="background: var(--mud-palette-background-gray);">
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudSelect T="string"
+                              @bind-Value="_selectedQuarryId"
+                              Label="Select Quarry"
+                              Variant="Variant.Outlined"
+                              AnchorOrigin="Origin.BottomCenter"
+                              Dense="true"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Terrain">
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              OnClick="InitializeChartOfAccounts"
+                              Disabled="@(string.IsNullOrEmpty(_selectedQuarryId) || _initializing)"
+                              StartIcon="@Icons.Material.Filled.PlaylistAdd"
+                              Style="height: 40px;">
+                        @if (_initializing)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Initialize Chart of Accounts
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @* Quick Actions - Report Cards *@
+        <MudText Typo="Typo.h6" Class="mt-4">Financial Statements</MudText>
+        <MudGrid>
+            @* Trial Balance *@
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Class="report-card h-100" Elevation="2" @onclick="@(() => NavigateTo("/manager/accounting/trial-balance"))">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <MudAvatar Color="Color.Primary" Size="Size.Large" Variant="Variant.Filled">
+                                <MudIcon Icon="@Icons.Material.Filled.Balance" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.h6">Trial Balance</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">
+                                    Lists all accounts with debit and credit balances
+                                </MudText>
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward">
+                            Generate Report
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+
+            @* Profit & Loss *@
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Class="report-card h-100" Elevation="2" @onclick="@(() => NavigateTo("/manager/accounting/profit-loss"))">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <MudAvatar Color="Color.Success" Size="Size.Large" Variant="Variant.Filled">
+                                <MudIcon Icon="@Icons.Material.Filled.TrendingUp" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.h6">Profit & Loss</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">
+                                    Income statement showing revenue, expenses, and profit
+                                </MudText>
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward">
+                            Generate Report
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+
+            @* Balance Sheet *@
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Class="report-card h-100" Elevation="2" @onclick="@(() => NavigateTo("/manager/accounting/balance-sheet"))">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <MudAvatar Color="Color.Info" Size="Size.Large" Variant="Variant.Filled">
+                                <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.h6">Balance Sheet</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">
+                                    Assets, liabilities, and equity snapshot
+                                </MudText>
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward">
+                            Generate Report
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+
+            @* Cash Flow Statement *@
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Class="report-card h-100" Elevation="2" @onclick="@(() => NavigateTo("/manager/accounting/cash-flow"))">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <MudAvatar Color="Color.Warning" Size="Size.Large" Variant="Variant.Filled">
+                                <MudIcon Icon="@Icons.Material.Filled.Payments" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.h6">Cash Flow Statement</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">
+                                    Cash inflows and outflows from operations
+                                </MudText>
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward">
+                            Generate Report
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+
+            @* AR Aging *@
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Class="report-card h-100" Elevation="2" @onclick="@(() => NavigateTo("/manager/accounting/ar-aging"))">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <MudAvatar Color="Color.Error" Size="Size.Large" Variant="Variant.Filled">
+                                <MudIcon Icon="@Icons.Material.Filled.CreditCardOff" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.h6">AR Aging Report</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">
+                                    Unpaid customer sales by age buckets
+                                </MudText>
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward">
+                            Generate Report
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+
+            @* AP Summary *@
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Class="report-card h-100" Elevation="2" @onclick="@(() => NavigateTo("/manager/accounting/ap-summary"))">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <MudAvatar Color="Color.Secondary" Size="Size.Large" Variant="Variant.Filled">
+                                <MudIcon Icon="@Icons.Material.Filled.Receipt" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.h6">AP Summary</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">
+                                    Amounts owed to brokers and accrued fees
+                                </MudText>
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward">
+                            Generate Report
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        @* Management Tools *@
+        <MudText Typo="Typo.h6" Class="mt-4">Management Tools</MudText>
+        <MudGrid>
+            @* Chart of Accounts *@
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Class="report-card h-100" Elevation="2" @onclick="@(() => NavigateTo("/manager/accounting/chart-of-accounts"))">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <MudAvatar Color="Color.Dark" Size="Size.Large" Variant="Variant.Filled">
+                                <MudIcon Icon="@Icons.Material.Filled.ListAlt" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.h6">Chart of Accounts</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">
+                                    View and manage ledger accounts
+                                </MudText>
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward">
+                            Manage Accounts
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+
+            @* Journal Entries *@
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Class="report-card h-100" Elevation="2" @onclick="@(() => NavigateTo("/manager/accounting/journal-entries"))">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <MudAvatar Color="Color.Tertiary" Size="Size.Large" Variant="Variant.Filled">
+                                <MudIcon Icon="@Icons.Material.Filled.Edit" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.h6">Journal Entries</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">
+                                    View auto-generated and create manual entries
+                                </MudText>
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward">
+                            View Entries
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+
+            @* General Ledger *@
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Class="report-card h-100" Elevation="2" @onclick="@(() => NavigateTo("/manager/accounting/general-ledger"))">
+                    <MudCardContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <MudAvatar Style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);" Size="Size.Large">
+                                <MudIcon Icon="@Icons.Material.Filled.MenuBook" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.h6">General Ledger</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted">
+                                    Detailed transaction listing per account
+                                </MudText>
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" EndIcon="@Icons.Material.Filled.ArrowForward">
+                            View Ledger
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        @* Quick Stats (if quarry selected) *@
+        @if (!string.IsNullOrEmpty(_selectedQuarryId) && _accountsCount > 0)
+        {
+            <MudText Typo="Typo.h6" Class="mt-4">Quick Overview</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 rounded-lg text-center" Elevation="0" Style="background: var(--mud-palette-primary-lighten);">
+                        <MudText Typo="Typo.h4" Color="Color.Primary">@_accountsCount</MudText>
+                        <MudText Typo="Typo.body2" Class="text-muted">Ledger Accounts</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 rounded-lg text-center" Elevation="0" Style="background: var(--mud-palette-success-lighten);">
+                        <MudText Typo="Typo.h4" Color="Color.Success">@_journalEntriesCount</MudText>
+                        <MudText Typo="Typo.body2" Class="text-muted">Journal Entries (This Month)</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudStack>
+</MudContainer>
+
+<style>
+    .report-card {
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+    }
+
+    .report-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        border-color: var(--mud-palette-primary);
+    }
+</style>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    private List<Quarry> _quarries = new();
+    private string? _selectedQuarryId;
+    private string? _userId;
+    private string? _userRole;
+    private bool _loading;
+    private bool _initializing;
+    private int _accountsCount;
+    private int _journalEntriesCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserInfo();
+        await LoadQuarries();
+    }
+
+    private async Task LoadUserInfo()
+    {
+        if (AuthStateTask != null)
+        {
+            var authState = await AuthStateTask;
+            _userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            _userRole = authState.User.FindFirst(ClaimTypes.Role)?.Value;
+        }
+    }
+
+    private async Task LoadQuarries()
+    {
+        _loading = true;
+        try
+        {
+            if (_userRole == "Administrator")
+            {
+                _quarries = await DbContext.Quarries
+                    .Where(q => q.IsActive)
+                    .OrderBy(q => q.QuarryName)
+                    .ToListAsync();
+            }
+            else
+            {
+                // Manager sees quarries they own or are assigned to
+                var ownedQuarries = await DbContext.Quarries
+                    .Where(q => q.ManagerId == _userId && q.IsActive)
+                    .ToListAsync();
+
+                var assignedQuarryIds = await DbContext.UserQuarries
+                    .Where(uq => uq.UserId == _userId)
+                    .Select(uq => uq.QuarryId)
+                    .ToListAsync();
+
+                var assignedQuarries = await DbContext.Quarries
+                    .Where(q => assignedQuarryIds.Contains(q.Id) && q.IsActive)
+                    .ToListAsync();
+
+                _quarries = ownedQuarries.Union(assignedQuarries).Distinct().OrderBy(q => q.QuarryName).ToList();
+            }
+
+            if (_quarries.Count == 1)
+            {
+                _selectedQuarryId = _quarries[0].Id;
+                await LoadQuickStats();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadQuickStats()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId)) return;
+
+        try
+        {
+            _accountsCount = await DbContext.LedgerAccounts
+                .Where(a => a.QId == _selectedQuarryId && a.IsActive)
+                .CountAsync();
+
+            var startOfMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+            _journalEntriesCount = await DbContext.JournalEntries
+                .Where(j => j.QId == _selectedQuarryId && j.IsActive && j.EntryDate >= startOfMonth)
+                .CountAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading stats: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task InitializeChartOfAccounts()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId))
+        {
+            Snackbar.Add("Please select a quarry first", Severity.Warning);
+            return;
+        }
+
+        _initializing = true;
+        try
+        {
+            await AccountingService.InitializeChartOfAccountsAsync(_selectedQuarryId);
+            Snackbar.Add("Chart of Accounts initialized successfully!", Severity.Success);
+            await LoadQuickStats();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error initializing chart of accounts: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _initializing = false;
+        }
+    }
+
+    private void NavigateTo(string path)
+    {
+        if (!string.IsNullOrEmpty(_selectedQuarryId))
+        {
+            NavigationManager.NavigateTo($"{path}?quarryId={_selectedQuarryId}");
+        }
+        else
+        {
+            NavigationManager.NavigateTo(path);
+        }
+    }
+}

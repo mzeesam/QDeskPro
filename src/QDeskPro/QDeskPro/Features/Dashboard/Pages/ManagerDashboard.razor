@@ -2,777 +2,1037 @@
 @page "/admin/dashboard"
 @using QDeskPro.Features.Dashboard.Services
 @using QDeskPro.Features.Dashboard.Components
-@using QDeskPro.Features.AI.Components
+@using QDeskPro.Features.Dashboard.Models
 @using QDeskPro.Data
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
-@inject AnalyticsService AnalyticsService
+@using ClosedXML.Excel
+@inject LiveOperationsService LiveOpsService
 @inject AppDbContext DbContext
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@implements IDisposable
 @attribute [Authorize(Policy = "RequireManagerOrAdmin")]
 @rendermode InteractiveServer
 
-<PageTitle>Analytics Dashboard - QDeskPro</PageTitle>
+<PageTitle>Today's Operations - QDeskPro</PageTitle>
+
+<link rel="stylesheet" href="css/live-operations.css" />
 
 <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4 mb-8">
     <MudStack Spacing="4">
-        @* Header with gradient accent *@
+        @* Header *@
         <div class="dashboard-header">
-            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
                 <div>
-                    <MudText Typo="Typo.h4" Class="fw-bold dashboard-title">Analytics Dashboard</MudText>
+                    <MudText Typo="Typo.h4" Class="fw-bold">Today's Operations</MudText>
                     <MudText Typo="Typo.body2" Class="text-muted mt-1">
-                        @if (_fromDate.HasValue && _toDate.HasValue)
-                        {
-                            <span>@_fromDate.Value.ToString("MMM dd") - @_toDate.Value.ToString("MMM dd, yyyy")</span>
-                        }
+                        Today's provisional figures across all quarries
                     </MudText>
                 </div>
-                <MudButton Variant="Variant.Filled"
-                          Color="Color.Primary"
-                          StartIcon="@Icons.Material.Filled.Refresh"
-                          OnClick="@(async () => await LoadDashboardDataAsync())"
-                          Disabled="_loading"
-                          Class="refresh-btn">
-                    Refresh Data
-                </MudButton>
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Variant="Variant.Outlined"
+                              Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.FileDownload"
+                              OnClick="ExportToExcelAsync"
+                              Disabled="_loading">
+                        Export
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.Refresh"
+                              OnClick="RefreshDataAsync"
+                              Disabled="_loading">
+                        Refresh
+                    </MudButton>
+                </MudStack>
             </MudStack>
         </div>
 
-        @* Filters Card *@
-        <MudPaper Elevation="0" Class="filter-card pa-4 rounded-lg">
-            <MudGrid>
-                <MudItem xs="12" sm="4">
-                    <MudSelect T="string"
-                              @bind-Value="_selectedQuarryId"
-                              Label="Quarry"
-                              Variant="Variant.Outlined"
-                              AnchorOrigin="Origin.BottomCenter"
-                              Dense="true"
-                              Disabled="_loading">
-                        @if (_userRole == "Administrator")
-                        {
-                            <MudSelectItem Value="@((string?)null)">All Quarries</MudSelectItem>
-                        }
-                        @foreach (var quarry in _quarries)
-                        {
-                            <MudSelectItem Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
-                        }
-                    </MudSelect>
-                </MudItem>
-                <MudItem xs="12" sm="3">
-                    <MudDatePicker @bind-Date="_fromDate"
-                                  Label="From Date"
-                                  Variant="Variant.Outlined"
-                                  MaxDate="DateTime.Today"
-                                  Dense="true"
-                                  Disabled="_loading" />
-                </MudItem>
-                <MudItem xs="12" sm="3">
-                    <MudDatePicker @bind-Date="_toDate"
-                                  Label="To Date"
-                                  Variant="Variant.Outlined"
-                                  MinDate="_fromDate"
-                                  MaxDate="DateTime.Today"
-                                  Dense="true"
-                                  Disabled="_loading" />
-                </MudItem>
-                <MudItem xs="12" sm="2">
-                    <MudButton Variant="Variant.Filled"
-                              Color="Color.Primary"
-                              FullWidth="true"
-                              OnClick="@(async () => await LoadDashboardDataAsync())"
-                              Disabled="_loading"
-                              Class="mt-1">
-                        Apply
-                    </MudButton>
-                </MudItem>
-            </MudGrid>
-        </MudPaper>
+        @* Provisional Data Banner *@
+        <div class="provisional-banner">
+            <MudIcon Icon="@Icons.Material.Filled.Info" />
+            <div>
+                <MudText Typo="Typo.body1" Class="fw-bold">Provisional Data</MudText>
+                <MudText Typo="Typo.caption">
+                    These are live, provisional figures for today. Final figures may change as clerks continue posting transactions.
+                </MudText>
+            </div>
+        </div>
 
-        @if (_loading)
+        @* Last Updated Info *@
+        <div class="last-updated-info">
+            <div class="last-updated-pulse"></div>
+            <MudText Typo="Typo.caption">
+                Last updated: @_lastUpdated.ToString("hh:mm:ss tt") | Auto-refresh: 30 seconds
+            </MudText>
+        </div>
+
+        @* Loading State *@
+        @if (_loading && !_quarriesData.Any())
         {
-            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+            <div class="live-ops-loading">
+                <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
+                <MudText Typo="Typo.h6">Loading live operations data...</MudText>
+            </div>
         }
-        else if (_stats != null)
+        else if (!_quarriesData.Any())
         {
-            @* Main Metric Cards with Modern Styling *@
-            <MudGrid>
-                @* Total Revenue Card *@
-                <MudItem xs="12" sm="6" md="3">
-                    <div class="metric-card metric-card-revenue">
-                        <div class="metric-icon-container">
-                            <MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Large" />
-                        </div>
-                        <div class="metric-content">
-                            <MudText Typo="Typo.caption" Class="metric-label">Total Revenue</MudText>
-                            <MudText Typo="Typo.h5" Class="metric-value">KES @_stats.TotalRevenue.ToString("N0")</MudText>
-                            <MudText Typo="Typo.caption" Class="metric-subtext">
-                                <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Small" Class="mr-1" />
-                                Avg: KES @_stats.DailyAverageRevenue.ToString("N0")/day
-                            </MudText>
-                        </div>
-                    </div>
-                </MudItem>
+            @* No Quarries State *@
+            <div class="no-quarries-state">
+                <MudIcon Icon="@Icons.Material.Filled.BusinessCenter" Color="Color.Default" />
+                <MudText Typo="Typo.h5" Color="Color.Secondary">No quarries found</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @if (_userRole == "Administrator")
+                    {
+                        <span>No quarries have been created yet.</span>
+                    }
+                    else
+                    {
+                        <span>You don't have any quarries assigned. Contact your administrator.</span>
+                    }
+                </MudText>
+            </div>
+        }
+        else
+        {
+            @* Desktop Table View *@
+            <div class="d-none d-md-block">
+                <LiveOperationsTable Quarries="_quarriesData" />
+            </div>
 
-                @* Sales Orders Card *@
-                <MudItem xs="12" sm="6" md="3">
-                    <div class="metric-card metric-card-orders">
-                        <div class="metric-icon-container">
-                            <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Size="Size.Large" />
-                        </div>
-                        <div class="metric-content">
-                            <MudText Typo="Typo.caption" Class="metric-label">Sales Orders</MudText>
-                            <MudText Typo="Typo.h5" Class="metric-value">@_stats.TotalOrders</MudText>
-                            <MudText Typo="Typo.caption" Class="metric-subtext">
-                                <MudIcon Icon="@Icons.Material.Filled.Speed" Size="Size.Small" Class="mr-1" />
-                                Avg: @_stats.DailyAverageOrders.ToString("N1")/day
-                            </MudText>
-                        </div>
-                    </div>
-                </MudItem>
-
-                @* Total Quantity Card *@
-                <MudItem xs="12" sm="6" md="3">
-                    <div class="metric-card metric-card-quantity">
-                        <div class="metric-icon-container">
-                            <MudIcon Icon="@Icons.Material.Filled.Inventory" Size="Size.Large" />
-                        </div>
-                        <div class="metric-content">
-                            <MudText Typo="Typo.caption" Class="metric-label">Total Quantity</MudText>
-                            <MudText Typo="Typo.h5" Class="metric-value">@_stats.TotalQuantity.ToString("N0") pcs</MudText>
-                            <MudText Typo="Typo.caption" Class="metric-subtext">
-                                <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Size="Size.Small" Class="mr-1" />
-                                Over @_stats.DateRangeDays days
-                            </MudText>
-                        </div>
-                    </div>
-                </MudItem>
-
-                @* Fuel Consumed Card *@
-                <MudItem xs="12" sm="6" md="3">
-                    <div class="metric-card metric-card-fuel">
-                        <div class="metric-icon-container">
-                            <MudIcon Icon="@Icons.Material.Filled.LocalGasStation" Size="Size.Large" />
-                        </div>
-                        <div class="metric-content">
-                            <MudText Typo="Typo.caption" Class="metric-label">Fuel Consumed</MudText>
-                            <MudText Typo="Typo.h5" Class="metric-value">@_stats.TotalFuelConsumed.ToString("N0") ltrs</MudText>
-                            <MudText Typo="Typo.caption" Class="metric-subtext">
-                                <MudIcon Icon="@Icons.Material.Filled.WaterDrop" Size="Size.Small" Class="mr-1" />
-                                Total usage
-                            </MudText>
-                        </div>
-                    </div>
-                </MudItem>
-            </MudGrid>
-
-            @* Small Metric Cards Row *@
-            <div class="small-metrics-row">
-                <div class="small-metric-card small-metric-gradient-1">
-                    <MudIcon Icon="@Icons.Material.Filled.PriceChange" Size="Size.Small" Class="small-metric-icon" />
-                    <div class="small-metric-content">
-                        <span class="small-metric-value">KES @_stats.AvgRevenuePerPiece.ToString("N1")</span>
-                        <span class="small-metric-label">Avg Price/Piece</span>
-                    </div>
-                </div>
-
-                <div class="small-metric-card small-metric-gradient-2">
-                    <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Small" Class="small-metric-icon" />
-                    <div class="small-metric-content">
-                        <span class="small-metric-value">KES @_stats.AvgCostPerPiece.ToString("N1")</span>
-                        <span class="small-metric-label">Avg Cost/Piece</span>
-                    </div>
-                </div>
-
-                <div class="small-metric-card small-metric-gradient-3">
-                    <MudIcon Icon="@Icons.Material.Filled.Opacity" Size="Size.Small" Class="small-metric-icon" />
-                    <div class="small-metric-content">
-                        <span class="small-metric-value">@_stats.LitersPerPiece.ToString("N3")</span>
-                        <span class="small-metric-label">Ltrs/Piece</span>
-                    </div>
-                </div>
-
-                <div class="small-metric-card small-metric-gradient-4">
-                    <MudIcon Icon="@Icons.Material.Filled.LocalGasStation" Size="Size.Small" Class="small-metric-icon" />
-                    <div class="small-metric-content">
-                        <span class="small-metric-value">@_stats.DailyAverageFuel.ToString("N1")</span>
-                        <span class="small-metric-label">Ltrs/Day</span>
-                    </div>
-                </div>
-
-                <div class="small-metric-card small-metric-gradient-5">
-                    <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Size="Size.Small" Class="small-metric-icon" />
-                    <div class="small-metric-content">
-                        <span class="small-metric-value">KES @_stats.DailyAverageBanked.ToString("N0")</span>
-                        <span class="small-metric-label">Banked/Day</span>
-                    </div>
-                </div>
-
-                <div class="small-metric-card small-metric-gradient-6">
-                    <MudIcon Icon="@Icons.Material.Filled.ViewInAr" Size="Size.Small" Class="small-metric-icon" />
-                    <div class="small-metric-content">
-                        <span class="small-metric-value">@_stats.DailyAveragePieces.ToString("N0")</span>
-                        <span class="small-metric-label">Pieces/Day</span>
-                    </div>
+            @* Mobile Card View *@
+            <div class="d-block d-md-none">
+                <div class="live-ops-cards-container">
+                    @foreach (var quarry in _quarriesData)
+                    {
+                        <LiveOperationsCard Quarry="@quarry" />
+                    }
                 </div>
             </div>
 
-            @* Charts Row *@
-            <MudGrid>
-                @* Sales Performance Chart *@
-                <MudItem xs="12" lg="8">
-                    <MudCard Elevation="0" Class="chart-card pa-4 rounded-lg">
-                        <MudCardContent>
-                            <div class="chart-header">
-                                <MudText Typo="Typo.h6" Class="chart-title">Sales Performance</MudText>
-                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
-                                    @_stats.DateRangeDays days
-                                </MudChip>
-                            </div>
-                            @if (_trendsData != null && _trendsData.Labels.Any())
-                            {
-                                <SalesChart CanvasId="salesPerformanceChart"
-                                           Height="350px"
-                                           Labels="_trendsData.Labels"
-                                           RevenueData="_trendsData.RevenueData"
-                                           ExpensesData="_trendsData.ExpensesData" />
-                            }
-                            else
-                            {
-                                <MudText Align="Align.Center" Class="pa-8" Color="Color.Default">
-                                    No sales data available for selected period
-                                </MudText>
-                            }
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-
-                @* Profit Analysis *@
-                <MudItem xs="12" lg="4">
-                    <MudCard Elevation="0" Class="chart-card profit-card pa-4 rounded-lg" Style="height: 100%;">
-                        <MudCardContent>
-                            <MudText Typo="Typo.h6" Class="chart-title mb-2">Profit Analysis</MudText>
-
-                            @* Profit Margin Gauge *@
-                            <ProfitGauge CanvasId="profitMarginGauge"
-                                        Height="200px"
-                                        ProfitMargin="_stats.ProfitMargin" />
-
-                            @* Profit Details *@
-                            <MudStack Spacing="1" Class="mt-4">
-                                <MudDivider />
-                                @if (_stats.OpeningBalance != 0)
-                                {
-                                    <div class="profit-row">
-                                        <MudText Typo="Typo.body2">Opening Balance</MudText>
-                                        <MudText Typo="Typo.body2">KES @_stats.OpeningBalance.ToString("N0")</MudText>
-                                    </div>
-                                }
-                                <div class="profit-row profit-row-highlight">
-                                    <MudText Typo="Typo.body2">Net Income</MudText>
-                                    <MudText Typo="Typo.body2" Class="fw-bold" Color="@(_stats.NetIncome >= 0 ? Color.Success : Color.Error)">
-                                        KES @_stats.NetIncome.ToString("N0")
-                                    </MudText>
-                                </div>
-                                @if (_stats.UnpaidOrders > 0)
-                                {
-                                    <div class="profit-row">
-                                        <MudText Typo="Typo.body2" Color="Color.Warning">Unpaid Orders</MudText>
-                                        <MudText Typo="Typo.body2" Color="Color.Warning">KES @_stats.UnpaidOrders.ToString("N0")</MudText>
-                                    </div>
-                                }
-                                <div class="profit-row">
-                                    <MudText Typo="Typo.body2">Total Expenses</MudText>
-                                    <MudText Typo="Typo.body2" Color="Color.Error">KES @_stats.TotalExpenses.ToString("N0")</MudText>
-                                </div>
-                                <div class="profit-row indented">
-                                    <MudText Typo="Typo.caption">
-                                        <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Style="font-size: 8px; color: #FF9800;" Class="mr-1" />
-                                        Commission
-                                    </MudText>
-                                    <MudText Typo="Typo.caption">KES @_stats.Commission.ToString("N0")</MudText>
-                                </div>
-                                <div class="profit-row indented">
-                                    <MudText Typo="Typo.caption">
-                                        <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Style="font-size: 8px; color: #2196F3;" Class="mr-1" />
-                                        Loaders Fee
-                                    </MudText>
-                                    <MudText Typo="Typo.caption">KES @_stats.LoadersFee.ToString("N0")</MudText>
-                                </div>
-                                @if (_stats.LandRateFee > 0)
-                                {
-                                    <div class="profit-row indented">
-                                        <MudText Typo="Typo.caption">
-                                            <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Style="font-size: 8px; color: #4CAF50;" Class="mr-1" />
-                                            Land Rate
-                                        </MudText>
-                                        <MudText Typo="Typo.caption">KES @_stats.LandRateFee.ToString("N0")</MudText>
-                                    </div>
-                                }
-                                @if (_stats.ManualExpenses > 0)
-                                {
-                                    <div class="profit-row indented">
-                                        <MudText Typo="Typo.caption">
-                                            <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Style="font-size: 8px; color: #9C27B0;" Class="mr-1" />
-                                            Other Expenses
-                                        </MudText>
-                                        <MudText Typo="Typo.caption">KES @_stats.ManualExpenses.ToString("N0")</MudText>
-                                    </div>
-                                }
-                            </MudStack>
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-            </MudGrid>
-
-            @* Product Breakdown and Daily Summary *@
-            <MudGrid>
-                @* Product Breakdown *@
-                <MudItem xs="12" md="5">
-                    <MudCard Elevation="0" Class="chart-card pa-4 rounded-lg">
-                        <MudCardContent>
-                            <MudText Typo="Typo.h6" Class="chart-title mb-4">Product Breakdown</MudText>
-                            @if (_productData != null && _productData.Labels.Any())
-                            {
-                                <ProductBreakdown CanvasId="productPieChart"
-                                                 Height="300px"
-                                                 Labels="_productData.Labels"
-                                                 Data="_productData.RevenueData" />
-                            }
-                            else
-                            {
-                                <MudText Align="Align.Center" Class="pa-8" Color="Color.Default">
-                                    No product data available
-                                </MudText>
-                            }
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-
-                @* Daily Summary Table *@
-                <MudItem xs="12" md="7">
-                    <MudCard Elevation="0" Class="chart-card pa-4 rounded-lg">
-                        <MudCardContent>
-                            <div class="chart-header mb-4">
-                                <MudText Typo="Typo.h6" Class="chart-title">Daily Breakdown</MudText>
-                                <MudText Typo="Typo.caption" Class="text-muted">Full expense calculations</MudText>
-                            </div>
-                            @if (_dailySummaries != null && _dailySummaries.Any())
-                            {
-                                <MudTable Items="@_dailySummaries"
-                                         T="DailySummary"
-                                         Dense="true"
-                                         Hover="true"
-                                         Breakpoint="Breakpoint.Sm"
-                                         Height="350px"
-                                         FixedHeader="true"
-                                         Class="daily-table">
-                                    <HeaderContent>
-                                        <MudTh>Date</MudTh>
-                                        <MudTh Style="text-align: right">Orders</MudTh>
-                                        <MudTh Style="text-align: right">Quantity</MudTh>
-                                        <MudTh Style="text-align: right">Revenue</MudTh>
-                                        <MudTh Style="text-align: right">Expenses</MudTh>
-                                        <MudTh Style="text-align: right">Net</MudTh>
-                                    </HeaderContent>
-                                    <RowTemplate>
-                                        <MudTd DataLabel="Date">@context.Date.ToString("dd/MM/yyyy")</MudTd>
-                                        <MudTd DataLabel="Orders" Style="text-align: right">@context.Orders</MudTd>
-                                        <MudTd DataLabel="Quantity" Style="text-align: right">@context.Quantity.ToString("N0")</MudTd>
-                                        <MudTd DataLabel="Revenue" Style="text-align: right">@context.Revenue.ToString("N0")</MudTd>
-                                        <MudTd DataLabel="Expenses" Style="text-align: right">@context.Expenses.ToString("N0")</MudTd>
-                                        <MudTd DataLabel="Net" Style="text-align: right">
-                                            <MudText Color="@(context.NetAmount >= 0 ? Color.Success : Color.Error)">
-                                                @context.NetAmount.ToString("N0")
-                                            </MudText>
-                                        </MudTd>
-                                    </RowTemplate>
-                                    <FooterContent>
-                                        <MudTh Class="table-footer-cell">Total</MudTh>
-                                        <MudTh Style="text-align: right" Class="table-footer-cell">@_dailySummaries.Sum(s => s.Orders)</MudTh>
-                                        <MudTh Style="text-align: right" Class="table-footer-cell">@_dailySummaries.Sum(s => s.Quantity).ToString("N0")</MudTh>
-                                        <MudTh Style="text-align: right" Class="table-footer-cell">@_dailySummaries.Sum(s => s.Revenue).ToString("N0")</MudTh>
-                                        <MudTh Style="text-align: right" Class="table-footer-cell">@_dailySummaries.Sum(s => s.Expenses).ToString("N0")</MudTh>
-                                        <MudTh Style="text-align: right" Class="table-footer-cell">
-                                            <MudText Color="@(_dailySummaries.Sum(s => s.NetAmount) >= 0 ? Color.Success : Color.Error)" Class="fw-bold">
-                                                @_dailySummaries.Sum(s => s.NetAmount).ToString("N0")
-                                            </MudText>
-                                        </MudTh>
-                                    </FooterContent>
-                                </MudTable>
-                            }
-                            else
-                            {
-                                <MudText Align="Align.Center" Class="pa-8" Color="Color.Default">
-                                    No daily data available
-                                </MudText>
-                            }
-                        </MudCardContent>
-                    </MudCard>
-                </MudItem>
-            </MudGrid>
-
-            @* AI Insights Panel *@
-            <MudGrid>
-                <MudItem xs="12">
-                    <AIInsightsPanel QuarryId="@_selectedQuarryId"
-                                    FromDate="@_fromDate"
-                                    ToDate="@_toDate" />
-                </MudItem>
-            </MudGrid>
+            @* Summary Statistics *@
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Summary Across All Quarries</MudText>
+                <MudGrid>
+                    <MudItem xs="6" sm="3">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Quarries</MudText>
+                            <MudText Typo="Typo.h5">@_quarriesData.Count</MudText>
+                        </MudStack>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Active Today</MudText>
+                            <MudText Typo="Typo.h5" Color="Color.Success">
+                                @_quarriesData.Count(q => q.HasActivity)
+                            </MudText>
+                        </MudStack>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Sales</MudText>
+                            <MudText Typo="Typo.h5" Color="Color.Primary">
+                                KES @_quarriesData.Sum(q => q.TotalSales).ToString("N0")
+                            </MudText>
+                        </MudStack>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Transactions</MudText>
+                            <MudText Typo="Typo.h5">
+                                @_quarriesData.Sum(q => q.TotalActivities)
+                            </MudText>
+                        </MudStack>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
         }
     </MudStack>
 </MudContainer>
 
-<style>
-    /* Dashboard Header */
-    .dashboard-header {
-        background: linear-gradient(135deg, rgba(25, 118, 210, 0.05) 0%, rgba(0, 188, 212, 0.05) 100%);
-        padding: 24px;
-        border-radius: 16px;
-        border-left: 4px solid #1976D2;
-        margin-bottom: 8px;
-    }
-
-    .dashboard-title {
-        background: linear-gradient(135deg, #1565C0, #0097A7);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-    }
-
-    .refresh-btn {
-        border-radius: 12px !important;
-        box-shadow: 0 4px 14px rgba(25, 118, 210, 0.35) !important;
-    }
-
-    /* Filter Card */
-    .filter-card {
-        background: white;
-        border: 1px solid rgba(0, 0, 0, 0.06);
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
-    }
-
-    /* Main Metric Cards */
-    .metric-card {
-        display: flex;
-        align-items: flex-start;
-        gap: 16px;
-        padding: 24px;
-        border-radius: 16px;
-        background: white;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-        transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .metric-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        right: 0;
-        width: 100px;
-        height: 100px;
-        border-radius: 50%;
-        opacity: 0.1;
-        transform: translate(30%, -30%);
-    }
-
-    .metric-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-    }
-
-    .metric-card-revenue { border-top: 4px solid #1976D2; }
-    .metric-card-revenue::before { background: #1976D2; }
-    .metric-card-revenue .metric-icon-container { background: linear-gradient(135deg, #1976D2, #1565C0); }
-
-    .metric-card-orders { border-top: 4px solid #4CAF50; }
-    .metric-card-orders::before { background: #4CAF50; }
-    .metric-card-orders .metric-icon-container { background: linear-gradient(135deg, #4CAF50, #388E3C); }
-
-    .metric-card-quantity { border-top: 4px solid #2196F3; }
-    .metric-card-quantity::before { background: #2196F3; }
-    .metric-card-quantity .metric-icon-container { background: linear-gradient(135deg, #2196F3, #1976D2); }
-
-    .metric-card-fuel { border-top: 4px solid #FF9800; }
-    .metric-card-fuel::before { background: #FF9800; }
-    .metric-card-fuel .metric-icon-container { background: linear-gradient(135deg, #FF9800, #F57C00); }
-
-    .metric-icon-container {
-        width: 56px;
-        height: 56px;
-        border-radius: 14px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    }
-
-    .metric-icon-container .mud-icon-root {
-        color: white !important;
-    }
-
-    .metric-content {
-        flex: 1;
-        min-width: 0;
-    }
-
-    .metric-label {
-        color: #64748B;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        font-size: 0.7rem !important;
-    }
-
-    .metric-value {
-        font-weight: 800 !important;
-        color: #1E293B;
-        margin: 4px 0;
-        line-height: 1.2;
-    }
-
-    .metric-subtext {
-        color: #4CAF50;
-        display: flex;
-        align-items: center;
-        font-weight: 500;
-    }
-
-    /* Small Metric Cards Row */
-    .small-metrics-row {
-        display: grid;
-        grid-template-columns: repeat(6, 1fr);
-        gap: 12px;
-        margin: 8px 0 16px 0;
-    }
-
-    @@media (max-width: 1280px) {
-        .small-metrics-row {
-            grid-template-columns: repeat(3, 1fr);
-        }
-    }
-
-    @@media (max-width: 600px) {
-        .small-metrics-row {
-            grid-template-columns: repeat(2, 1fr);
-        }
-    }
-
-    .small-metric-card {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 12px 14px;
-        border-radius: 12px;
-        color: white;
-        transition: all 0.3s ease;
-        box-shadow: 0 3px 12px rgba(0, 0, 0, 0.15);
-    }
-
-    .small-metric-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
-    }
-
-    .small-metric-gradient-1 { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-    .small-metric-gradient-2 { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
-    .small-metric-gradient-3 { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-    .small-metric-gradient-4 { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
-    .small-metric-gradient-5 { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
-    .small-metric-gradient-6 { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #1E293B; }
-
-    .small-metric-icon {
-        opacity: 0.9;
-    }
-
-    .small-metric-content {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-    }
-
-    .small-metric-value {
-        font-weight: 700;
-        font-size: 0.95rem;
-        line-height: 1.2;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .small-metric-label {
-        font-size: 0.65rem;
-        opacity: 0.85;
-        text-transform: uppercase;
-        letter-spacing: 0.3px;
-        white-space: nowrap;
-    }
-
-    /* Chart Cards */
-    .chart-card {
-        background: white;
-        border: 1px solid rgba(0, 0, 0, 0.06);
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-    }
-
-    .chart-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 16px;
-    }
-
-    .chart-title {
-        font-weight: 700;
-        color: #1E293B;
-    }
-
-    /* Profit Card */
-    .profit-card {
-        background: linear-gradient(180deg, white 0%, #f8fafc 100%);
-    }
-
-    .profit-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 4px 0;
-    }
-
-    .profit-row-highlight {
-        background: linear-gradient(90deg, rgba(76, 175, 80, 0.08) 0%, transparent 100%);
-        padding: 8px 12px;
-        border-radius: 8px;
-        margin: -2px -8px;
-    }
-
-    .profit-row.indented {
-        padding-left: 16px;
-        padding-top: 2px;
-        padding-bottom: 2px;
-    }
-
-    /* Daily Table */
-    .daily-table .mud-table-head th {
-        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-        font-weight: 600;
-        text-transform: uppercase;
-        font-size: 0.7rem;
-        letter-spacing: 0.5px;
-        color: #64748B;
-    }
-
-    .table-footer-cell {
-        background: linear-gradient(180deg, #e8f4fd 0%, #e0f2fe 100%) !important;
-        font-weight: 700 !important;
-    }
-
-    /* Animation */
-    @@keyframes fadeInUp {
-        from {
-            opacity: 0;
-            transform: translateY(20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-
-    .metric-card, .small-metric-card, .chart-card {
-        animation: fadeInUp 0.5s ease-out forwards;
-    }
-</style>
-
 @code {
-    private List<Quarry> _quarries = new();
-    private string? _selectedQuarryId;
-    private DateTime? _fromDate = DateTime.Today.AddDays(-30);
-    private DateTime? _toDate = DateTime.Today;
+    private List<QuarryLiveOperations> _quarriesData = new();
+    private bool _loading = true;
+    private DateTime _lastUpdated = DateTime.Now;
     private string _userId = string.Empty;
     private string _userRole = string.Empty;
-    private bool _loading = true;
-
-    private AnalyticsDashboardStats? _stats;
-    private SalesTrendsData? _trendsData;
-    private ProductBreakdownData? _productData;
-    private List<DailySummary>? _dailySummaries;
+    private Timer? _refreshTimer;
 
     protected override async Task OnInitializedAsync()
     {
-        // Get current user
+        // Get user info
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
+        _userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        _userRole = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? string.Empty;
 
-        if (user.Identity?.IsAuthenticated == true)
-        {
-            _userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
-            _userRole = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? string.Empty;
+        // Load initial data
+        await LoadLiveOperationsAsync();
 
-            // Load quarries based on user role
-            if (_userRole == "Administrator")
-            {
-                // Administrators can see all quarries
-                _quarries = await DbContext.Quarries
-                    .Where(q => q.IsActive)
-                    .OrderBy(q => q.QuarryName)
-                    .ToListAsync();
-            }
-            else if (_userRole == "Manager")
-            {
-                // Managers can see quarries they own
-                _quarries = await DbContext.Quarries
-                    .Where(q => q.IsActive && q.ManagerId == _userId)
-                    .OrderBy(q => q.QuarryName)
-                    .ToListAsync();
-
-                // Default to first quarry if available
-                if (_quarries.Any())
-                {
-                    _selectedQuarryId = _quarries.First().Id;
-                }
-            }
-
-            await LoadDashboardDataAsync();
-        }
+        // Start auto-refresh timer (30 seconds)
+        _refreshTimer = new Timer(async _ => await AutoRefreshAsync(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
 
-    private async Task LoadDashboardDataAsync()
+    private async Task LoadLiveOperationsAsync()
     {
-        _loading = true;
-        StateHasChanged();
-
         try
         {
-            var from = _fromDate ?? DateTime.Today.AddDays(-30);
-            var to = _toDate ?? DateTime.Today;
+            _loading = true;
+            StateHasChanged();
 
-            // Load all data in parallel
-            var statsTask = AnalyticsService.GetDashboardStatsAsync(_selectedQuarryId, from, to);
-            var trendsTask = AnalyticsService.GetSalesTrendsAsync(_selectedQuarryId, from, to);
-            var productTask = AnalyticsService.GetProductBreakdownAsync(_selectedQuarryId, from, to);
-            var dailyTask = AnalyticsService.GetDailyBreakdownAsync(_selectedQuarryId, from, to);
+            var isAdmin = _userRole == "Administrator";
+            _quarriesData = await LiveOpsService.GetLiveOperationsForManagerAsync(_userId, isAdmin);
 
-            await Task.WhenAll(statsTask, trendsTask, productTask, dailyTask);
+            // Sort quarries: those with activity first, then by name
+            _quarriesData = _quarriesData
+                .OrderByDescending(q => q.HasActivity)
+                .ThenBy(q => q.QuarryName)
+                .ToList();
 
-            _stats = await statsTask;
-            _trendsData = await trendsTask;
-            _productData = await productTask;
-            _dailySummaries = await dailyTask;
+            _lastUpdated = DateTime.Now;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading dashboard data: {ex.Message}");
+            Snackbar.Add($"Error loading live operations: {ex.Message}", Severity.Error);
         }
         finally
         {
             _loading = false;
             StateHasChanged();
         }
+    }
+
+    private async Task RefreshDataAsync()
+    {
+        await LoadLiveOperationsAsync();
+        Snackbar.Add("Data refreshed successfully", Severity.Success);
+    }
+
+    private async Task AutoRefreshAsync()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadLiveOperationsAsync();
+        });
+    }
+
+    private async Task ExportToExcelAsync()
+    {
+        try
+        {
+            using var workbook = new XLWorkbook();
+            var today = DateTime.Today;
+            var todayStamp = today.ToString("yyyyMMdd");
+
+            // ============================================================
+            // WORKSHEET 1: EXECUTIVE OVERVIEW
+            // ============================================================
+            var overview = workbook.Worksheets.Add("Executive Overview");
+            CreateOverviewWorksheet(overview, today);
+
+            // ============================================================
+            // WORKSHEET 2-N: DETAILED QUARRY WORKSHEETS
+            // ============================================================
+            foreach (var quarry in _quarriesData.Where(q => q.HasActivity))
+            {
+                var detailSheet = workbook.Worksheets.Add(SanitizeSheetName(quarry.QuarryName));
+                await CreateQuarryDetailWorksheetAsync(detailSheet, quarry, today, todayStamp);
+            }
+
+            // Convert to byte array and download
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var bytes = stream.ToArray();
+            var base64 = Convert.ToBase64String(bytes);
+
+            var fileName = $"LiveOperations_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            var contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            await JSRuntime.InvokeVoidAsync("downloadFile", fileName, contentType, base64);
+
+            Snackbar.Add("Excel file exported successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting to Excel: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void CreateOverviewWorksheet(IXLWorksheet ws, DateTime reportDate)
+    {
+        int row = 1;
+
+        // ====================
+        // HEADER SECTION (Enhanced with gradient-like effect)
+        // ====================
+        ws.Cell(row, 1).Value = "QDeskPro - Daily Operations Dashboard";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Font.FontSize = 20;
+        ws.Cell(row, 1).Style.Font.FontColor = XLColor.White;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(13, 71, 161); // Darker blue
+        ws.Range(row, 1, row, 11).Merge().Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        ws.Range(row, 1, row, 11).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        ws.Row(row).Height = 35;
+        row++;
+
+        ws.Cell(row, 1).Value = $"Report Date: {reportDate:dddd, MMMM dd, yyyy}";
+        ws.Cell(row, 1).Style.Font.FontSize = 12;
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(21, 101, 192); // Medium blue
+        ws.Cell(row, 1).Style.Font.FontColor = XLColor.White;
+        ws.Range(row, 1, row, 11).Merge().Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        ws.Row(row).Height = 25;
+        row++;
+
+        ws.Cell(row, 1).Value = $"Generated: {DateTime.Now:yyyy-MM-dd hh:mm:ss tt}";
+        ws.Cell(row, 1).Style.Font.FontSize = 10;
+        ws.Cell(row, 1).Style.Font.Italic = true;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(100, 181, 246); // Light blue
+        ws.Range(row, 1, row, 11).Merge().Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        ws.Row(row).Height = 20;
+        row += 2;
+
+        // PROVISIONAL DATA WARNING (Enhanced styling)
+        ws.Cell(row, 1).Value = "⚠️ PROVISIONAL DATA - Subject to Change";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Font.FontColor = XLColor.White;
+        ws.Cell(row, 1).Style.Font.FontSize = 12;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(244, 67, 54); // Red
+        ws.Range(row, 1, row, 11).Merge().Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        ws.Range(row, 1, row, 11).Style.Border.OutsideBorder = XLBorderStyleValues.Thick;
+        ws.Range(row, 1, row, 11).Style.Border.OutsideBorderColor = XLColor.Red;
+        ws.Row(row).Height = 25;
+        row += 2;
+
+        // ====================
+        // SUMMARY METRICS (Enhanced card-style layout)
+        // ====================
+        ws.Cell(row, 1).Value = "SUMMARY ACROSS ALL QUARRIES";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Font.FontSize = 16;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(69, 90, 100); // Dark gray-blue
+        ws.Cell(row, 1).Style.Font.FontColor = XLColor.White;
+        ws.Range(row, 1, row, 4).Merge();
+        ws.Range(row, 1, row, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        ws.Row(row).Height = 30;
+        row++;
+
+        var summaryMetrics = new[]
+        {
+            ("Total Quarries", _quarriesData.Count, "info"),
+            ("Active Quarries", _quarriesData.Count(q => q.HasActivity), "success"),
+            ("Total Revenue", _quarriesData.Sum(q => q.TotalSales), "primary"),
+            ("Total Transactions", _quarriesData.Sum(q => q.SalesCount), "info"),
+            ("Total Expenses", _quarriesData.Sum(q => q.TotalExpenses), "warning"),
+            ("Net Earnings", _quarriesData.Sum(q => q.TotalSales - q.TotalExpenses), "highlight"),
+            ("Total Collections", _quarriesData.Sum(q => q.TotalCollections), "success"),
+            ("Total Prepayments", _quarriesData.Sum(q => q.TotalPrepayments), "success"),
+            ("Total Banked", _quarriesData.Sum(q => q.TotalBanked), "info"),
+            ("Est. Cash in Hand", _quarriesData.Sum(q => q.EstimatedCashInHand), "highlight")
+        };
+
+        var startMetricRow = row;
+        foreach (var (metric, value, type) in summaryMetrics)
+        {
+            // Metric label
+            ws.Cell(row, 1).Value = metric;
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Font.FontSize = 11;
+            ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(245, 245, 245);
+            ws.Cell(row, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+            ws.Cell(row, 1).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            ws.Cell(row, 1).Style.Border.OutsideBorderColor = XLColor.LightGray;
+
+            // Metric value
+            ws.Cell(row, 2).Value = value;
+            ws.Cell(row, 2).Style.Font.Bold = true;
+            ws.Cell(row, 2).Style.Font.FontSize = 11;
+            ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            ws.Cell(row, 2).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            ws.Cell(row, 2).Style.Border.OutsideBorderColor = XLColor.LightGray;
+
+            // Color code based on metric type
+            if (type == "highlight")
+            {
+                ws.Cell(row, 2).Style.Fill.BackgroundColor = value >= 0
+                    ? XLColor.FromArgb(200, 230, 201)  // Light green
+                    : XLColor.FromArgb(255, 205, 210); // Light red
+                ws.Cell(row, 2).Style.Font.FontColor = value >= 0
+                    ? XLColor.FromArgb(27, 94, 32)     // Dark green
+                    : XLColor.FromArgb(183, 28, 28);   // Dark red
+            }
+            else if (type == "primary")
+            {
+                ws.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.FromArgb(227, 242, 253); // Light blue
+                ws.Cell(row, 2).Style.Font.FontColor = XLColor.FromArgb(13, 71, 161);
+            }
+            else if (type == "success")
+            {
+                ws.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.FromArgb(232, 245, 233); // Pale green
+                ws.Cell(row, 2).Style.Font.FontColor = XLColor.FromArgb(46, 125, 50);
+            }
+            else if (type == "warning")
+            {
+                ws.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.FromArgb(255, 243, 224); // Light orange
+                ws.Cell(row, 2).Style.Font.FontColor = XLColor.FromArgb(230, 81, 0);
+            }
+            else
+            {
+                ws.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.FromArgb(245, 245, 245);
+            }
+
+            row++;
+        }
+
+        // Add border around summary metrics section
+        ws.Range(startMetricRow, 1, row - 1, 2).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+        ws.Range(startMetricRow, 1, row - 1, 2).Style.Border.OutsideBorderColor = XLColor.FromArgb(69, 90, 100);
+
+        row += 2;
+
+        // ====================
+        // QUARRY COMPARISON TABLE (Enhanced styling)
+        // ====================
+        ws.Cell(row, 1).Value = "QUARRY PERFORMANCE COMPARISON";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Font.FontSize = 16;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(69, 90, 100);
+        ws.Cell(row, 1).Style.Font.FontColor = XLColor.White;
+        ws.Range(row, 1, row, 11).Merge();
+        ws.Range(row, 1, row, 11).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        ws.Row(row).Height = 30;
+        row++;
+
+        // Table Headers (Enhanced with better colors and borders)
+        var headers = new[] {
+            "Quarry Name", "Location", "Revenue", "Transactions", "Expenses",
+            "Net Earnings", "Collections", "Prepayments", "Banked", "Cash in Hand", "Status"
+        };
+
+        for (int col = 0; col < headers.Length; col++)
+        {
+            ws.Cell(row, col + 1).Value = headers[col];
+            ws.Cell(row, col + 1).Style.Font.Bold = true;
+            ws.Cell(row, col + 1).Style.Font.FontSize = 11;
+            ws.Cell(row, col + 1).Style.Fill.BackgroundColor = XLColor.FromArgb(13, 71, 161);
+            ws.Cell(row, col + 1).Style.Font.FontColor = XLColor.White;
+            ws.Cell(row, col + 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Cell(row, col + 1).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            ws.Cell(row, col + 1).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            ws.Cell(row, col + 1).Style.Border.OutsideBorderColor = XLColor.White;
+        }
+        ws.Row(row).Height = 25;
+        row++;
+
+        // Data Rows (Enhanced with alternating colors)
+        int rowIndex = 0;
+        var tableStartRow = row;
+        foreach (var quarry in _quarriesData)
+        {
+            int col = 1;
+            ws.Cell(row, col++).Value = quarry.QuarryName;
+            ws.Cell(row, col++).Value = quarry.Location;
+            ws.Cell(row, col++).Value = quarry.TotalSales;
+            ws.Cell(row, col++).Value = quarry.SalesCount;
+            ws.Cell(row, col++).Value = quarry.TotalExpenses;
+            ws.Cell(row, col++).Value = quarry.TotalSales - quarry.TotalExpenses;
+            ws.Cell(row, col++).Value = quarry.TotalCollections;
+            ws.Cell(row, col++).Value = quarry.TotalPrepayments;
+            ws.Cell(row, col++).Value = quarry.TotalBanked;
+            ws.Cell(row, col++).Value = quarry.EstimatedCashInHand;
+            ws.Cell(row, col++).Value = quarry.HasActivity ? "✓ Active" : "○ Inactive";
+
+            // Alternating row colors for better readability
+            var rowColor = rowIndex % 2 == 0
+                ? XLColor.White
+                : XLColor.FromArgb(250, 250, 250);
+
+            for (int c = 1; c <= 11; c++)
+            {
+                ws.Cell(row, c).Style.Fill.BackgroundColor = rowColor;
+                ws.Cell(row, c).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                ws.Cell(row, c).Style.Border.OutsideBorderColor = XLColor.FromArgb(224, 224, 224);
+                ws.Cell(row, c).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            }
+
+            // Format numbers with appropriate formats
+            for (int c = 3; c <= 10; c++)
+            {
+                ws.Cell(row, c).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                // Column 4 is Transactions count (no currency), others are currency values
+                if (c == 4)
+                {
+                    ws.Cell(row, c).Style.NumberFormat.Format = "#,##0";
+                }
+                else
+                {
+                    ws.Cell(row, c).Style.NumberFormat.Format = "KES #,##0.00";
+                }
+            }
+
+            // Color code Net Earnings based on value
+            var netEarningsCell = ws.Cell(row, 6);
+            if (quarry.TotalSales - quarry.TotalExpenses >= 0)
+            {
+                netEarningsCell.Style.Font.FontColor = XLColor.FromArgb(27, 94, 32); // Dark green
+                netEarningsCell.Style.Font.Bold = true;
+            }
+            else
+            {
+                netEarningsCell.Style.Font.FontColor = XLColor.FromArgb(183, 28, 28); // Dark red
+                netEarningsCell.Style.Font.Bold = true;
+            }
+
+            // Color code Cash in Hand based on value
+            var cashCell = ws.Cell(row, 10);
+            if (quarry.EstimatedCashInHand >= 0)
+            {
+                cashCell.Style.Font.FontColor = XLColor.FromArgb(27, 94, 32);
+                cashCell.Style.Font.Bold = true;
+            }
+            else
+            {
+                cashCell.Style.Font.FontColor = XLColor.FromArgb(183, 28, 28);
+                cashCell.Style.Font.Bold = true;
+            }
+
+            // Enhanced status cell styling
+            var statusCell = ws.Cell(row, 11);
+            statusCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            statusCell.Style.Font.Bold = true;
+            if (quarry.HasActivity)
+            {
+                statusCell.Style.Fill.BackgroundColor = XLColor.FromArgb(200, 230, 201);
+                statusCell.Style.Font.FontColor = XLColor.FromArgb(27, 94, 32);
+            }
+            else
+            {
+                statusCell.Style.Fill.BackgroundColor = XLColor.FromArgb(245, 245, 245);
+                statusCell.Style.Font.FontColor = XLColor.FromArgb(117, 117, 117);
+            }
+
+            row++;
+            rowIndex++;
+        }
+
+        // Add thick border around entire table
+        ws.Range(tableStartRow - 1, 1, row - 1, 11).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+        ws.Range(tableStartRow - 1, 1, row - 1, 11).Style.Border.OutsideBorderColor = XLColor.FromArgb(69, 90, 100);
+
+        // Auto-fit columns with optimal widths
+        ws.Columns().AdjustToContents();
+        ws.Column(1).Width = 28;  // Quarry Name
+        ws.Column(2).Width = 22;  // Location
+        ws.Column(3).Width = 16;  // Revenue
+        ws.Column(4).Width = 14;  // Transactions
+        ws.Column(5).Width = 16;  // Expenses
+        ws.Column(6).Width = 16;  // Net Earnings
+        ws.Column(7).Width = 14;  // Collections
+        ws.Column(8).Width = 14;  // Prepayments
+        ws.Column(9).Width = 14;  // Banked
+        ws.Column(10).Width = 16; // Cash in Hand
+        ws.Column(11).Width = 12; // Status
+    }
+
+    private async Task CreateQuarryDetailWorksheetAsync(IXLWorksheet ws, QuarryLiveOperations quarryMetrics, DateTime reportDate, string todayStamp)
+    {
+        int row = 1;
+
+        // ====================
+        // HEADER
+        // ====================
+        ws.Cell(row, 1).Value = $"{quarryMetrics.QuarryName} - Detailed Operations Report";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Font.FontSize = 16;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(21, 101, 192);
+        ws.Cell(row, 1).Style.Font.FontColor = XLColor.White;
+        ws.Range(row, 1, row, 8).Merge();
+        row++;
+
+        ws.Cell(row, 1).Value = $"Location: {quarryMetrics.Location}";
+        ws.Cell(row, 5).Value = $"Date: {reportDate:yyyy-MM-dd}";
+        row += 2;
+
+        // ====================
+        // KEY METRICS SUMMARY
+        // ====================
+        ws.Cell(row, 1).Value = "KEY METRICS";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        ws.Range(row, 1, row, 4).Merge();
+        row++;
+
+        var keyMetrics = new (string Label, double Value)[]
+        {
+            ("Opening Balance", quarryMetrics.OpeningBalance),
+            ("Total Sales Revenue", quarryMetrics.TotalSales),
+            ("Total Expenses", quarryMetrics.TotalExpenses),
+            ("Net Earnings", quarryMetrics.TotalSales - quarryMetrics.TotalExpenses),
+            ("Collections (Past Orders)", quarryMetrics.TotalCollections),
+            ("Prepayments Received", quarryMetrics.TotalPrepayments),
+            ("Total Banked", quarryMetrics.TotalBanked),
+            ("Unpaid Orders", quarryMetrics.UnpaidAmount),
+            ("Est. Cash in Hand", quarryMetrics.EstimatedCashInHand)
+        };
+
+        foreach (var (label, value) in keyMetrics)
+        {
+            ws.Cell(row, 1).Value = label;
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 2).Value = value;
+            ws.Cell(row, 2).Style.NumberFormat.Format = "KES #,##0.00";
+
+            if (label.Contains("Net Earnings") || label.Contains("Cash in Hand"))
+            {
+                ws.Cell(row, 2).Style.Font.Bold = true;
+                ws.Cell(row, 2).Style.Fill.BackgroundColor = value >= 0 ? XLColor.LightGreen : XLColor.LightPink;
+            }
+
+            row++;
+        }
+
+        row += 2;
+
+        // ====================
+        // SALES TRANSACTIONS
+        // ====================
+        var sales = await DbContext.Sales
+            .Where(s => s.QId == quarryMetrics.QuarryId)
+            .Where(s => s.DateStamp == todayStamp)
+            .Where(s => s.IsActive)
+            .Include(s => s.Product)
+            .Include(s => s.Layer)
+            .Include(s => s.Broker)
+            .OrderBy(s => s.SaleDate)
+            .ToListAsync();
+
+        if (sales.Any())
+        {
+            ws.Cell(row, 1).Value = "SALES TRANSACTIONS";
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(13, 71, 161);
+            ws.Cell(row, 1).Style.Font.FontColor = XLColor.White;
+            ws.Range(row, 1, row, 10).Merge();
+            row++;
+
+            // Headers
+            var salesHeaders = new[] { "Time", "Vehicle Reg", "Product", "Layer", "Quantity", "Price/Unit", "Amount", "Broker", "Payment Status", "Reference" };
+            for (int col = 0; col < salesHeaders.Length; col++)
+            {
+                ws.Cell(row, col + 1).Value = salesHeaders[col];
+                ws.Cell(row, col + 1).Style.Font.Bold = true;
+                ws.Cell(row, col + 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+            }
+            row++;
+
+            // Data
+            foreach (var sale in sales)
+            {
+                int col = 1;
+                ws.Cell(row, col++).Value = sale.SaleDate?.ToString("hh:mm tt") ?? "";
+                ws.Cell(row, col++).Value = sale.VehicleRegistration;
+                ws.Cell(row, col++).Value = sale.Product?.ProductName ?? "";
+                ws.Cell(row, col++).Value = sale.Layer?.LayerLevel ?? "";
+                ws.Cell(row, col++).Value = sale.Quantity;
+                ws.Cell(row, col++).Value = sale.PricePerUnit;
+                ws.Cell(row, col++).Value = sale.Quantity * sale.PricePerUnit;
+                ws.Cell(row, col++).Value = sale.Broker?.BrokerName ?? "-";
+                ws.Cell(row, col++).Value = sale.PaymentStatus;
+                ws.Cell(row, col++).Value = sale.PaymentReference ?? "";
+
+                // Format
+                ws.Cell(row, 5).Style.NumberFormat.Format = "#,##0.00";
+                ws.Cell(row, 6).Style.NumberFormat.Format = "KES #,##0.00";
+                ws.Cell(row, 7).Style.NumberFormat.Format = "KES #,##0.00";
+
+                // Highlight unpaid
+                if (sale.PaymentStatus != "Paid")
+                {
+                    ws.Row(row).Style.Fill.BackgroundColor = XLColor.FromArgb(255, 235, 238);
+                }
+
+                row++;
+            }
+
+            row += 2;
+        }
+
+        // ====================
+        // DETAILED EXPENSE BREAKDOWN
+        // ====================
+        ws.Cell(row, 1).Value = "DETAILED EXPENSE BREAKDOWN";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(84, 110, 122); // Soft blue-grey
+        ws.Cell(row, 1).Style.Font.FontColor = XLColor.White;
+        ws.Range(row, 1, row, 5).Merge();
+        row++;
+
+        // 1. Manual Expenses
+        var manualExpenses = await DbContext.Expenses
+            .Where(e => e.QId == quarryMetrics.QuarryId)
+            .Where(e => e.DateStamp == todayStamp)
+            .Where(e => e.IsActive)
+            .OrderBy(e => e.ExpenseDate)
+            .ToListAsync();
+
+        if (manualExpenses.Any())
+        {
+            ws.Cell(row, 1).Value = "1. MANUAL EXPENSES";
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(207, 216, 220); // Soft grey
+            ws.Range(row, 1, row, 5).Merge();
+            row++;
+
+            var manualHeaders = new[] { "Time", "Description", "Category", "Amount", "Reference" };
+            for (int col = 0; col < manualHeaders.Length; col++)
+            {
+                ws.Cell(row, col + 1).Value = manualHeaders[col];
+                ws.Cell(row, col + 1).Style.Font.Bold = true;
+                ws.Cell(row, col + 1).Style.Fill.BackgroundColor = XLColor.FromArgb(236, 239, 241); // Soft grey
+            }
+            row++;
+
+            double manualTotal = 0;
+            foreach (var expense in manualExpenses)
+            {
+                int col = 1;
+                ws.Cell(row, col++).Value = expense.ExpenseDate?.ToString("hh:mm tt") ?? "";
+                ws.Cell(row, col++).Value = expense.Item;
+                ws.Cell(row, col++).Value = expense.Category ?? "Uncategorized";
+                ws.Cell(row, col++).Value = expense.Amount;
+                ws.Cell(row, col++).Value = expense.TxnReference ?? "";
+
+                ws.Cell(row, 4).Style.NumberFormat.Format = "KES #,##0.00";
+                manualTotal += expense.Amount;
+                row++;
+            }
+
+            // Subtotal
+            ws.Cell(row, 3).Value = "Subtotal:";
+            ws.Cell(row, 3).Style.Font.Bold = true;
+            ws.Cell(row, 4).Value = manualTotal;
+            ws.Cell(row, 4).Style.Font.Bold = true;
+            ws.Cell(row, 4).Style.NumberFormat.Format = "KES #,##0.00";
+            ws.Cell(row, 4).Style.Fill.BackgroundColor = XLColor.FromArgb(236, 239, 241); // Soft grey
+            row += 2;
+        }
+
+        // 2. Commission Expenses (from sales with brokers)
+        var commissionSales = sales.Where(s => s.CommissionPerUnit > 0 && !string.IsNullOrEmpty(s.BrokerId)).ToList();
+        if (commissionSales.Any())
+        {
+            ws.Cell(row, 1).Value = "2. COMMISSION EXPENSES";
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(207, 216, 220); // Soft grey
+            ws.Range(row, 1, row, 6).Merge();
+            row++;
+
+            var commHeaders = new[] { "Time", "Vehicle Reg", "Product", "Quantity", "Commission/Unit", "Total Commission", "Broker" };
+            for (int col = 0; col < commHeaders.Length; col++)
+            {
+                ws.Cell(row, col + 1).Value = commHeaders[col];
+                ws.Cell(row, col + 1).Style.Font.Bold = true;
+                ws.Cell(row, col + 1).Style.Fill.BackgroundColor = XLColor.FromArgb(236, 239, 241); // Soft grey
+            }
+            row++;
+
+            double commTotal = 0;
+            foreach (var sale in commissionSales)
+            {
+                var commAmount = sale.Quantity * sale.CommissionPerUnit;
+                int col = 1;
+                ws.Cell(row, col++).Value = sale.SaleDate?.ToString("hh:mm tt") ?? "";
+                ws.Cell(row, col++).Value = sale.VehicleRegistration;
+                ws.Cell(row, col++).Value = sale.Product?.ProductName ?? "";
+                ws.Cell(row, col++).Value = sale.Quantity;
+                ws.Cell(row, col++).Value = sale.CommissionPerUnit;
+                ws.Cell(row, col++).Value = commAmount;
+                ws.Cell(row, col++).Value = sale.Broker?.BrokerName ?? "";
+
+                ws.Cell(row, 4).Style.NumberFormat.Format = "#,##0.00";
+                ws.Cell(row, 5).Style.NumberFormat.Format = "KES #,##0.00";
+                ws.Cell(row, 6).Style.NumberFormat.Format = "KES #,##0.00";
+                commTotal += commAmount;
+                row++;
+            }
+
+            // Subtotal
+            ws.Cell(row, 5).Value = "Subtotal:";
+            ws.Cell(row, 5).Style.Font.Bold = true;
+            ws.Cell(row, 6).Value = commTotal;
+            ws.Cell(row, 6).Style.Font.Bold = true;
+            ws.Cell(row, 6).Style.NumberFormat.Format = "KES #,##0.00";
+            ws.Cell(row, 6).Style.Fill.BackgroundColor = XLColor.FromArgb(236, 239, 241); // Soft grey
+            row += 2;
+        }
+
+        // 3. Loaders Fee Expenses (from all sales)
+        var quarry = await DbContext.Quarries.FindAsync(quarryMetrics.QuarryId);
+        if (quarry?.LoadersFee > 0 && sales.Any())
+        {
+            ws.Cell(row, 1).Value = "3. LOADERS FEE EXPENSES";
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(207, 216, 220); // Soft grey
+            ws.Range(row, 1, row, 6).Merge();
+            row++;
+
+            var loaderHeaders = new[] { "Time", "Vehicle Reg", "Product", "Quantity", "Fee/Unit", "Total Fee" };
+            for (int col = 0; col < loaderHeaders.Length; col++)
+            {
+                ws.Cell(row, col + 1).Value = loaderHeaders[col];
+                ws.Cell(row, col + 1).Style.Font.Bold = true;
+                ws.Cell(row, col + 1).Style.Fill.BackgroundColor = XLColor.FromArgb(236, 239, 241); // Soft grey
+            }
+            row++;
+
+            double loaderTotal = 0;
+            foreach (var sale in sales)
+            {
+                var loaderAmount = sale.Quantity * quarry.LoadersFee.Value;
+                int col = 1;
+                ws.Cell(row, col++).Value = sale.SaleDate?.ToString("hh:mm tt") ?? "";
+                ws.Cell(row, col++).Value = sale.VehicleRegistration;
+                ws.Cell(row, col++).Value = sale.Product?.ProductName ?? "";
+                ws.Cell(row, col++).Value = sale.Quantity;
+                ws.Cell(row, col++).Value = quarry.LoadersFee.Value;
+                ws.Cell(row, col++).Value = loaderAmount;
+
+                ws.Cell(row, 4).Style.NumberFormat.Format = "#,##0.00";
+                ws.Cell(row, 5).Style.NumberFormat.Format = "KES #,##0.00";
+                ws.Cell(row, 6).Style.NumberFormat.Format = "KES #,##0.00";
+                loaderTotal += loaderAmount;
+                row++;
+            }
+
+            // Subtotal
+            ws.Cell(row, 5).Value = "Subtotal:";
+            ws.Cell(row, 5).Style.Font.Bold = true;
+            ws.Cell(row, 6).Value = loaderTotal;
+            ws.Cell(row, 6).Style.Font.Bold = true;
+            ws.Cell(row, 6).Style.NumberFormat.Format = "KES #,##0.00";
+            ws.Cell(row, 6).Style.Fill.BackgroundColor = XLColor.FromArgb(236, 239, 241); // Soft grey
+            row += 2;
+        }
+
+        // 4. Land Rate Fee Expenses (from all sales, using RejectsFee for Reject products)
+        if (quarry?.LandRateFee > 0 && sales.Any())
+        {
+            ws.Cell(row, 1).Value = "4. LAND RATE FEE EXPENSES";
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(207, 216, 220); // Soft grey
+            ws.Range(row, 1, row, 6).Merge();
+            row++;
+
+            var landHeaders = new[] { "Time", "Vehicle Reg", "Product", "Quantity", "Fee/Unit", "Total Fee" };
+            for (int col = 0; col < landHeaders.Length; col++)
+            {
+                ws.Cell(row, col + 1).Value = landHeaders[col];
+                ws.Cell(row, col + 1).Style.Font.Bold = true;
+                ws.Cell(row, col + 1).Style.Fill.BackgroundColor = XLColor.FromArgb(236, 239, 241); // Soft grey
+            }
+            row++;
+
+            double landTotal = 0;
+            foreach (var sale in sales)
+            {
+                var isReject = sale.Product?.ProductName?.ToLower().Contains("reject") == true;
+                var feeRate = isReject && quarry.RejectsFee.HasValue ? quarry.RejectsFee.Value : quarry.LandRateFee.Value;
+                var landAmount = sale.Quantity * feeRate;
+
+                int col = 1;
+                ws.Cell(row, col++).Value = sale.SaleDate?.ToString("hh:mm tt") ?? "";
+                ws.Cell(row, col++).Value = sale.VehicleRegistration;
+                ws.Cell(row, col++).Value = sale.Product?.ProductName ?? "";
+                ws.Cell(row, col++).Value = sale.Quantity;
+                ws.Cell(row, col++).Value = feeRate;
+                ws.Cell(row, col++).Value = landAmount;
+
+                ws.Cell(row, 4).Style.NumberFormat.Format = "#,##0.00";
+                ws.Cell(row, 5).Style.NumberFormat.Format = "KES #,##0.00";
+                ws.Cell(row, 6).Style.NumberFormat.Format = "KES #,##0.00";
+                landTotal += landAmount;
+                row++;
+            }
+
+            // Subtotal
+            ws.Cell(row, 5).Value = "Subtotal:";
+            ws.Cell(row, 5).Style.Font.Bold = true;
+            ws.Cell(row, 6).Value = landTotal;
+            ws.Cell(row, 6).Style.Font.Bold = true;
+            ws.Cell(row, 6).Style.NumberFormat.Format = "KES #,##0.00";
+            ws.Cell(row, 6).Style.Fill.BackgroundColor = XLColor.FromArgb(236, 239, 241); // Soft grey
+            row += 2;
+        }
+
+        // GRAND TOTAL
+        ws.Cell(row, 1).Value = "TOTAL EXPENSES";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Font.FontSize = 12;
+        ws.Cell(row, 2).Value = quarryMetrics.TotalExpenses;
+        ws.Cell(row, 2).Style.Font.Bold = true;
+        ws.Cell(row, 2).Style.Font.FontSize = 12;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "KES #,##0.00";
+        ws.Cell(row, 2).Style.Fill.BackgroundColor = XLColor.FromArgb(84, 110, 122); // Soft blue-grey
+        ws.Cell(row, 2).Style.Font.FontColor = XLColor.White;
+        row += 2;
+
+        // ====================
+        // FUEL USAGE
+        // ====================
+        var fuel = await DbContext.FuelUsages
+            .Where(f => f.QId == quarryMetrics.QuarryId)
+            .Where(f => f.DateStamp == todayStamp)
+            .Where(f => f.IsActive)
+            .ToListAsync();
+
+        if (fuel.Any())
+        {
+            ws.Cell(row, 1).Value = "FUEL USAGE";
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(198, 40, 40);
+            ws.Cell(row, 1).Style.Font.FontColor = XLColor.White;
+            ws.Range(row, 1, row, 7).Merge();
+            row++;
+
+            var fuelHeaders = new[] { "Time", "Old Stock", "New Stock", "Total Stock", "Machines", "Wheel Loaders", "Balance" };
+            for (int col = 0; col < fuelHeaders.Length; col++)
+            {
+                ws.Cell(row, col + 1).Value = fuelHeaders[col];
+                ws.Cell(row, col + 1).Style.Font.Bold = true;
+                ws.Cell(row, col + 1).Style.Fill.BackgroundColor = XLColor.LightCoral;
+            }
+            row++;
+
+            foreach (var f in fuel)
+            {
+                int col = 1;
+                ws.Cell(row, col++).Value = f.UsageDate?.ToString("hh:mm tt") ?? "";
+                ws.Cell(row, col++).Value = f.OldStock;
+                ws.Cell(row, col++).Value = f.NewStock;
+                ws.Cell(row, col++).Value = f.OldStock + f.NewStock;
+                ws.Cell(row, col++).Value = f.MachinesLoaded;
+                ws.Cell(row, col++).Value = f.WheelLoadersLoaded;
+                ws.Cell(row, col++).Value = (f.OldStock + f.NewStock) - (f.MachinesLoaded + f.WheelLoadersLoaded);
+
+                for (int c = 2; c <= 7; c++)
+                {
+                    ws.Cell(row, c).Style.NumberFormat.Format = "#,##0.00\" L\"";
+                }
+
+                row++;
+            }
+
+            row += 2;
+        }
+
+        // ====================
+        // BANKING TRANSACTIONS
+        // ====================
+        var banking = await DbContext.Bankings
+            .Where(b => b.QId == quarryMetrics.QuarryId)
+            .Where(b => b.DateStamp == todayStamp)
+            .Where(b => b.IsActive)
+            .OrderBy(b => b.BankingDate)
+            .ToListAsync();
+
+        if (banking.Any())
+        {
+            ws.Cell(row, 1).Value = "BANKING TRANSACTIONS";
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(0, 131, 143);
+            ws.Cell(row, 1).Style.Font.FontColor = XLColor.White;
+            ws.Range(row, 1, row, 4).Merge();
+            row++;
+
+            var bankingHeaders = new[] { "Time", "Description", "Amount", "Reference" };
+            for (int col = 0; col < bankingHeaders.Length; col++)
+            {
+                ws.Cell(row, col + 1).Value = bankingHeaders[col];
+                ws.Cell(row, col + 1).Style.Font.Bold = true;
+                ws.Cell(row, col + 1).Style.Fill.BackgroundColor = XLColor.LightCyan;
+            }
+            row++;
+
+            foreach (var b in banking)
+            {
+                int col = 1;
+                ws.Cell(row, col++).Value = b.BankingDate?.ToString("hh:mm tt") ?? "";
+                ws.Cell(row, col++).Value = b.Item;
+                ws.Cell(row, col++).Value = b.AmountBanked;
+                ws.Cell(row, col++).Value = b.TxnReference ?? "";
+
+                ws.Cell(row, 3).Style.NumberFormat.Format = "KES #,##0.00";
+
+                row++;
+            }
+
+            row += 2;
+        }
+
+        // ====================
+        // PREPAYMENTS
+        // ====================
+        var prepayments = await DbContext.Prepayments
+            .Where(p => p.QId == quarryMetrics.QuarryId)
+            .Where(p => p.DateStamp == todayStamp)
+            .Where(p => p.IsActive)
+            .Include(p => p.IntendedProduct)
+            .OrderBy(p => p.PrepaymentDate)
+            .ToListAsync();
+
+        if (prepayments.Any())
+        {
+            ws.Cell(row, 1).Value = "PREPAYMENTS RECEIVED";
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.FromArgb(76, 175, 80);
+            ws.Cell(row, 1).Style.Font.FontColor = XLColor.White;
+            ws.Range(row, 1, row, 6).Merge();
+            row++;
+
+            var prepHeaders = new[] { "Time", "Vehicle", "Client", "Amount Paid", "Intended Product", "Status" };
+            for (int col = 0; col < prepHeaders.Length; col++)
+            {
+                ws.Cell(row, col + 1).Value = prepHeaders[col];
+                ws.Cell(row, col + 1).Style.Font.Bold = true;
+                ws.Cell(row, col + 1).Style.Fill.BackgroundColor = XLColor.LightGreen;
+            }
+            row++;
+
+            foreach (var p in prepayments)
+            {
+                int col = 1;
+                ws.Cell(row, col++).Value = p.PrepaymentDate.ToString("hh:mm tt");
+                ws.Cell(row, col++).Value = p.VehicleRegistration;
+                ws.Cell(row, col++).Value = p.ClientName ?? "-";
+                ws.Cell(row, col++).Value = p.TotalAmountPaid;
+                ws.Cell(row, col++).Value = p.IntendedProduct?.ProductName ?? "-";
+                ws.Cell(row, col++).Value = p.Status;
+
+                ws.Cell(row, 4).Style.NumberFormat.Format = "KES #,##0.00";
+
+                row++;
+            }
+
+            row += 2;
+        }
+
+        // Auto-fit columns
+        ws.Columns().AdjustToContents();
+    }
+
+    private string SanitizeSheetName(string name)
+    {
+        // Excel sheet names can't exceed 31 characters and can't contain: \ / ? * [ ]
+        var sanitized = name.Replace("/", "-").Replace("\\", "-")
+            .Replace("?", "").Replace("*", "").Replace("[", "").Replace("]", "");
+
+        return sanitized.Length > 31 ? sanitized.Substring(0, 31) : sanitized;
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
     }
 }

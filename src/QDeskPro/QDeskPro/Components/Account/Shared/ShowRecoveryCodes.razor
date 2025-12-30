@@ -178,7 +178,7 @@
     private async Task CopyToClipboard()
     {
         var codesText = string.Join("\n", RecoveryCodes);
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", codesText);
+        await JS.InvokeAsync<bool>("shareText", "Recovery Codes", codesText);
     }
 
     private async Task PrintCodes()

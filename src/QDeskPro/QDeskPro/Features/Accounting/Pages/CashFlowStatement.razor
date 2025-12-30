@@ -1,0 +1,309 @@
+@page "/manager/accounting/cash-flow"
+@page "/admin/accounting/cash-flow"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.Accounting.Services
+@using QDeskPro.Features.Accounting.Models
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject IFinancialReportService ReportService
+@inject IFinancialReportExportService ExportService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Cash Flow Statement - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4 mb-8">
+    <MudStack Spacing="4">
+        @* Header *@
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <div>
+                <MudBreadcrumbs Items="_breadcrumbs" Class="pa-0" />
+                <MudText Typo="Typo.h4" Class="fw-bold mt-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Payments" Class="mr-2" Style="vertical-align: middle;" />
+                    Cash Flow Statement
+                </MudText>
+                <MudText Typo="Typo.body2" Class="text-muted">
+                    Statement showing cash inflows and outflows from operations
+                </MudText>
+            </div>
+            @if (_report != null)
+            {
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.PictureAsPdf" OnClick="ExportToPdf" Disabled="_exporting">
+                        Export PDF
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Success"
+                              StartIcon="@Icons.Material.Filled.TableChart" OnClick="ExportToExcel" Disabled="_exporting">
+                        Export Excel
+                    </MudButton>
+                </MudStack>
+            }
+        </MudStack>
+
+        @* Filters *@
+        <MudPaper Elevation="0" Class="pa-4 rounded-lg" Style="background: var(--mud-palette-background-gray);">
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect T="string" @bind-Value="_selectedQuarryId" Label="Quarry"
+                              Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Dense="true">
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="2">
+                    <MudDatePicker @bind-Date="_fromDate" Label="From Date"
+                                  Variant="Variant.Outlined" MaxDate="DateTime.Today" Dense="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="2">
+                    <MudDatePicker @bind-Date="_toDate" Label="To Date"
+                                  Variant="Variant.Outlined" MinDate="_fromDate" MaxDate="DateTime.Today" Dense="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                              OnClick="GenerateReport" Disabled="_loading || string.IsNullOrEmpty(_selectedQuarryId)"
+                              StartIcon="@Icons.Material.Filled.PlayArrow" Style="height: 40px;">
+                        @if (_loading) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                        Generate
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @* Report Content *@
+        @if (_report != null)
+        {
+            @* Summary Cards *@
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="2">
+                        <MudText Typo="Typo.body2" Class="text-muted">Cash at Start</MudText>
+                        <MudText Typo="Typo.h5" Class="fw-bold">KES @_report.OpeningCashBalance.ToString("N0")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="2" Style="border-left: 4px solid var(--mud-palette-success);">
+                        <MudText Typo="Typo.body2" Class="text-muted">Total Inflows</MudText>
+                        <MudText Typo="Typo.h5" Class="fw-bold" Color="Color.Success">KES @_report.TotalOperatingInflows.ToString("N0")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="2" Style="border-left: 4px solid var(--mud-palette-error);">
+                        <MudText Typo="Typo.body2" Class="text-muted">Total Outflows</MudText>
+                        <MudText Typo="Typo.h5" Class="fw-bold" Color="Color.Error">KES @_report.TotalOperatingOutflows.ToString("N0")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="2" Style="border-left: 4px solid var(--mud-palette-primary);">
+                        <MudText Typo="Typo.body2" Class="text-muted">Cash at End</MudText>
+                        <MudText Typo="Typo.h5" Class="fw-bold" Color="Color.Primary">KES @_report.ClosingCashBalance.ToString("N0")</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* Cash Flow Statement *@
+            <MudPaper Class="pa-4 rounded-lg" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3 text-center">
+                    Cash Flow Statement<br />
+                    <span class="text-muted" style="font-size: 14px;">
+                        For the period @_report.PeriodStart.ToString("MMMM dd, yyyy") to @_report.PeriodEnd.ToString("MMMM dd, yyyy")
+                    </span>
+                </MudText>
+
+                <MudSimpleTable Dense="true" Hover="true" Bordered="true" Style="font-family: monospace;">
+                    <tbody>
+                        @* OPERATING ACTIVITIES - INFLOWS *@
+                        <tr style="background: var(--mud-palette-success-lighten); font-weight: bold;">
+                            <td colspan="2">CASH FLOWS FROM OPERATING ACTIVITIES</td>
+                        </tr>
+                        <tr style="font-weight: bold; color: var(--mud-palette-success);">
+                            <td colspan="2">Cash Inflows</td>
+                        </tr>
+                        @foreach (var item in _report.OperatingInflows)
+                        {
+                            <tr>
+                                <td style="padding-left: 24px;">@item.Description</td>
+                                <td style="text-align: right;">@item.Amount.ToString("N2")</td>
+                            </tr>
+                        }
+                        <tr style="font-weight: bold; border-top: 1px solid;">
+                            <td style="padding-left: 24px;">Total Cash Inflows</td>
+                            <td style="text-align: right; color: var(--mud-palette-success);">@_report.TotalOperatingInflows.ToString("N2")</td>
+                        </tr>
+
+                        @* OPERATING ACTIVITIES - OUTFLOWS *@
+                        <tr style="font-weight: bold; color: var(--mud-palette-error);">
+                            <td colspan="2">Cash Outflows</td>
+                        </tr>
+                        @foreach (var item in _report.OperatingOutflows)
+                        {
+                            <tr>
+                                <td style="padding-left: 24px;">@item.Description</td>
+                                <td style="text-align: right;">(@item.Amount.ToString("N2"))</td>
+                            </tr>
+                        }
+                        <tr style="font-weight: bold; border-top: 1px solid;">
+                            <td style="padding-left: 24px;">Total Cash Outflows</td>
+                            <td style="text-align: right; color: var(--mud-palette-error);">(@_report.TotalOperatingOutflows.ToString("N2"))</td>
+                        </tr>
+
+                        @* NET CASH FROM OPERATING *@
+                        <tr style="font-weight: bold; background: var(--mud-palette-info-lighten);">
+                            <td>Net Cash from Operating Activities</td>
+                            <td style="text-align: right;">@_report.NetCashFromOperations.ToString("N2")</td>
+                        </tr>
+
+                        @* SUMMARY *@
+                        <tr><td colspan="2">&nbsp;</td></tr>
+                        <tr style="font-weight: bold;">
+                            <td>Net Change in Cash</td>
+                            <td style="text-align: right; color: @(_report.NetCashChange >= 0 ? "var(--mud-palette-success)" : "var(--mud-palette-error)");">
+                                @_report.NetCashChange.ToString("N2")
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Cash at Beginning of Period</td>
+                            <td style="text-align: right;">@_report.OpeningCashBalance.ToString("N2")</td>
+                        </tr>
+                        <tr style="font-weight: bold; font-size: 1.1em; background: var(--mud-palette-primary-lighten);">
+                            <td>CASH AT END OF PERIOD</td>
+                            <td style="text-align: right;">@_report.ClosingCashBalance.ToString("N2")</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+
+            <MudText Typo="Typo.caption" Class="text-muted text-center">
+                Report generated on @_report.GeneratedAt.ToString("MMMM dd, yyyy HH:mm") | @_report.QuarryName | Cash Basis Accounting
+            </MudText>
+        }
+        else if (!_loading)
+        {
+            <MudPaper Class="pa-8 text-center rounded-lg" Elevation="0" Style="background: var(--mud-palette-background-gray);">
+                <MudIcon Icon="@Icons.Material.Filled.Payments" Style="font-size: 64px;" Color="Color.Warning" />
+                <MudText Typo="Typo.h6" Class="mt-4">Select a quarry and date range to generate the Cash Flow Statement</MudText>
+                <MudText Typo="Typo.body2" Class="text-muted">
+                    The cash flow statement shows how cash moves in and out of your business
+                </MudText>
+            </MudPaper>
+        }
+    </MudStack>
+</MudContainer>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthStateTask { get; set; }
+    [SupplyParameterFromQuery] public string? QuarryId { get; set; }
+
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new BreadcrumbItem("Accounting", "/manager/accounting", false, Icons.Material.Filled.AccountBalance),
+        new BreadcrumbItem("Cash Flow Statement", null, true)
+    };
+
+    private List<Quarry> _quarries = new();
+    private string? _selectedQuarryId;
+    private DateTime? _fromDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime? _toDate = DateTime.Today;
+    private string? _userId;
+    private string? _userRole;
+    private bool _loading;
+    private bool _exporting;
+    private CashFlowReport? _report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserInfo();
+        await LoadQuarries();
+        if (!string.IsNullOrEmpty(QuarryId)) _selectedQuarryId = QuarryId;
+    }
+
+    private async Task LoadUserInfo()
+    {
+        if (AuthStateTask != null)
+        {
+            var authState = await AuthStateTask;
+            _userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            _userRole = authState.User.FindFirst(ClaimTypes.Role)?.Value;
+        }
+    }
+
+    private async Task LoadQuarries()
+    {
+        try
+        {
+            if (_userRole == "Administrator")
+            {
+                _quarries = await DbContext.Quarries.Where(q => q.IsActive).OrderBy(q => q.QuarryName).ToListAsync();
+            }
+            else
+            {
+                var owned = await DbContext.Quarries.Where(q => q.ManagerId == _userId && q.IsActive).ToListAsync();
+                var assignedIds = await DbContext.UserQuarries.Where(uq => uq.UserId == _userId).Select(uq => uq.QuarryId).ToListAsync();
+                var assigned = await DbContext.Quarries.Where(q => assignedIds.Contains(q.Id) && q.IsActive).ToListAsync();
+                _quarries = owned.Union(assigned).Distinct().OrderBy(q => q.QuarryName).ToList();
+            }
+            if (_quarries.Count == 1 && string.IsNullOrEmpty(_selectedQuarryId)) _selectedQuarryId = _quarries[0].Id;
+        }
+        catch (Exception ex) { Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task GenerateReport()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId) || !_fromDate.HasValue || !_toDate.HasValue)
+        {
+            Snackbar.Add("Please select a quarry and date range", Severity.Warning);
+            return;
+        }
+        _loading = true;
+        _report = null;
+        try
+        {
+            _report = await ReportService.GenerateCashFlowAsync(_selectedQuarryId, _fromDate.Value, _toDate.Value);
+            Snackbar.Add("Cash Flow Statement generated successfully", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+        finally { _loading = false; }
+    }
+
+    private async Task ExportToPdf()
+    {
+        if (_report == null) return;
+        _exporting = true;
+        try
+        {
+            var bytes = ExportService.ExportCashFlowToPdf(_report);
+            var fileName = $"CashFlow_{_report.QuarryName}_{_report.PeriodStart:yyyyMMdd}_{_report.PeriodEnd:yyyyMMdd}.pdf";
+            await DownloadFile(bytes, fileName, "application/pdf");
+            Snackbar.Add("PDF exported successfully", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+        finally { _exporting = false; }
+    }
+
+    private async Task ExportToExcel()
+    {
+        if (_report == null) return;
+        _exporting = true;
+        try
+        {
+            var bytes = ExportService.ExportCashFlowToExcel(_report);
+            var fileName = $"CashFlow_{_report.QuarryName}_{_report.PeriodStart:yyyyMMdd}_{_report.PeriodEnd:yyyyMMdd}.xlsx";
+            await DownloadFile(bytes, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Snackbar.Add("Excel exported successfully", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+        finally { _exporting = false; }
+    }
+
+    private async Task DownloadFile(byte[] bytes, string fileName, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", fileName, contentType, base64);
+    }
+}

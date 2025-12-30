@@ -1,0 +1,80 @@
+@* Reusable metric cell component with icon, value, and color coding *@
+
+<div class="metric-cell @GetCellClass()">
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        <div class="metric-icon">
+            <MudIcon Icon="@Icon" Size="Size.Small" Color="@GetIconColor()" />
+        </div>
+    }
+    <div class="metric-value-container">
+        <div class="metric-value">@FormattedValue</div>
+        @if (!string.IsNullOrEmpty(Subtext))
+        {
+            <div class="metric-subtext">@Subtext</div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string Icon { get; set; } = string.Empty;
+
+    [Parameter]
+    public double Value { get; set; }
+
+    [Parameter]
+    public int IntValue { get; set; }
+
+    [Parameter]
+    public string Subtext { get; set; } = string.Empty;
+
+    [Parameter]
+    public string FormatType { get; set; } = "currency"; // currency, number, count
+
+    [Parameter]
+    public string ColorStatus { get; set; } = "neutral"; // good, warning, alert, neutral, excellent, none
+
+    [Parameter]
+    public bool IsPriority { get; set; } = false;
+
+    private string FormattedValue
+    {
+        get
+        {
+            return FormatType switch
+            {
+                "currency" => $"KES {Value:N0}",
+                "number" => $"{Value:N1}",
+                "count" => IntValue.ToString(),
+                _ => Value.ToString()
+            };
+        }
+    }
+
+    private string GetCellClass()
+    {
+        var classes = new List<string>();
+
+        if (IsPriority)
+        {
+            classes.Add("metric-cell-priority");
+        }
+
+        classes.Add($"metric-cell-{ColorStatus}");
+
+        return string.Join(" ", classes);
+    }
+
+    private Color GetIconColor()
+    {
+        return ColorStatus switch
+        {
+            "good" or "excellent" => Color.Success,
+            "warning" => Color.Warning,
+            "alert" => Color.Error,
+            "none" => Color.Default,
+            _ => Color.Primary
+        };
+    }
+}

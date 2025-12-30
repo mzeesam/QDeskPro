@@ -50,6 +50,39 @@ public class Quarry : BaseEntity
     /// </summary>
     public TimeSpan? DailyReportTime { get; set; }
 
+    // Capital Investment & ROI Fields
+
+    /// <summary>
+    /// Initial capital investment in KES for ROI tracking
+    /// </summary>
+    public double? InitialCapitalInvestment { get; set; }
+
+    /// <summary>
+    /// Date when quarry operations began
+    /// </summary>
+    public DateTime? OperationsStartDate { get; set; }
+
+    /// <summary>
+    /// Estimated monthly fixed costs for break-even analysis (KES)
+    /// Includes rent, salaries, insurance, etc.
+    /// </summary>
+    public double? EstimatedMonthlyFixedCosts { get; set; }
+
+    /// <summary>
+    /// Target profit margin percentage for benchmarking (0-100)
+    /// </summary>
+    public double? TargetProfitMargin { get; set; }
+
+    /// <summary>
+    /// Expected daily production capacity in pieces
+    /// </summary>
+    public double? DailyProductionCapacity { get; set; }
+
+    /// <summary>
+    /// Cost per liter of fuel for expense calculations (KES)
+    /// </summary>
+    public double? FuelCostPerLiter { get; set; }
+
     // Navigation properties
 
     /// <summary>

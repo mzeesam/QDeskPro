@@ -1,0 +1,496 @@
+@page "/reports/unpaid-orders"
+@page "/manager/unpaid-orders"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.Reports.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject ManagerReportService ReportService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Unpaid Orders Report - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4 mb-8">
+    <MudStack Spacing="4">
+        @* Header Section *@
+        <div class="reports-header">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <div>
+                    <MudText Typo="Typo.h4" Class="fw-bold" Style="color: #F44336;">
+                        <MudIcon Icon="@Icons.Material.Filled.CreditCardOff" Class="mr-2" Style="vertical-align: middle;" />
+                        Unpaid Orders Report
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted mt-1">
+                        Track debtors and aging of unpaid orders across quarries
+                    </MudText>
+                </div>
+            </MudStack>
+        </div>
+
+        @* Filters Section *@
+        <MudPaper Elevation="0" Class="filter-card pa-5 rounded-lg">
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect T="string"
+                              @bind-Value="_selectedQuarryId"
+                              Label="Quarry"
+                              Variant="Variant.Outlined"
+                              AnchorOrigin="Origin.BottomCenter"
+                              Dense="true"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Terrain">
+                        @if (_userRole == "Administrator")
+                        {
+                            <MudSelectItem T="string" Value="@((string?)null)">All Quarries</MudSelectItem>
+                        }
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudDatePicker @bind-Date="_fromDate"
+                                  Label="From Sale Date (Optional)"
+                                  Variant="Variant.Outlined"
+                                  MaxDate="DateTime.Today"
+                                  Dense="true"
+                                  Clearable="true"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.CalendarToday" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudDatePicker @bind-Date="_toDate"
+                                  Label="To Sale Date (Optional)"
+                                  Variant="Variant.Outlined"
+                                  MinDate="_fromDate"
+                                  MaxDate="DateTime.Today"
+                                  Dense="true"
+                                  Clearable="true"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Event" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Error"
+                              FullWidth="true"
+                              OnClick="GenerateReportAsync"
+                              Disabled="_loading"
+                              StartIcon="@Icons.Material.Filled.PlayArrow"
+                              Style="height: 40px;">
+                        @if (_loading)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Generate Report
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Color="Color.Error" Indeterminate="true" />
+        }
+
+        @if (_reportGenerated && _reportData != null)
+        {
+            @* Summary Cards *@
+            <MudGrid Class="mb-4">
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 summary-card" Elevation="0" Style="border-left: 4px solid #F44336;">
+                        <div class="d-flex align-center">
+                            <MudAvatar Color="Color.Error" Size="Size.Large" Variant="Variant.Outlined" Class="mr-3">
+                                <MudIcon Icon="@Icons.Material.Rounded.Money" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Total Unpaid</MudText>
+                                <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Error">
+                                    KES @_reportData.TotalAmount.ToString("N0")
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@_reportData.TotalCount orders</MudText>
+                            </div>
+                        </div>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 summary-card" Elevation="0" Style="border-left: 4px solid #FF9800;">
+                        <div class="d-flex align-center">
+                            <MudAvatar Color="Color.Warning" Size="Size.Large" Variant="Variant.Outlined" Class="mr-3">
+                                <MudIcon Icon="@Icons.Material.Rounded.Schedule" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">30+ Days Overdue</MudText>
+                                <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Warning">
+                                    KES @_reportData.Over30DaysAmount.ToString("N0")
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@_reportData.Over30DaysCount orders</MudText>
+                            </div>
+                        </div>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 summary-card" Elevation="0" Style="border-left: 4px solid #D32F2F;">
+                        <div class="d-flex align-center">
+                            <MudAvatar Color="Color.Error" Size="Size.Large" Variant="Variant.Filled" Class="mr-3">
+                                <MudIcon Icon="@Icons.Material.Rounded.Warning" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">60+ Days Critical</MudText>
+                                <MudText Typo="Typo.h5" Class="font-weight-bold" Style="color: #D32F2F;">
+                                    KES @_reportData.Over60DaysAmount.ToString("N0")
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@_reportData.Over60DaysCount orders</MudText>
+                            </div>
+                        </div>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 summary-card" Elevation="0" Style="border-left: 4px solid #1976D2;">
+                        <div class="d-flex align-center">
+                            <MudAvatar Color="Color.Primary" Size="Size.Large" Variant="Variant.Outlined" Class="mr-3">
+                                <MudIcon Icon="@Icons.Material.Rounded.Analytics" />
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Average Days Unpaid</MudText>
+                                <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Primary">
+                                    @_reportData.AverageDaysUnpaid days
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Oldest: @_reportData.OldestDays days</MudText>
+                            </div>
+                        </div>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* Export Buttons *@
+            <MudPaper Class="pa-3 mb-4" Elevation="0">
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Error"
+                              StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                              OnClick="ExportToPdfAsync"
+                              Disabled="_exporting">
+                        @if (_exportingPdf)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Export PDF
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Success"
+                              StartIcon="@Icons.Material.Filled.TableChart"
+                              OnClick="ExportToExcelAsync"
+                              Disabled="_exporting">
+                        @if (_exportingExcel)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Export Excel
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+
+            @* Unpaid Orders Table *@
+            <MudPaper Elevation="0" Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-3">
+                    <MudIcon Icon="@Icons.Material.Rounded.List" Class="mr-2" />
+                    Unpaid Orders Details
+                </MudText>
+
+                @if (!_reportData.Items.Any())
+                {
+                    <MudAlert Severity="Severity.Success" Icon="@Icons.Material.Rounded.CheckCircle">
+                        No unpaid orders found for the selected criteria.
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                        <strong>Aging Legend:</strong>
+                        <span class="ml-3 px-2 py-1" style="background: #FFF9C4; border-radius: 4px;">15-30 days</span>
+                        <span class="ml-2 px-2 py-1" style="background: #FFE0B2; border-radius: 4px;">31-60 days</span>
+                        <span class="ml-2 px-2 py-1" style="background: #FFCDD2; border-radius: 4px;">60+ days (Critical)</span>
+                    </MudAlert>
+
+                    <MudTable Items="@_reportData.Items"
+                              Hover="true"
+                              Breakpoint="Breakpoint.Sm"
+                              Dense="true"
+                              RowClass="unpaid-row"
+                              RowStyleFunc="@GetRowStyle">
+                        <HeaderContent>
+                            <MudTh>Sale Date</MudTh>
+                            <MudTh>Days</MudTh>
+                            <MudTh>Vehicle</MudTh>
+                            <MudTh>Product</MudTh>
+                            <MudTh>Qty</MudTh>
+                            <MudTh Style="text-align: right">Amount</MudTh>
+                            <MudTh>Client</MudTh>
+                            <MudTh>Phone</MudTh>
+                            <MudTh>Clerk</MudTh>
+                            @if (string.IsNullOrEmpty(_selectedQuarryId))
+                            {
+                                <MudTh>Quarry</MudTh>
+                            }
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Sale Date">@context.SaleDate.ToString("dd/MM/yyyy")</MudTd>
+                            <MudTd DataLabel="Days">
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@GetAgingColor(context.DaysUnpaid)"
+                                         Class="font-weight-bold">
+                                    @context.DaysUnpaid
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Vehicle">@context.VehicleRegistration</MudTd>
+                            <MudTd DataLabel="Product">@context.ProductName</MudTd>
+                            <MudTd DataLabel="Qty">@context.Quantity.ToString("N0")</MudTd>
+                            <MudTd DataLabel="Amount" Style="text-align: right; font-weight: bold;">
+                                KES @context.Amount.ToString("N0")
+                            </MudTd>
+                            <MudTd DataLabel="Client">@(context.ClientName ?? "-")</MudTd>
+                            <MudTd DataLabel="Phone">@(context.ClientPhone ?? "-")</MudTd>
+                            <MudTd DataLabel="Clerk">@context.ClerkName</MudTd>
+                            @if (string.IsNullOrEmpty(_selectedQuarryId))
+                            {
+                                <MudTd DataLabel="Quarry">@context.QuarryName</MudTd>
+                            }
+                        </RowTemplate>
+                        <PagerContent>
+                            <MudTablePager PageSizeOptions="new int[] { 25, 50, 100 }" />
+                        </PagerContent>
+                    </MudTable>
+
+                    @* Totals Row *@
+                    <MudPaper Class="pa-3 mt-3" Elevation="0" Style="background: #FFEBEE;">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                            <MudText Typo="Typo.subtitle1" Class="font-weight-bold">
+                                TOTAL UNPAID: @_reportData.TotalCount orders
+                            </MudText>
+                            <MudText Typo="Typo.h6" Class="font-weight-bold" Color="Color.Error">
+                                KES @_reportData.TotalAmount.ToString("N0")
+                            </MudText>
+                        </MudStack>
+                    </MudPaper>
+                }
+            </MudPaper>
+        }
+        else if (!_loading)
+        {
+            <MudPaper Class="pa-8 text-center" Elevation="0">
+                <MudIcon Icon="@Icons.Material.Rounded.Assessment" Size="Size.Large" Color="Color.Secondary" />
+                <MudText Typo="Typo.h6" Class="mt-3" Color="Color.Secondary">No Report Generated</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Select a quarry and click "Generate Report" to view unpaid orders.
+                </MudText>
+            </MudPaper>
+        }
+    </MudStack>
+</MudContainer>
+
+<style>
+    .filter-card {
+        background: linear-gradient(135deg, #fff 0%, #f8f9fa 100%);
+        border: 1px solid #e0e0e0;
+    }
+
+    .summary-card {
+        border-radius: 12px;
+        border: 1px solid rgba(0,0,0,0.08);
+        transition: all 0.2s ease;
+    }
+
+    .summary-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .aging-warning {
+        background: rgba(255, 152, 0, 0.05) !important;
+    }
+
+    .aging-overdue {
+        background: rgba(244, 67, 54, 0.08) !important;
+    }
+
+    .aging-critical {
+        background: rgba(211, 47, 47, 0.12) !important;
+    }
+</style>
+
+@code {
+    private bool _loading = false;
+    private bool _reportGenerated = false;
+    private bool _exporting = false;
+    private bool _exportingPdf = false;
+    private bool _exportingExcel = false;
+
+    private string _userId = "";
+    private string _userRole = "";
+    private string? _selectedQuarryId;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+
+    private List<Quarry> _quarries = new();
+    private UnpaidOrdersReportData? _reportData;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get authenticated user
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+            _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+
+            // Load quarries based on role
+            if (_userRole == "Administrator")
+            {
+                _quarries = await DbContext.Quarries
+                    .Where(q => q.IsActive)
+                    .OrderBy(q => q.QuarryName)
+                    .ToListAsync();
+            }
+            else
+            {
+                // Manager - show quarries they own or are assigned to
+                _quarries = await DbContext.Quarries
+                    .Where(q => q.IsActive)
+                    .Where(q => q.ManagerId == _userId ||
+                               DbContext.UserQuarries.Any(uq => uq.UserId == _userId && uq.QuarryId == q.Id))
+                    .OrderBy(q => q.QuarryName)
+                    .ToListAsync();
+
+                // Default to first quarry if manager
+                if (_quarries.Any())
+                {
+                    _selectedQuarryId = _quarries.First().Id;
+                }
+            }
+
+            // Auto-generate report with defaults
+            await GenerateReportAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task GenerateReportAsync()
+    {
+        _loading = true;
+        _reportGenerated = false;
+        StateHasChanged();
+
+        try
+        {
+            _reportData = await ReportService.GetUnpaidOrdersReportAsync(
+                _selectedQuarryId,
+                _fromDate,
+                _toDate);
+            _reportGenerated = true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error generating report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportToPdfAsync()
+    {
+        _exporting = true;
+        _exportingPdf = true;
+        StateHasChanged();
+
+        try
+        {
+            var pdfBytes = await ReportService.ExportUnpaidOrdersToPdfAsync(
+                _selectedQuarryId,
+                _fromDate,
+                _toDate);
+
+            var fileName = $"UnpaidOrders_{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+            await DownloadFileAsync(pdfBytes, fileName, "application/pdf");
+            Snackbar.Add("PDF exported successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting PDF: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _exporting = false;
+            _exportingPdf = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportToExcelAsync()
+    {
+        _exporting = true;
+        _exportingExcel = true;
+        StateHasChanged();
+
+        try
+        {
+            var excelBytes = await ReportService.ExportUnpaidOrdersToExcelAsync(
+                _selectedQuarryId,
+                _fromDate,
+                _toDate);
+
+            var fileName = $"UnpaidOrders_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
+            await DownloadFileAsync(excelBytes, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Snackbar.Add("Excel exported successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting Excel: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _exporting = false;
+            _exportingExcel = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadFileAsync(byte[] fileBytes, string fileName, string contentType)
+    {
+        var base64 = Convert.ToBase64String(fileBytes);
+        await JS.InvokeVoidAsync("downloadFile", fileName, base64, contentType);
+    }
+
+    private Color GetAgingColor(int daysUnpaid)
+    {
+        if (daysUnpaid > 60) return Color.Error;
+        if (daysUnpaid > 30) return Color.Warning;
+        if (daysUnpaid > 14) return Color.Warning;
+        return Color.Default;
+    }
+
+    private string GetRowStyle(UnpaidOrderItem item, int index)
+    {
+        if (item.DaysUnpaid > 60)
+            return "background: rgba(211, 47, 47, 0.08);";
+        if (item.DaysUnpaid > 30)
+            return "background: rgba(255, 152, 0, 0.08);";
+        if (item.DaysUnpaid > 14)
+            return "background: rgba(255, 193, 7, 0.08);";
+        return "";
+    }
+}

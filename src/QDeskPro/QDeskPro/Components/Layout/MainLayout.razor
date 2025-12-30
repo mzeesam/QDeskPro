@@ -25,11 +25,14 @@
 <MudLayout>
     @* Modern App Bar with Gradient Effect *@
     <MudAppBar Elevation="0" Fixed="true" Class="qdp-appbar">
-        <MudIconButton Icon="@Icons.Material.Rounded.Menu"
-                       Color="Color.Inherit"
-                       Edge="Edge.Start"
-                       OnClick="@ToggleDrawer"
-                       Class="mr-2" />
+        @if (_isAuthenticated)
+        {
+            <MudIconButton Icon="@Icons.Material.Rounded.Menu"
+                           Color="Color.Inherit"
+                           Edge="Edge.Start"
+                           OnClick="@ToggleDrawer"
+                           Class="mr-2" />
+        }
 
         @* App Logo and Brand *@
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mr-4">
@@ -43,18 +46,6 @@
         </MudStack>
 
         <MudSpacer />
-
-        @* Search Bar (Desktop only) *@
-        <div class="qdp-search-container d-none d-md-flex mr-4">
-            <MudTextField @bind-Value="_searchText"
-                          Placeholder="Search..."
-                          Variant="Variant.Outlined"
-                          Adornment="Adornment.Start"
-                          AdornmentIcon="@Icons.Material.Rounded.Search"
-                          Class="qdp-search-field"
-                          Margin="Margin.Dense"
-                          Underline="false" />
-        </div>
 
         @* User Menu *@
         <AuthorizeView>
@@ -103,44 +94,49 @@
         </AuthorizeView>
     </MudAppBar>
 
-    @* Modern Sidebar Drawer *@
-    <MudDrawer @bind-Open="_drawerOpen"
-               ClipMode="DrawerClipMode.Always"
-               Elevation="0"
-               Class="qdp-drawer"
-               Variant="DrawerVariant.Responsive"
-               Breakpoint="Breakpoint.Md">
+    @* Modern Sidebar Drawer - Only show for authenticated users *@
+    @if (_isAuthenticated)
+    {
+        <MudDrawer @bind-Open="_drawerOpen"
+                   ClipMode="DrawerClipMode.Always"
+                   Elevation="0"
+                   Width="280px"
+                   Class="qdp-drawer"
+                   Variant="@DrawerVariant.Persistent"
+                   Breakpoint="Breakpoint.Md"
+                   DisableOverlay="true">
 
-        @* Drawer Header *@
-        <div class="qdp-drawer-header">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
-                <MudAvatar Size="Size.Large" Class="qdp-drawer-logo">
-                    <MudIcon Icon="@Icons.Material.Rounded.Layers" Size="Size.Large" />
-                </MudAvatar>
-                <div>
-                    <MudText Typo="Typo.h6" Class="font-weight-bold">@_quarryName</MudText>
-                    <MudText Class="qdp-drawer-header-subtitle">@_quarrySubtitle</MudText>
-                </div>
-            </MudStack>
-        </div>
+            @* Drawer Header *@
+            <div class="qdp-drawer-header">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudAvatar Size="Size.Large" Class="qdp-drawer-logo">
+                        <MudIcon Icon="@Icons.Material.Rounded.Layers" Size="Size.Large" />
+                    </MudAvatar>
+                    <div>
+                        <MudText Typo="Typo.h6" Class="font-weight-bold">@_quarryName</MudText>
+                        <MudText Class="qdp-drawer-header-subtitle">@_quarrySubtitle</MudText>
+                    </div>
+                </MudStack>
+            </div>
 
-        @* Navigation Menu *@
-        <div class="qdp-nav-menu">
-            <NavMenu />
-        </div>
+            @* Navigation Menu *@
+            <div class="qdp-nav-menu">
+                <NavMenu />
+            </div>
 
-        @* Drawer Footer *@
-        <MudSpacer />
-        <div class="qdp-drawer-footer">
-            <MudDivider Class="mb-3" />
-            <MudText Typo="Typo.caption" Class="text-center" Color="Color.Secondary">
-                v1.0.0 - Phase 1
-            </MudText>
-        </div>
-    </MudDrawer>
+            @* Drawer Footer *@
+            <MudSpacer />
+            <div class="qdp-drawer-footer">
+                <MudDivider Class="mb-3" />
+                <MudText Typo="Typo.caption" Class="text-center" Color="Color.Secondary">
+                    v1.0.0 - Phase 1
+                </MudText>
+            </div>
+        </MudDrawer>
+    }
 
     @* Main Content Area *@
-    <MudMainContent Class="qdp-main-content">
+    <MudMainContent Class="@GetMainContentClass()">
         <div class="qdp-content-wrapper">
             @Body
         </div>
@@ -166,9 +162,9 @@
 @code {
     private bool _drawerOpen = true;
     private string? currentUrl;
-    private string _searchText = "";
     private string _quarryName = "Loading...";
     private string _quarrySubtitle = "";
+    private bool _isAuthenticated = false;
 
     // Receive dark mode state from Routes.razor cascading value
     [CascadingParameter(Name = "IsDarkMode")]
@@ -178,6 +174,10 @@
     {
         currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
         NavigationManager.LocationChanged += OnLocationChanged;
+
+        // Check authentication status
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
 
         await LoadQuarryInfoAsync();
     }
@@ -281,6 +281,16 @@
         _drawerOpen = !_drawerOpen;
     }
 
+    private string GetMainContentClass()
+    {
+        var baseClass = "qdp-main-content";
+        if (_isAuthenticated && _drawerOpen)
+        {
+            return $"{baseClass} drawer-open";
+        }
+        return baseClass;
+    }
+
     // Theme toggle is now handled in Routes.razor via ThemeService cascading value
     [CascadingParameter(Name = "ThemeService")]
     private Routes? ThemeService { get; set; }
@@ -359,33 +369,6 @@
         border: 1px solid rgba(255, 255, 255, 0.2);
     }
 
-    /* Search Field */
-    .qdp-search-container {
-        width: 280px;
-    }
-
-    .qdp-search-field {
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 12px;
-        backdrop-filter: blur(10px);
-    }
-
-    .qdp-search-field .mud-input-outlined-border {
-        border-color: rgba(255, 255, 255, 0.2) !important;
-    }
-
-    .qdp-search-field input {
-        color: white !important;
-    }
-
-    .qdp-search-field input::placeholder {
-        color: rgba(255, 255, 255, 0.6) !important;
-    }
-
-    .qdp-search-field .mud-icon-root {
-        color: rgba(255, 255, 255, 0.7) !important;
-    }
-
     /* User Menu */
     .qdp-user-menu-trigger {
         transition: background-color 0.2s ease;
@@ -435,7 +418,17 @@
     .qdp-drawer {
         background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
         border-right: 1px solid #e0e6ed !important;
-        box-shadow: none !important; /* Remove shadow that creates gradient strip */
+        box-shadow: none !important;
+        position: fixed !important;
+        height: 100vh !important;
+        z-index: 1200 !important;
+    }
+
+    /* Drawer on desktop - persistent behavior */
+    @@media (min-width: 960px) {
+        .qdp-drawer.mud-drawer--open {
+            position: fixed !important;
+        }
     }
 
     /* Fix drawer content overflow to prevent header cutoff */
@@ -500,25 +493,24 @@
         padding: 16px 20px;
     }
 
-    /* Main Content - Remove gap between drawer and content */
+    /* Main Content */
     .qdp-main-content {
         background: #f5f7fa !important;
         min-height: calc(100vh - 64px);
-        transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        padding-left: 0 !important;
-        margin-left: 0 !important;
+        transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        margin-left: 0;
+    }
+
+    /* Main content with drawer open on desktop */
+    @@media (min-width: 960px) {
+        .qdp-main-content.drawer-open {
+            margin-left: 280px !important;
+        }
     }
 
     /* MudBlazor Layout Integration - Remove all gaps */
     .mud-layout {
         gap: 0 !important;
-    }
-
-    /* Override MudBlazor's default main content margin/padding */
-    .mud-main-content {
-        padding-left: 0 !important;
-        margin-left: 0 !important;
-        transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
     }
 
     /* Content Wrapper - provides consistent padding inside */
@@ -536,22 +528,9 @@
         }
     }
 
-    /* Ensure the main content fills available horizontal space */
-    .mud-main-content.qdp-main-content {
-        flex: 1 1 auto;
-        width: 100%;
-    }
-
     /* Remove any drawer shadow/gap that might appear */
     .mud-drawer {
         box-shadow: none !important;
-    }
-
-    /* Ensure no gap in responsive drawer states */
-    .mud-drawer-responsive ~ .mud-main-content,
-    .mud-drawer--open ~ .mud-main-content,
-    .mud-drawer--closed ~ .mud-main-content {
-        padding-left: 0 !important;
     }
 
     @@keyframes fadeInUp {

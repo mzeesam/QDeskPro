@@ -91,8 +91,17 @@ public class ManagerReportService
 
         if (quarry != null)
         {
-            report.TotalLoadersFee = sales.Sum(s => s.Quantity * (quarry.LoadersFee ?? 0));
-            report.TotalLandRateFee = sales.Sum(s =>
+            // Don't apply loaders fee for beam or hardcore products
+            report.TotalLoadersFee = sales
+                .Where(s =>
+                {
+                    var productName = s.Product?.ProductName ?? "";
+                    return !productName.Contains("beam", StringComparison.OrdinalIgnoreCase) &&
+                           !productName.Contains("hardcore", StringComparison.OrdinalIgnoreCase);
+                })
+                .Sum(s => s.Quantity * (quarry.LoadersFee ?? 0));
+            // Only include land rate for sales where IncludeLandRate is true
+            report.TotalLandRateFee = sales.Where(s => s.IncludeLandRate).Sum(s =>
             {
                 var productName = s.Product?.ProductName ?? "";
                 var feeRate = productName.Contains("reject", StringComparison.OrdinalIgnoreCase)
@@ -105,31 +114,95 @@ public class ManagerReportService
         // Calculate Other Expenses (manual user-entered expenses)
         report.TotalOtherExpenses = manualExpenses.Sum(e => e.Amount);
 
-        // Get Opening Balance - cumulative for date ranges
-        // Opening balance for each day = previous day's closing balance (cash-in-hand)
-        // For multi-day ranges, sum all opening balances across the range
+        // Get Opening Balance and Cash In Hand (B/F)
         if (!string.IsNullOrEmpty(quarryId))
         {
-            // For each day in the range, opening balance = previous day's closing
-            // So we need DailyNotes from (fromDate - 1) to (toDate - 1)
-            var openingBalanceStartStamp = fromDate.AddDays(-1).ToString("yyyyMMdd");
-            var openingBalanceEndStamp = toDate.AddDays(-1).ToString("yyyyMMdd");
-
-            var dailyNotes = await context.DailyNotes
-                .Where(n => string.Compare(n.DateStamp, openingBalanceStartStamp) >= 0)
-                .Where(n => string.Compare(n.DateStamp, openingBalanceEndStamp) <= 0)
+            // Actual Opening Balance = closing balance from day before fromDate (e.g., Nov 30 for Dec 1-10 report)
+            var openingDayStamp = fromDate.AddDays(-1).ToString("yyyyMMdd");
+            var openingDayNote = await context.DailyNotes
+                .Where(n => n.DateStamp == openingDayStamp)
                 .Where(n => n.QId == quarryId)
                 .Where(n => n.IsActive)
-                .ToListAsync();
+                .FirstOrDefaultAsync();
+            report.ActualOpeningBalance = openingDayNote?.ClosingBalance ?? 0;
 
-            // Sum all closing balances (these become opening balances for subsequent days)
-            report.OpeningBalance = dailyNotes.Sum(n => n.ClosingBalance);
+            // Cash In Hand (B/F) = closing balance from day before toDate (e.g., Dec 9 for Dec 1-10 report)
+            // This is used for Net Income calculation since balances carry over daily within the range
+            var cashInHandDayStamp = toDate.AddDays(-1).ToString("yyyyMMdd");
+            var cashInHandNote = await context.DailyNotes
+                .Where(n => n.DateStamp == cashInHandDayStamp)
+                .Where(n => n.QId == quarryId)
+                .Where(n => n.IsActive)
+                .FirstOrDefaultAsync();
+            report.OpeningBalance = cashInHandNote?.ClosingBalance ?? 0;
         }
 
-        // Net Amount formula: (TotalSales - UnpaidAmount - TotalExpenses) + OpeningBalance
-        // This matches the clerk report formula for consistency
+        // Collections Query: Payments received during report period for sales made BEFORE the period
+        // These are previously unpaid orders that have now been paid
+        // Example: Sale on Nov 25 (unpaid), Payment received on Dec 5 → Shows as collection in Dec 1-10 report
+        var collectionsQuery = context.Sales
+            .Where(s => s.IsActive)
+            .Where(s => s.PaymentStatus == "Paid")
+            .Where(s => s.PaymentReceivedDate >= fromDate && s.PaymentReceivedDate <= toDate)
+            .Where(s => s.SaleDate < fromDate);  // Sale was made before report period
+
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            collectionsQuery = collectionsQuery.Where(s => s.QId == quarryId);
+        }
+
+        var collections = await collectionsQuery
+            .Include(s => s.Product)
+            .OrderBy(s => s.PaymentReceivedDate)
+            .ToListAsync();
+
+        // Map collections to CollectionItem
+        report.CollectionItems = collections.Select(s => new CollectionItem
+        {
+            OriginalSaleDate = s.SaleDate ?? DateTime.MinValue,
+            PaymentReceivedDate = s.PaymentReceivedDate ?? DateTime.Today,
+            VehicleRegistration = s.VehicleRegistration,
+            ProductName = s.Product?.ProductName ?? "Unknown",
+            Quantity = s.Quantity,
+            Amount = s.GrossSaleAmount,
+            ClientName = s.ClientName,
+            PaymentReference = s.PaymentReference
+        }).ToList();
+
+        report.TotalCollections = collections.Sum(s => s.GrossSaleAmount);
+
+        // Prepayments Query: Customer deposits received during report period
+        var prepaymentsQuery = context.Prepayments
+            .Where(p => p.IsActive)
+            .Where(p => p.PrepaymentDate >= fromDate && p.PrepaymentDate <= toDate);
+
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            prepaymentsQuery = prepaymentsQuery.Where(p => p.QId == quarryId);
+        }
+
+        var prepayments = await prepaymentsQuery
+            .Include(p => p.IntendedProduct)
+            .OrderBy(p => p.PrepaymentDate)
+            .ToListAsync();
+
+        // Map prepayments to PrepaymentReportItem
+        report.PrepaymentItems = prepayments.Select(p => new PrepaymentReportItem
+        {
+            PrepaymentDate = p.PrepaymentDate,
+            VehicleRegistration = p.VehicleRegistration,
+            ClientName = p.ClientName,
+            ProductName = p.IntendedProduct?.ProductName ?? "Not Specified",
+            AmountPaid = p.TotalAmountPaid,
+            PaymentReference = p.PaymentReference
+        }).ToList();
+
+        report.TotalPrepayments = prepayments.Sum(p => p.TotalAmountPaid);
+
+        // Net Amount formula: (Earnings + Cash In Hand B/F + Collections + Prepayments) - Unpaid Orders
+        // Where Earnings = TotalSales - TotalExpenses
         var totalExpenses = report.TotalCommission + report.TotalLoadersFee + report.TotalLandRateFee + report.TotalOtherExpenses;
-        report.NetAmount = (report.TotalSales - report.UnpaidAmount - totalExpenses) + report.OpeningBalance;
+        report.NetAmount = (report.TotalSales - report.UnpaidAmount - totalExpenses) + report.OpeningBalance + report.TotalCollections + report.TotalPrepayments;
 
         // Generate daily summaries
         var dailyGroups = sales.GroupBy(s => s.SaleDate?.Date ?? DateTime.Today);
@@ -140,8 +213,9 @@ public class ManagerReportService
             var dayLoadersFee = quarry != null
                 ? daySales.Sum(s => s.Quantity * (quarry.LoadersFee ?? 0))
                 : 0;
+            // Only include land rate for sales where IncludeLandRate is true
             var dayLandRate = quarry != null
-                ? daySales.Sum(s =>
+                ? daySales.Where(s => s.IncludeLandRate).Sum(s =>
                 {
                     var productName = s.Product?.ProductName ?? "";
                     var feeRate = productName.Contains("reject", StringComparison.OrdinalIgnoreCase)
@@ -304,11 +378,15 @@ public class ManagerReportService
             }
         }
 
-        // 4. Land rate expenses
+        // 4. Land rate expenses (only for sales where IncludeLandRate is true)
         if (quarry?.LandRateFee > 0)
         {
             foreach (var sale in sales)
             {
+                // Skip land rate if the sale has it excluded
+                if (!sale.IncludeLandRate)
+                    continue;
+
                 var productName = sale.Product?.ProductName ?? "";
                 var feeRate = productName.Contains("reject", StringComparison.OrdinalIgnoreCase)
                     ? (quarry.RejectsFee ?? 0)
@@ -996,6 +1074,55 @@ public class ManagerReportService
         ws.Cell(row, 2).Value = bankingData.AveragePerDay;
         ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
 
+        // Collections Summary (payments received for older unpaid sales)
+        if (salesData.CollectionItems.Count > 0)
+        {
+            row += 2;
+            ws.Cell(row, 1).Value = "COLLECTIONS SUMMARY";
+            ws.Cell(row, 1).Style.Font.Bold = true;
+            ws.Cell(row, 1).Style.Font.FontSize = 14;
+            ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.MediumPurple;
+            ws.Cell(row, 1).Style.Font.FontColor = XLColor.White;
+            ws.Range(row, 1, row, 3).Merge();
+
+            row++;
+            ws.Cell(row, 1).Value = "Total Collections:";
+            ws.Cell(row, 2).Value = salesData.TotalCollections;
+            ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 2).Style.Font.Bold = true;
+            ws.Cell(row, 2).Style.Font.FontColor = XLColor.MediumPurple;
+            row++;
+            ws.Cell(row, 1).Value = "Number of Payments:";
+            ws.Cell(row, 2).Value = salesData.CollectionItems.Count;
+
+            // Detailed collections table
+            row += 2;
+            ws.Cell(row, 1).Value = "Sale Date";
+            ws.Cell(row, 2).Value = "Paid On";
+            ws.Cell(row, 3).Value = "Vehicle";
+            ws.Cell(row, 4).Value = "Client";
+            ws.Cell(row, 5).Value = "Product";
+            ws.Cell(row, 6).Value = "Qty";
+            ws.Cell(row, 7).Value = "Amount";
+            ws.Range(row, 1, row, 7).Style.Font.Bold = true;
+            ws.Range(row, 1, row, 7).Style.Fill.BackgroundColor = XLColor.MediumPurple;
+            ws.Range(row, 1, row, 7).Style.Font.FontColor = XLColor.White;
+
+            foreach (var collection in salesData.CollectionItems)
+            {
+                row++;
+                ws.Cell(row, 1).Value = collection.OriginalSaleDate.ToString("dd/MM/yyyy");
+                ws.Cell(row, 2).Value = collection.PaymentReceivedDate.ToString("dd/MM/yyyy");
+                ws.Cell(row, 3).Value = collection.VehicleRegistration;
+                ws.Cell(row, 4).Value = collection.ClientName ?? "-";
+                ws.Cell(row, 5).Value = collection.ProductName;
+                ws.Cell(row, 6).Value = collection.Quantity;
+                ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0";
+                ws.Cell(row, 7).Value = collection.Amount;
+                ws.Cell(row, 7).Style.NumberFormat.Format = "#,##0.00";
+            }
+        }
+
         // Net Summary
         row += 2;
         ws.Cell(row, 1).Value = "NET SUMMARY";
@@ -1004,9 +1131,38 @@ public class ManagerReportService
         ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.Lavender;
         ws.Range(row, 1, row, 3).Merge();
 
-        var netIncome = salesData.TotalSales - expensesData.TotalExpenses;
-        var cashInHand = netIncome - bankingData.TotalBanked;
+        // Net Income formula: (TotalSales - UnpaidAmount - TotalExpenses) + OpeningBalance + Collections + Prepayments
+        var earnings = salesData.TotalSales - expensesData.TotalExpenses;
+        var netIncome = (salesData.TotalSales - salesData.UnpaidAmount - expensesData.TotalExpenses) + salesData.OpeningBalance + salesData.TotalCollections + salesData.TotalPrepayments;
+        var cashInHandEnd = netIncome - bankingData.TotalBanked;
 
+        row++;
+        ws.Cell(row, 1).Value = "Opening Balance:";
+        ws.Cell(row, 2).Value = salesData.ActualOpeningBalance;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
+        row++;
+        ws.Cell(row, 1).Value = "Cash In Hand (B/F):";
+        ws.Cell(row, 2).Value = salesData.OpeningBalance;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
+        row++;
+        ws.Cell(row, 1).Value = "Earnings (Sales - Expenses):";
+        ws.Cell(row, 2).Value = earnings;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
+        row++;
+        ws.Cell(row, 1).Value = "Collections (Previous Unpaid):";
+        ws.Cell(row, 2).Value = salesData.TotalCollections;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 2).Style.Font.FontColor = salesData.TotalCollections > 0 ? XLColor.MediumPurple : XLColor.Black;
+        row++;
+        ws.Cell(row, 1).Value = "Prepayments Received:";
+        ws.Cell(row, 2).Value = salesData.TotalPrepayments;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 2).Style.Font.FontColor = salesData.TotalPrepayments > 0 ? XLColor.Green : XLColor.Black;
+        row++;
+        ws.Cell(row, 1).Value = "Unpaid Orders:";
+        ws.Cell(row, 2).Value = salesData.UnpaidAmount;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 2).Style.Font.FontColor = salesData.UnpaidAmount > 0 ? XLColor.Red : XLColor.Black;
         row++;
         ws.Cell(row, 1).Value = "Net Income:";
         ws.Cell(row, 2).Value = netIncome;
@@ -1014,10 +1170,21 @@ public class ManagerReportService
         ws.Cell(row, 2).Style.Font.Bold = true;
         ws.Cell(row, 2).Style.Font.FontColor = netIncome >= 0 ? XLColor.Green : XLColor.Red;
         row++;
-        ws.Cell(row, 1).Value = "Cash in Hand:";
-        ws.Cell(row, 2).Value = cashInHand;
+        ws.Cell(row, 1).Value = "Banked:";
+        ws.Cell(row, 2).Value = bankingData.TotalBanked;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
+        row++;
+        ws.Cell(row, 1).Value = "Cash in Hand (End):";
+        ws.Cell(row, 2).Value = cashInHandEnd;
         ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
         ws.Cell(row, 2).Style.Font.Bold = true;
+
+        // Formula explanation
+        row += 2;
+        ws.Cell(row, 1).Value = "Formula: Net Income = (Earnings + Cash In Hand B/F + Collections + Prepayments) - Unpaid Orders";
+        ws.Cell(row, 1).Style.Font.Italic = true;
+        ws.Cell(row, 1).Style.Font.FontColor = XLColor.Gray;
+        ws.Range(row, 1, row, 4).Merge();
 
         ws.Columns().AdjustToContents();
     }
@@ -1066,7 +1233,7 @@ public class ManagerReportService
         var dateRange = $"{fromDate:dd MMM yyyy} - {toDate:dd MMM yyyy}";
         var totalExpenses = salesData.TotalCommission + salesData.TotalLoadersFee + salesData.TotalLandRateFee + salesData.TotalOtherExpenses;
         var earnings = salesData.TotalSales - totalExpenses;
-        var netIncome = (salesData.TotalSales - salesData.UnpaidAmount - totalExpenses) + salesData.OpeningBalance;
+        var netIncome = (salesData.TotalSales - salesData.UnpaidAmount - totalExpenses) + salesData.OpeningBalance + salesData.TotalCollections + salesData.TotalPrepayments;
         var cashInHand = netIncome - bankingData.TotalBanked;
         var profitMargin = salesData.TotalSales > 0 ? (earnings / salesData.TotalSales) * 100 : 0;
 
@@ -1096,7 +1263,7 @@ public class ManagerReportService
                         {
                             row.RelativeItem().Column(titleCol =>
                             {
-                                titleCol.Item().Text("QDesk Comprehensive Sales Report")
+                                titleCol.Item().Text("QDesk Sales Report")
                                     .FontSize(22).Bold().FontColor(primaryColor);
                                 titleCol.Item().Text($"{quarryName}")
                                     .FontSize(14).FontColor(Colors.Grey.Darken2);
@@ -1135,10 +1302,10 @@ public class ManagerReportService
                                 "Total Banked", $"KES {bankingData.TotalBanked:N0}",
                                 $"{bankingData.TotalRecords} deposits", infoColor, true));
 
-                            // Card 6: Cash in Hand
+                            // Card 6: Cash in Hand (End) - final balance after banking
                             row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
-                                "Cash in Hand", $"KES {cashInHand:N0}",
-                                "Balance", cashInHand >= 0 ? successColor : errorColor, true));
+                                "Cash in Hand (End)", $"KES {cashInHand:N0}",
+                                "Final Balance", cashInHand >= 0 ? successColor : errorColor, true));
                         });
 
                         col.Item().PaddingTop(8).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
@@ -1157,11 +1324,12 @@ public class ManagerReportService
                             summaryRow.RelativeItem().Column(sumCol =>
                             {
                                 sumCol.Item().Text("FINANCIAL SUMMARY").Bold().FontSize(11);
+                                // First row: Opening Balance and Total Sales
                                 sumCol.Item().PaddingTop(5).Row(r =>
                                 {
                                     r.RelativeItem().Text(t => {
                                         t.Span("Opening Balance: ").Bold();
-                                        t.Span($"KES {salesData.OpeningBalance:N2}");
+                                        t.Span($"KES {salesData.ActualOpeningBalance:N2}");
                                     });
                                     r.RelativeItem().Text(t => {
                                         t.Span("Total Sales: ").Bold();
@@ -1172,12 +1340,37 @@ public class ManagerReportService
                                         t.Span($"{salesData.TotalQuantity:N0} pcs");
                                     });
                                 });
+                                // Second row: Cash In Hand (B/F), Collections and Prepayments
+                                sumCol.Item().PaddingTop(3).Row(r =>
+                                {
+                                    r.RelativeItem().Text(t => {
+                                        t.Span("Cash In Hand (B/F): ").Bold();
+                                        t.Span($"KES {salesData.OpeningBalance:N2}");
+                                    });
+                                    r.RelativeItem().Text(t => {
+                                        t.Span("Collections: ").Bold();
+                                        t.Span($"KES {salesData.TotalCollections:N2}").FontColor(salesData.TotalCollections > 0 ? successColor : Colors.Black);
+                                    });
+                                    r.RelativeItem().Text(t => {
+                                        t.Span("Prepayments: ").Bold();
+                                        t.Span($"KES {salesData.TotalPrepayments:N2}").FontColor(salesData.TotalPrepayments > 0 ? successColor : Colors.Black);
+                                    });
+                                });
+
+                                // Third row: Unpaid Orders
+                                sumCol.Item().PaddingTop(3).Row(r =>
+                                {
+                                    r.RelativeItem().Text(t => {
+                                        t.Span("Unpaid Orders: ").Bold();
+                                        t.Span($"KES {salesData.UnpaidAmount:N2}").FontColor(salesData.UnpaidAmount > 0 ? warningColor : Colors.Black);
+                                    });
+                                });
                             });
                             summaryRow.ConstantItem(220).Column(netCol =>
                             {
                                 // Net Income with formula in smaller font
                                 netCol.Item().AlignRight().Text("Net Income").Bold().FontSize(10);
-                                netCol.Item().AlignRight().Text("(Earnings + Opening balance - Unpaid orders)")
+                                netCol.Item().AlignRight().Text("(Earnings + Cash In Hand + Collections + Prepayments - Unpaid)")
                                     .FontSize(7).FontColor(Colors.Grey.Darken1);
                                 netCol.Item().AlignRight().Text($"KES {netIncome:N2}")
                                     .Bold().FontSize(14)
@@ -1325,7 +1518,7 @@ public class ManagerReportService
 
                         // PAGE BREAK - Detailed Sales Orders
                         col.Item().PageBreak();
-                        col.Item().Element(e => SectionHeader(e, "Detailed Sales Orders (Grouped by Date)", primaryColor));
+                        col.Item().Element(e => SectionHeader(e, "Detailed Sales Orders", primaryColor));
 
                         // Group sales by date
                         var salesByDate = individualSales.GroupBy(s => s.SaleDate?.Date ?? DateTime.Today).OrderBy(g => g.Key);
@@ -1392,37 +1585,52 @@ public class ManagerReportService
                             col.Item().PageBreak();
                             col.Item().Element(e => SectionHeader(e, "Detailed Expense Records", errorColor));
 
-                            col.Item().Table(table =>
+                            // Group expenses by date
+                            var expensesByDate = expensesData.ExpenseItems.GroupBy(e => e.Date.Date).OrderBy(g => g.Key);
+
+                            foreach (var dateGroup in expensesByDate)
                             {
-                                table.ColumnsDefinition(columns =>
+                                // Date header
+                                col.Item().PaddingTop(8).Background(Colors.Grey.Lighten3).Padding(5).Row(dateRow =>
                                 {
-                                    columns.ConstantColumn(70);    // Date
-                                    columns.RelativeColumn(3);    // Description
-                                    columns.RelativeColumn(1);    // Category
-                                    columns.ConstantColumn(100);   // Amount
+                                    dateRow.RelativeItem().Text($"{dateGroup.Key:dddd, dd MMMM yyyy}").Bold().FontSize(10);
+                                    dateRow.ConstantItem(150).AlignRight().Text($"{dateGroup.Count()} items | KES {dateGroup.Sum(e => e.Amount):N0}").FontSize(9);
                                 });
 
-                                table.Header(header =>
+                                // Expenses table for this date
+                                col.Item().Table(table =>
                                 {
-                                    header.Cell().Background(errorColor).Padding(4).Text("Date").FontColor(Colors.White).Bold().FontSize(8);
-                                    header.Cell().Background(errorColor).Padding(4).Text("Description").FontColor(Colors.White).Bold().FontSize(8);
-                                    header.Cell().Background(errorColor).Padding(4).Text("Category").FontColor(Colors.White).Bold().FontSize(8);
-                                    header.Cell().Background(errorColor).Padding(4).AlignRight().Text("Amount").FontColor(Colors.White).Bold().FontSize(8);
+                                    table.ColumnsDefinition(columns =>
+                                    {
+                                        columns.RelativeColumn(3);    // Description
+                                        columns.RelativeColumn(1);    // Category
+                                        columns.ConstantColumn(100);   // Amount
+                                    });
+
+                                    table.Header(header =>
+                                    {
+                                        header.Cell().Background(errorColor).Padding(4).Text("Description").FontColor(Colors.White).Bold().FontSize(8);
+                                        header.Cell().Background(errorColor).Padding(4).Text("Category").FontColor(Colors.White).Bold().FontSize(8);
+                                        header.Cell().Background(errorColor).Padding(4).AlignRight().Text("Amount").FontColor(Colors.White).Bold().FontSize(8);
+                                    });
+
+                                    foreach (var expense in dateGroup)
+                                    {
+                                        var expIdx = dateGroup.ToList().IndexOf(expense);
+                                        var bgColor = expIdx % 2 == 0 ? Colors.White : Colors.Grey.Lighten4;
+
+                                        table.Cell().Background(bgColor).Padding(3).Text(expense.Description.Length > 70 ? expense.Description.Substring(0, 70) + "..." : expense.Description).FontSize(8);
+                                        table.Cell().Background(bgColor).Padding(3).Text(expense.Category).FontSize(8);
+                                        table.Cell().Background(bgColor).Padding(3).AlignRight().Text($"KES {expense.Amount:N0}").FontSize(8);
+                                    }
                                 });
+                            }
 
-                                foreach (var expense in expensesData.ExpenseItems)
-                                {
-                                    var idx = expensesData.ExpenseItems.IndexOf(expense);
-                                    var bgColor = idx % 2 == 0 ? Colors.White : Colors.Grey.Lighten4;
-
-                                    table.Cell().Background(bgColor).Padding(3).Text(expense.Date.ToString("dd/MM/yy")).FontSize(8);
-                                    table.Cell().Background(bgColor).Padding(3).Text(expense.Description.Length > 60 ? expense.Description.Substring(0, 60) + "..." : expense.Description).FontSize(8);
-                                    table.Cell().Background(bgColor).Padding(3).Text(expense.Category).FontSize(8);
-                                    table.Cell().Background(bgColor).Padding(3).AlignRight().Text($"KES {expense.Amount:N0}").FontSize(8);
-                                }
-
-                                table.Cell().ColumnSpan(3).Background(Colors.Grey.Lighten3).Padding(4).Text("TOTAL EXPENSES").Bold().FontSize(9);
-                                table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text($"KES {expensesData.TotalExpenses:N0}").Bold().FontSize(9);
+                            // Total row at the end
+                            col.Item().PaddingTop(5).Background(Colors.Grey.Lighten3).Padding(5).Row(totalRow =>
+                            {
+                                totalRow.RelativeItem().Text("TOTAL EXPENSES").Bold().FontSize(10);
+                                totalRow.ConstantItem(150).AlignRight().Text($"KES {expensesData.TotalExpenses:N0}").Bold().FontSize(10);
                             });
                         }
 
@@ -1470,6 +1678,56 @@ public class ManagerReportService
                                 }
                             });
                         }
+
+                        // Detailed Collections Records (payments received for older unpaid sales)
+                        if (salesData.CollectionItems.Count > 0)
+                        {
+                            var collectionsColor = "#9C27B0"; // Purple for collections
+                            col.Item().PaddingTop(15).Element(e => SectionHeader(e, "Collections (Payments for Previous Unpaid Orders)", collectionsColor));
+
+                            col.Item().Table(table =>
+                            {
+                                table.ColumnsDefinition(columns =>
+                                {
+                                    columns.ConstantColumn(70);    // Original Sale Date
+                                    columns.ConstantColumn(70);    // Payment Received
+                                    columns.ConstantColumn(80);    // Vehicle
+                                    columns.RelativeColumn(1.5f);  // Client
+                                    columns.RelativeColumn(1);     // Product
+                                    columns.ConstantColumn(50);    // Qty
+                                    columns.ConstantColumn(90);    // Amount
+                                });
+
+                                table.Header(header =>
+                                {
+                                    header.Cell().Background(collectionsColor).Padding(4).Text("Sale Date").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(collectionsColor).Padding(4).Text("Paid On").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(collectionsColor).Padding(4).Text("Vehicle").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(collectionsColor).Padding(4).Text("Client").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(collectionsColor).Padding(4).Text("Product").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(collectionsColor).Padding(4).Text("Qty").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(collectionsColor).Padding(4).AlignRight().Text("Amount").FontColor(Colors.White).Bold().FontSize(7);
+                                });
+
+                                foreach (var collection in salesData.CollectionItems)
+                                {
+                                    var idx = salesData.CollectionItems.IndexOf(collection);
+                                    var bgColor = idx % 2 == 0 ? Colors.White : Colors.Grey.Lighten4;
+
+                                    table.Cell().Background(bgColor).Padding(3).Text(collection.OriginalSaleDate.ToString("dd/MM/yy")).FontSize(7);
+                                    table.Cell().Background(bgColor).Padding(3).Text(collection.PaymentReceivedDate.ToString("dd/MM/yy")).FontSize(7);
+                                    table.Cell().Background(bgColor).Padding(3).Text(collection.VehicleRegistration).FontSize(7);
+                                    table.Cell().Background(bgColor).Padding(3).Text(collection.ClientName ?? "-").FontSize(7);
+                                    table.Cell().Background(bgColor).Padding(3).Text(collection.ProductName).FontSize(7);
+                                    table.Cell().Background(bgColor).Padding(3).Text($"{collection.Quantity:N0}").FontSize(7);
+                                    table.Cell().Background(bgColor).Padding(3).AlignRight().Text($"KES {collection.Amount:N0}").FontSize(7);
+                                }
+
+                                // Total row
+                                table.Cell().ColumnSpan(6).Background(Colors.Grey.Lighten3).Padding(3).Text("TOTAL COLLECTIONS").Bold().FontSize(8);
+                                table.Cell().Background(Colors.Grey.Lighten3).Padding(3).AlignRight().Text($"KES {salesData.TotalCollections:N0}").Bold().FontSize(8);
+                            });
+                        }
                     });
                 });
 
@@ -1478,7 +1736,7 @@ public class ManagerReportService
                 {
                     footer.Row(row =>
                     {
-                        row.RelativeItem().Text("QDesk Comprehensive Sales Report - Quarry Management System")
+                        row.RelativeItem().Text("QDesk Sales Report - Quarry Management System")
                             .FontSize(8).FontColor(Colors.Grey.Darken1);
                         row.RelativeItem().AlignCenter().Text(text =>
                         {
@@ -1521,6 +1779,1032 @@ public class ManagerReportService
             row.RelativeItem().PaddingLeft(8).Text(title).FontSize(11).Bold().FontColor(color);
         });
     }
+
+    #region Unpaid Orders Report Methods
+
+    /// <summary>
+    /// Get comprehensive unpaid orders report with aging analysis
+    /// </summary>
+    public async Task<UnpaidOrdersReportData> GetUnpaidOrdersReportAsync(string? quarryId, DateTime? fromDate = null, DateTime? toDate = null)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var report = new UnpaidOrdersReportData
+        {
+            FromDate = fromDate,
+            ToDate = toDate
+        };
+
+        // Build base query for unpaid sales
+        var salesQuery = context.Sales
+            .Where(s => s.PaymentStatus != "Paid")
+            .Where(s => s.IsActive);
+
+        // Filter by quarry if specified
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            salesQuery = salesQuery.Where(s => s.QId == quarryId);
+        }
+
+        // Filter by date range if specified (for sale date)
+        if (fromDate.HasValue)
+        {
+            salesQuery = salesQuery.Where(s => s.SaleDate >= fromDate.Value);
+        }
+        if (toDate.HasValue)
+        {
+            salesQuery = salesQuery.Where(s => s.SaleDate <= toDate.Value);
+        }
+
+        var unpaidSales = await salesQuery
+            .Include(s => s.Product)
+            .Include(s => s.Broker)
+            .OrderBy(s => s.SaleDate) // Oldest first
+            .ToListAsync();
+
+        // Get quarry names for the items
+        var quarryIds = unpaidSales.Select(s => s.QId).Distinct().ToList();
+        var quarries = await context.Quarries
+            .Where(q => quarryIds.Contains(q.Id))
+            .ToDictionaryAsync(q => q.Id, q => q.QuarryName);
+
+        // Build report items
+        foreach (var sale in unpaidSales)
+        {
+            var daysUnpaid = sale.SaleDate.HasValue
+                ? (int)(DateTime.Today - sale.SaleDate.Value.Date).TotalDays
+                : 0;
+
+            report.Items.Add(new UnpaidOrderItem
+            {
+                SaleId = sale.Id,
+                SaleDate = sale.SaleDate ?? DateTime.Today,
+                DaysUnpaid = daysUnpaid,
+                VehicleRegistration = sale.VehicleRegistration,
+                ProductName = sale.Product?.ProductName ?? "Unknown",
+                Quantity = sale.Quantity,
+                Amount = sale.GrossSaleAmount,
+                ClientName = sale.ClientName,
+                ClientPhone = sale.ClientPhone,
+                ClerkName = sale.ClerkName ?? "Unknown",
+                QuarryName = quarries.GetValueOrDefault(sale.QId, "Unknown"),
+                QuarryId = sale.QId
+            });
+        }
+
+        // Calculate summary statistics
+        report.TotalCount = report.Items.Count;
+        report.TotalAmount = report.Items.Sum(i => i.Amount);
+
+        // Aging breakdown
+        report.Over30DaysCount = report.Items.Count(i => i.DaysUnpaid > 30);
+        report.Over30DaysAmount = report.Items.Where(i => i.DaysUnpaid > 30).Sum(i => i.Amount);
+        report.Over60DaysCount = report.Items.Count(i => i.DaysUnpaid > 60);
+        report.Over60DaysAmount = report.Items.Where(i => i.DaysUnpaid > 60).Sum(i => i.Amount);
+
+        // Average days unpaid
+        if (report.Items.Any())
+        {
+            report.AverageDaysUnpaid = (int)report.Items.Average(i => i.DaysUnpaid);
+            report.OldestDays = report.Items.Max(i => i.DaysUnpaid);
+        }
+
+        return report;
+    }
+
+    /// <summary>
+    /// Export unpaid orders report to Excel
+    /// </summary>
+    public async Task<byte[]> ExportUnpaidOrdersToExcelAsync(string? quarryId, DateTime? fromDate = null, DateTime? toDate = null)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var reportData = await GetUnpaidOrdersReportAsync(quarryId, fromDate, toDate);
+
+        // Get quarry name
+        var quarryName = "All Quarries";
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            var quarry = await context.Quarries.FindAsync(quarryId);
+            quarryName = quarry?.QuarryName ?? "Unknown";
+        }
+
+        var dateRange = "All Dates";
+        if (fromDate.HasValue && toDate.HasValue)
+        {
+            dateRange = $"{fromDate.Value:dd MMM yyyy} - {toDate.Value:dd MMM yyyy}";
+        }
+        else if (fromDate.HasValue)
+        {
+            dateRange = $"From {fromDate.Value:dd MMM yyyy}";
+        }
+        else if (toDate.HasValue)
+        {
+            dateRange = $"Up to {toDate.Value:dd MMM yyyy}";
+        }
+
+        using var workbook = new XLWorkbook();
+        var ws = workbook.Worksheets.Add("Unpaid Orders");
+
+        // Header
+        ws.Cell("A1").Value = "QDESKPRO UNPAID ORDERS REPORT";
+        ws.Cell("A1").Style.Font.Bold = true;
+        ws.Cell("A1").Style.Font.FontSize = 16;
+        ws.Range("A1:J1").Merge();
+
+        ws.Cell("A2").Value = $"Quarry: {quarryName} | Period: {dateRange}";
+        ws.Range("A2:J2").Merge();
+        ws.Cell("A2").Style.Font.Italic = true;
+
+        ws.Cell("A3").Value = $"Generated: {DateTime.Now:dd MMM yyyy HH:mm}";
+        ws.Range("A3:J3").Merge();
+        ws.Cell("A3").Style.Font.FontColor = XLColor.Gray;
+
+        // Summary section
+        var row = 5;
+        ws.Cell(row, 1).Value = "SUMMARY";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Range(row, 1, row, 3).Merge();
+        ws.Range(row, 1, row, 3).Style.Fill.BackgroundColor = XLColor.LightGray;
+
+        row++;
+        ws.Cell(row, 1).Value = "Total Unpaid Orders:";
+        ws.Cell(row, 2).Value = reportData.TotalCount;
+        row++;
+        ws.Cell(row, 1).Value = "Total Unpaid Amount:";
+        ws.Cell(row, 2).Value = reportData.TotalAmount;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 2).Style.Font.Bold = true;
+        ws.Cell(row, 2).Style.Font.FontColor = XLColor.Red;
+        row++;
+        ws.Cell(row, 1).Value = "30+ Days Overdue:";
+        ws.Cell(row, 2).Value = reportData.Over30DaysCount;
+        ws.Cell(row, 3).Value = reportData.Over30DaysAmount;
+        ws.Cell(row, 3).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 3).Style.Font.FontColor = XLColor.Orange;
+        row++;
+        ws.Cell(row, 1).Value = "60+ Days Overdue:";
+        ws.Cell(row, 2).Value = reportData.Over60DaysCount;
+        ws.Cell(row, 3).Value = reportData.Over60DaysAmount;
+        ws.Cell(row, 3).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 3).Style.Font.FontColor = XLColor.Red;
+        row++;
+        ws.Cell(row, 1).Value = "Average Days Unpaid:";
+        ws.Cell(row, 2).Value = reportData.AverageDaysUnpaid;
+        row++;
+        ws.Cell(row, 1).Value = "Oldest Unpaid:";
+        ws.Cell(row, 2).Value = $"{reportData.OldestDays} days";
+
+        // Detail table
+        row += 2;
+        ws.Cell(row, 1).Value = "UNPAID ORDERS DETAILS";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Range(row, 1, row, 10).Merge();
+        ws.Range(row, 1, row, 10).Style.Fill.BackgroundColor = XLColor.LightGray;
+
+        row++;
+        var headerRow = row;
+        ws.Cell(row, 1).Value = "Sale Date";
+        ws.Cell(row, 2).Value = "Days";
+        ws.Cell(row, 3).Value = "Vehicle";
+        ws.Cell(row, 4).Value = "Product";
+        ws.Cell(row, 5).Value = "Qty";
+        ws.Cell(row, 6).Value = "Amount";
+        ws.Cell(row, 7).Value = "Client";
+        ws.Cell(row, 8).Value = "Phone";
+        ws.Cell(row, 9).Value = "Clerk";
+        ws.Cell(row, 10).Value = "Quarry";
+        ws.Range(row, 1, row, 10).Style.Font.Bold = true;
+        ws.Range(row, 1, row, 10).Style.Fill.BackgroundColor = XLColor.Red;
+        ws.Range(row, 1, row, 10).Style.Font.FontColor = XLColor.White;
+
+        foreach (var item in reportData.Items)
+        {
+            row++;
+            ws.Cell(row, 1).Value = item.SaleDate.ToString("dd/MM/yyyy");
+            ws.Cell(row, 2).Value = item.DaysUnpaid;
+            ws.Cell(row, 3).Value = item.VehicleRegistration;
+            ws.Cell(row, 4).Value = item.ProductName;
+            ws.Cell(row, 5).Value = item.Quantity;
+            ws.Cell(row, 5).Style.NumberFormat.Format = "#,##0";
+            ws.Cell(row, 6).Value = item.Amount;
+            ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00";
+            ws.Cell(row, 7).Value = item.ClientName ?? "-";
+            ws.Cell(row, 8).Value = item.ClientPhone ?? "-";
+            ws.Cell(row, 9).Value = item.ClerkName;
+            ws.Cell(row, 10).Value = item.QuarryName;
+
+            // Color code based on aging
+            if (item.DaysUnpaid > 60)
+            {
+                ws.Range(row, 1, row, 10).Style.Fill.BackgroundColor = XLColor.LightCoral;
+            }
+            else if (item.DaysUnpaid > 30)
+            {
+                ws.Range(row, 1, row, 10).Style.Fill.BackgroundColor = XLColor.LightSalmon;
+            }
+            else if (item.DaysUnpaid > 14)
+            {
+                ws.Range(row, 1, row, 10).Style.Fill.BackgroundColor = XLColor.LightYellow;
+            }
+        }
+
+        // Total row
+        row++;
+        ws.Cell(row, 1).Value = "TOTAL";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Range(row, 1, row, 5).Merge();
+        ws.Cell(row, 6).Value = reportData.TotalAmount;
+        ws.Cell(row, 6).Style.NumberFormat.Format = "#,##0.00";
+        ws.Cell(row, 6).Style.Font.Bold = true;
+        ws.Range(row, 1, row, 10).Style.Fill.BackgroundColor = XLColor.LightCoral;
+
+        ws.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
+    /// <summary>
+    /// Export unpaid orders report to PDF
+    /// </summary>
+    public async Task<byte[]> ExportUnpaidOrdersToPdfAsync(string? quarryId, DateTime? fromDate = null, DateTime? toDate = null)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var reportData = await GetUnpaidOrdersReportAsync(quarryId, fromDate, toDate);
+
+        // Get quarry name
+        var quarryName = "All Quarries";
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            var quarry = await context.Quarries.FindAsync(quarryId);
+            quarryName = quarry?.QuarryName ?? "Unknown";
+        }
+
+        var dateRange = "All Dates";
+        if (fromDate.HasValue && toDate.HasValue)
+        {
+            dateRange = $"{fromDate.Value:dd MMM yyyy} - {toDate.Value:dd MMM yyyy}";
+        }
+        else if (fromDate.HasValue)
+        {
+            dateRange = $"From {fromDate.Value:dd MMM yyyy}";
+        }
+        else if (toDate.HasValue)
+        {
+            dateRange = $"Up to {toDate.Value:dd MMM yyyy}";
+        }
+
+        // Colors
+        var primaryColor = "#1976D2";
+        var errorColor = "#F44336";
+        var warningColor = "#FF9800";
+        var criticalColor = "#D32F2F";
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4.Landscape());
+                page.Margin(25);
+                page.DefaultTextStyle(x => x.FontSize(9));
+
+                // Header
+                page.Header().Element(header =>
+                {
+                    header.Column(col =>
+                    {
+                        col.Item().Row(row =>
+                        {
+                            row.RelativeItem().Column(titleCol =>
+                            {
+                                titleCol.Item().Text("QDesk Unpaid Orders Report")
+                                    .FontSize(22).Bold().FontColor(errorColor);
+                                titleCol.Item().Text($"{quarryName}")
+                                    .FontSize(14).FontColor(Colors.Grey.Darken2);
+                                titleCol.Item().Text($"Period: {dateRange} | Generated: {DateTime.Now:dd MMM yyyy HH:mm}")
+                                    .FontSize(9).FontColor(Colors.Grey.Medium);
+                            });
+                        });
+
+                        col.Item().PaddingTop(10);
+
+                        // Stats cards row
+                        col.Item().Row(row =>
+                        {
+                            row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                                "Total Unpaid", $"KES {reportData.TotalAmount:N0}",
+                                $"{reportData.TotalCount} orders", errorColor, false));
+
+                            row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                                "30+ Days Overdue", $"KES {reportData.Over30DaysAmount:N0}",
+                                $"{reportData.Over30DaysCount} orders", warningColor, false));
+
+                            row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                                "60+ Days Critical", $"KES {reportData.Over60DaysAmount:N0}",
+                                $"{reportData.Over60DaysCount} orders", criticalColor, false));
+
+                            row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                                "Avg. Days Unpaid", $"{reportData.AverageDaysUnpaid} days",
+                                $"Oldest: {reportData.OldestDays} days", primaryColor, false));
+                        });
+
+                        col.Item().PaddingTop(8).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                    });
+                });
+
+                // Content
+                page.Content().Element(content =>
+                {
+                    content.PaddingTop(10).Column(col =>
+                    {
+                        col.Item().Element(e => SectionHeader(e, "Unpaid Orders Details", errorColor));
+
+                        // Group by quarry if showing all quarries
+                        var itemsByQuarry = reportData.Items.GroupBy(i => i.QuarryName).OrderBy(g => g.Key);
+
+                        foreach (var quarryGroup in itemsByQuarry)
+                        {
+                            // Quarry header if multiple quarries
+                            if (string.IsNullOrEmpty(quarryId))
+                            {
+                                col.Item().PaddingTop(8).Background(Colors.Grey.Lighten3).Padding(5).Row(qRow =>
+                                {
+                                    qRow.RelativeItem().Text($"{quarryGroup.Key}").Bold().FontSize(10);
+                                    qRow.ConstantItem(200).AlignRight().Text($"{quarryGroup.Count()} orders | KES {quarryGroup.Sum(i => i.Amount):N0}").FontSize(9);
+                                });
+                            }
+
+                            // Unpaid orders table
+                            col.Item().Table(table =>
+                            {
+                                table.ColumnsDefinition(columns =>
+                                {
+                                    columns.ConstantColumn(65);    // Sale Date
+                                    columns.ConstantColumn(40);    // Days
+                                    columns.ConstantColumn(75);    // Vehicle
+                                    columns.RelativeColumn(1);     // Product
+                                    columns.ConstantColumn(45);    // Qty
+                                    columns.ConstantColumn(80);    // Amount
+                                    columns.RelativeColumn(1.2f);  // Client
+                                    columns.RelativeColumn(1);     // Phone
+                                    columns.RelativeColumn(1);     // Clerk
+                                });
+
+                                table.Header(header =>
+                                {
+                                    header.Cell().Background(errorColor).Padding(3).Text("Sale Date").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(errorColor).Padding(3).Text("Days").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(errorColor).Padding(3).Text("Vehicle").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(errorColor).Padding(3).Text("Product").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(errorColor).Padding(3).Text("Qty").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(errorColor).Padding(3).Text("Amount").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(errorColor).Padding(3).Text("Client").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(errorColor).Padding(3).Text("Phone").FontColor(Colors.White).Bold().FontSize(7);
+                                    header.Cell().Background(errorColor).Padding(3).Text("Clerk").FontColor(Colors.White).Bold().FontSize(7);
+                                });
+
+                                foreach (var item in quarryGroup.OrderBy(i => i.SaleDate))
+                                {
+                                    var idx = quarryGroup.ToList().IndexOf(item);
+                                    string bgColor;
+                                    if (item.DaysUnpaid > 60)
+                                        bgColor = "#FFCDD2"; // Light red
+                                    else if (item.DaysUnpaid > 30)
+                                        bgColor = "#FFE0B2"; // Light orange
+                                    else if (item.DaysUnpaid > 14)
+                                        bgColor = "#FFF9C4"; // Light yellow
+                                    else
+                                        bgColor = idx % 2 == 0 ? Colors.White : Colors.Grey.Lighten4;
+
+                                    table.Cell().Background(bgColor).Padding(2).Text(item.SaleDate.ToString("dd/MM/yy")).FontSize(7);
+                                    table.Cell().Background(bgColor).Padding(2).Text($"{item.DaysUnpaid}").FontSize(7).Bold();
+                                    table.Cell().Background(bgColor).Padding(2).Text(item.VehicleRegistration).FontSize(7);
+                                    table.Cell().Background(bgColor).Padding(2).Text(item.ProductName).FontSize(7);
+                                    table.Cell().Background(bgColor).Padding(2).Text($"{item.Quantity:N0}").FontSize(7);
+                                    table.Cell().Background(bgColor).Padding(2).Text($"KES {item.Amount:N0}").FontSize(7);
+                                    table.Cell().Background(bgColor).Padding(2).Text(item.ClientName ?? "-").FontSize(7);
+                                    table.Cell().Background(bgColor).Padding(2).Text(item.ClientPhone ?? "-").FontSize(7);
+                                    table.Cell().Background(bgColor).Padding(2).Text(item.ClerkName).FontSize(7);
+                                }
+                            });
+                        }
+
+                        // Total row
+                        col.Item().PaddingTop(5).Background(Colors.Grey.Lighten3).Padding(5).Row(totalRow =>
+                        {
+                            totalRow.RelativeItem().Text("TOTAL UNPAID").Bold().FontSize(10);
+                            totalRow.ConstantItem(150).AlignRight().Text($"KES {reportData.TotalAmount:N0}").Bold().FontSize(10).FontColor(errorColor);
+                        });
+
+                        // Aging legend
+                        col.Item().PaddingTop(15).Row(legendRow =>
+                        {
+                            legendRow.AutoItem().Text("Aging Legend: ").Bold().FontSize(8);
+                            legendRow.AutoItem().Background("#FFF9C4").Padding(3).Text("15-30 days").FontSize(7);
+                            legendRow.AutoItem().PaddingLeft(5).Background("#FFE0B2").Padding(3).Text("31-60 days").FontSize(7);
+                            legendRow.AutoItem().PaddingLeft(5).Background("#FFCDD2").Padding(3).Text("60+ days (Critical)").FontSize(7);
+                        });
+                    });
+                });
+
+                // Footer
+                page.Footer().Element(footer =>
+                {
+                    footer.Row(row =>
+                    {
+                        row.RelativeItem().Text("QDesk Unpaid Orders Report - Quarry Management System")
+                            .FontSize(8).FontColor(Colors.Grey.Darken1);
+                        row.RelativeItem().AlignCenter().Text(text =>
+                        {
+                            text.DefaultTextStyle(TextStyle.Default.FontSize(8).FontColor(Colors.Grey.Darken1));
+                            text.Span("Page ");
+                            text.CurrentPageNumber();
+                            text.Span(" of ");
+                            text.TotalPages();
+                        });
+                        row.RelativeItem().AlignRight().Text($"Generated: {DateTime.Now:dd/MM/yyyy HH:mm}")
+                            .FontSize(8).FontColor(Colors.Grey.Darken1);
+                    });
+                });
+            });
+        });
+
+        using var stream = new MemoryStream();
+        document.GeneratePdf(stream);
+        return stream.ToArray();
+    }
+
+    #endregion
+
+    #region ROI Analysis Export
+
+    /// <summary>
+    /// Export ROI Analysis to Excel with multiple worksheets
+    /// </summary>
+    public async Task<byte[]> ExportROIAnalysisToExcelAsync(
+        Dashboard.Services.ROIAnalysisData roiData,
+        string quarryName,
+        DateTime fromDate,
+        DateTime toDate)
+    {
+        using var workbook = new XLWorkbook();
+        var dateRange = $"{fromDate:dd MMM yyyy} - {toDate:dd MMM yyyy}";
+
+        // Summary Worksheet
+        var ws = workbook.Worksheets.Add("ROI Summary");
+
+        // Header
+        ws.Cell("A1").Value = "QDESKPRO ROI ANALYSIS REPORT";
+        ws.Cell("A1").Style.Font.Bold = true;
+        ws.Cell("A1").Style.Font.FontSize = 16;
+        ws.Range("A1:F1").Merge();
+
+        ws.Cell("A2").Value = $"Quarry: {quarryName} | Period: {dateRange}";
+        ws.Range("A2:F2").Merge();
+        ws.Cell("A2").Style.Font.Italic = true;
+
+        ws.Cell("A3").Value = $"Generated: {DateTime.Now:dd MMM yyyy HH:mm}";
+        ws.Range("A3:F3").Merge();
+        ws.Cell("A3").Style.Font.FontSize = 9;
+        ws.Cell("A3").Style.Font.FontColor = XLColor.Gray;
+
+        // Investment Overview Section
+        var row = 5;
+        ws.Cell(row, 1).Value = "INVESTMENT OVERVIEW";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightBlue;
+        ws.Range(row, 1, row, 4).Merge();
+
+        row++;
+        ws.Cell(row, 1).Value = "Initial Investment:";
+        ws.Cell(row, 2).Value = roiData.TotalInvestment;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "\"KES\" #,##0";
+        ws.Cell(row, 3).Value = "Operations Start:";
+        ws.Cell(row, 4).Value = roiData.OperationsStartDate.ToString("dd/MM/yyyy");
+
+        row++;
+        ws.Cell(row, 1).Value = "Operating Months:";
+        ws.Cell(row, 2).Value = roiData.OperatingMonths;
+        ws.Cell(row, 3).Value = "Operating Days:";
+        ws.Cell(row, 4).Value = roiData.OperatingDays;
+
+        // Core ROI Metrics Section
+        row += 2;
+        ws.Cell(row, 1).Value = "CORE ROI METRICS";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightGreen;
+        ws.Range(row, 1, row, 4).Merge();
+
+        row++;
+        ws.Cell(row, 1).Value = "Basic ROI:";
+        ws.Cell(row, 2).Value = roiData.BasicROI / 100;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "0.0%";
+        ws.Cell(row, 2).Style.Font.Bold = true;
+        ws.Cell(row, 3).Value = "Annualized ROI:";
+        ws.Cell(row, 4).Value = roiData.AnnualizedROI / 100;
+        ws.Cell(row, 4).Style.NumberFormat.Format = "0.0%";
+
+        row++;
+        ws.Cell(row, 1).Value = "Investment Recovery:";
+        ws.Cell(row, 2).Value = roiData.InvestmentRecoveryPercent / 100;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "0.0%";
+        ws.Cell(row, 2).Style.Font.FontColor = roiData.InvestmentRecoveryPercent >= 100 ? XLColor.Green : XLColor.Orange;
+        ws.Cell(row, 3).Value = "Cumulative Net Profit:";
+        ws.Cell(row, 4).Value = roiData.CumulativeNetProfit;
+        ws.Cell(row, 4).Style.NumberFormat.Format = "\"KES\" #,##0";
+
+        row++;
+        ws.Cell(row, 1).Value = "Payback Period:";
+        ws.Cell(row, 2).Value = roiData.PaybackPeriodMonths < 1000 ? $"{roiData.PaybackPeriodMonths:N1} months" : "N/A";
+        ws.Cell(row, 3).Value = "Est. Recovery Date:";
+        ws.Cell(row, 4).Value = roiData.EstimatedRecoveryDate?.ToString("dd/MM/yyyy") ?? "N/A";
+
+        row++;
+        ws.Cell(row, 1).Value = "Remaining to Recover:";
+        ws.Cell(row, 2).Value = roiData.RemainingToRecover;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "\"KES\" #,##0";
+        ws.Cell(row, 2).Style.Font.FontColor = roiData.RemainingToRecover > 0 ? XLColor.Red : XLColor.Green;
+
+        // Profitability Metrics Section
+        row += 2;
+        ws.Cell(row, 1).Value = "PROFITABILITY METRICS";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightYellow;
+        ws.Range(row, 1, row, 4).Merge();
+
+        row++;
+        ws.Cell(row, 1).Value = "Gross Profit Margin:";
+        ws.Cell(row, 2).Value = roiData.GrossProfitMargin / 100;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "0.0%";
+        ws.Cell(row, 3).Value = "Net Profit Margin:";
+        ws.Cell(row, 4).Value = roiData.NetProfitMargin / 100;
+        ws.Cell(row, 4).Style.NumberFormat.Format = "0.0%";
+
+        row++;
+        ws.Cell(row, 1).Value = "Revenue per Piece:";
+        ws.Cell(row, 2).Value = roiData.RevenuePerPiece;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "\"KES\" #,##0.00";
+        ws.Cell(row, 3).Value = "Cost per Piece:";
+        ws.Cell(row, 4).Value = roiData.CostPerPiece;
+        ws.Cell(row, 4).Style.NumberFormat.Format = "\"KES\" #,##0.00";
+
+        row++;
+        ws.Cell(row, 1).Value = "Profit per Piece:";
+        ws.Cell(row, 2).Value = roiData.ProfitPerPiece;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "\"KES\" #,##0.00";
+        ws.Cell(row, 2).Style.Font.Bold = true;
+        ws.Cell(row, 2).Style.Font.FontColor = roiData.ProfitPerPiece >= 0 ? XLColor.Green : XLColor.Red;
+
+        // Efficiency Metrics Section
+        row += 2;
+        ws.Cell(row, 1).Value = "EFFICIENCY METRICS";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightCyan;
+        ws.Range(row, 1, row, 4).Merge();
+
+        row++;
+        ws.Cell(row, 1).Value = "Fuel Efficiency:";
+        ws.Cell(row, 2).Value = $"{roiData.FuelEfficiency:N1} pcs/L";
+        ws.Cell(row, 3).Value = "Capacity Utilization:";
+        ws.Cell(row, 4).Value = roiData.CapacityUtilization / 100;
+        ws.Cell(row, 4).Style.NumberFormat.Format = "0.0%";
+
+        row++;
+        ws.Cell(row, 1).Value = "Commission Ratio:";
+        ws.Cell(row, 2).Value = roiData.CommissionRatio / 100;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "0.0%";
+        ws.Cell(row, 3).Value = "Collection Efficiency:";
+        ws.Cell(row, 4).Value = roiData.CollectionEfficiency / 100;
+        ws.Cell(row, 4).Style.NumberFormat.Format = "0.0%";
+
+        // Break-Even Analysis Section
+        row += 2;
+        ws.Cell(row, 1).Value = "BREAK-EVEN ANALYSIS";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightPink;
+        ws.Range(row, 1, row, 4).Merge();
+
+        row++;
+        ws.Cell(row, 1).Value = "Fixed Costs (Monthly):";
+        ws.Cell(row, 2).Value = roiData.BreakEven.FixedCosts;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "\"KES\" #,##0";
+        ws.Cell(row, 3).Value = "Variable Cost/Unit:";
+        ws.Cell(row, 4).Value = roiData.BreakEven.VariableCostPerUnit;
+        ws.Cell(row, 4).Style.NumberFormat.Format = "\"KES\" #,##0.00";
+
+        row++;
+        ws.Cell(row, 1).Value = "Average Price/Unit:";
+        ws.Cell(row, 2).Value = roiData.BreakEven.AveragePricePerUnit;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "\"KES\" #,##0.00";
+        ws.Cell(row, 3).Value = "Contribution Margin:";
+        ws.Cell(row, 4).Value = roiData.BreakEven.ContributionMargin;
+        ws.Cell(row, 4).Style.NumberFormat.Format = "\"KES\" #,##0.00";
+
+        row++;
+        ws.Cell(row, 1).Value = "Break-Even Pieces:";
+        ws.Cell(row, 2).Value = roiData.BreakEven.BreakEvenPieces;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0";
+        ws.Cell(row, 3).Value = "Break-Even Revenue:";
+        ws.Cell(row, 4).Value = roiData.BreakEven.BreakEvenRevenue;
+        ws.Cell(row, 4).Style.NumberFormat.Format = "\"KES\" #,##0";
+
+        row++;
+        ws.Cell(row, 1).Value = "Current Monthly Pieces:";
+        ws.Cell(row, 2).Value = roiData.BreakEven.CurrentMonthlyPieces;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "#,##0";
+        ws.Cell(row, 3).Value = "Margin of Safety:";
+        ws.Cell(row, 4).Value = roiData.BreakEven.MarginOfSafetyPercent / 100;
+        ws.Cell(row, 4).Style.NumberFormat.Format = "0.0%";
+        ws.Cell(row, 4).Style.Font.FontColor = roiData.BreakEven.MarginOfSafetyPercent > 0 ? XLColor.Green : XLColor.Red;
+
+        // Period Totals Section
+        row += 2;
+        ws.Cell(row, 1).Value = "PERIOD TOTALS";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightGray;
+        ws.Range(row, 1, row, 4).Merge();
+
+        row++;
+        ws.Cell(row, 1).Value = "Total Revenue:";
+        ws.Cell(row, 2).Value = roiData.TotalRevenue;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "\"KES\" #,##0";
+        ws.Cell(row, 3).Value = "Total Expenses:";
+        ws.Cell(row, 4).Value = roiData.TotalExpenses;
+        ws.Cell(row, 4).Style.NumberFormat.Format = "\"KES\" #,##0";
+
+        row++;
+        ws.Cell(row, 1).Value = "Net Profit:";
+        ws.Cell(row, 2).Value = roiData.NetProfit;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "\"KES\" #,##0";
+        ws.Cell(row, 2).Style.Font.Bold = true;
+        ws.Cell(row, 2).Style.Font.FontColor = roiData.NetProfit >= 0 ? XLColor.Green : XLColor.Red;
+        ws.Cell(row, 3).Value = "Total Quantity:";
+        ws.Cell(row, 4).Value = roiData.TotalQuantity;
+        ws.Cell(row, 4).Style.NumberFormat.Format = "#,##0";
+
+        row++;
+        ws.Cell(row, 1).Value = "Total Orders:";
+        ws.Cell(row, 2).Value = roiData.TotalOrders;
+        ws.Cell(row, 3).Value = "Fuel Consumed:";
+        ws.Cell(row, 4).Value = $"{roiData.TotalFuelConsumed:N0} L";
+
+        // Expense Breakdown
+        row += 2;
+        ws.Cell(row, 1).Value = "EXPENSE BREAKDOWN";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        ws.Range(row, 1, row, 2).Merge();
+
+        row++;
+        ws.Cell(row, 1).Value = "Manual Expenses:";
+        ws.Cell(row, 2).Value = roiData.ManualExpenses;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "\"KES\" #,##0";
+
+        row++;
+        ws.Cell(row, 1).Value = "Commission:";
+        ws.Cell(row, 2).Value = roiData.Commission;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "\"KES\" #,##0";
+
+        row++;
+        ws.Cell(row, 1).Value = "Loaders Fee:";
+        ws.Cell(row, 2).Value = roiData.LoadersFee;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "\"KES\" #,##0";
+
+        row++;
+        ws.Cell(row, 1).Value = "Land Rate Fee:";
+        ws.Cell(row, 2).Value = roiData.LandRateFee;
+        ws.Cell(row, 2).Style.NumberFormat.Format = "\"KES\" #,##0";
+
+        ws.Columns().AdjustToContents();
+
+        // Monthly Performance Worksheet
+        if (roiData.MonthlyHistory.Count > 0)
+        {
+            var monthlyWs = workbook.Worksheets.Add("Monthly Performance");
+
+            monthlyWs.Cell("A1").Value = "MONTHLY PERFORMANCE";
+            monthlyWs.Cell("A1").Style.Font.Bold = true;
+            monthlyWs.Cell("A1").Style.Font.FontSize = 14;
+            monthlyWs.Range("A1:H1").Merge();
+
+            // Headers
+            var headerRow = 3;
+            monthlyWs.Cell(headerRow, 1).Value = "Month";
+            monthlyWs.Cell(headerRow, 2).Value = "Revenue";
+            monthlyWs.Cell(headerRow, 3).Value = "Expenses";
+            monthlyWs.Cell(headerRow, 4).Value = "Net Profit";
+            monthlyWs.Cell(headerRow, 5).Value = "Quantity";
+            monthlyWs.Cell(headerRow, 6).Value = "Cumulative Profit";
+            monthlyWs.Cell(headerRow, 7).Value = "ROI %";
+            monthlyWs.Range(headerRow, 1, headerRow, 7).Style.Font.Bold = true;
+            monthlyWs.Range(headerRow, 1, headerRow, 7).Style.Fill.BackgroundColor = XLColor.LightBlue;
+
+            row = headerRow + 1;
+            foreach (var month in roiData.MonthlyHistory)
+            {
+                monthlyWs.Cell(row, 1).Value = month.MonthName;
+                monthlyWs.Cell(row, 2).Value = month.Revenue;
+                monthlyWs.Cell(row, 2).Style.NumberFormat.Format = "\"KES\" #,##0";
+                monthlyWs.Cell(row, 3).Value = month.Expenses;
+                monthlyWs.Cell(row, 3).Style.NumberFormat.Format = "\"KES\" #,##0";
+                monthlyWs.Cell(row, 4).Value = month.NetProfit;
+                monthlyWs.Cell(row, 4).Style.NumberFormat.Format = "\"KES\" #,##0";
+                monthlyWs.Cell(row, 4).Style.Font.FontColor = month.NetProfit >= 0 ? XLColor.Green : XLColor.Red;
+                monthlyWs.Cell(row, 5).Value = month.Quantity;
+                monthlyWs.Cell(row, 5).Style.NumberFormat.Format = "#,##0";
+                monthlyWs.Cell(row, 6).Value = month.CumulativeProfit;
+                monthlyWs.Cell(row, 6).Style.NumberFormat.Format = "\"KES\" #,##0";
+                monthlyWs.Cell(row, 7).Value = month.ROI / 100;
+                monthlyWs.Cell(row, 7).Style.NumberFormat.Format = "0.0%";
+                row++;
+            }
+
+            monthlyWs.Columns().AdjustToContents();
+        }
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return await Task.FromResult(stream.ToArray());
+    }
+
+    /// <summary>
+    /// Export ROI Analysis to PDF with comprehensive metrics
+    /// </summary>
+    public async Task<byte[]> ExportROIAnalysisToPdfAsync(
+        Dashboard.Services.ROIAnalysisData roiData,
+        string quarryName,
+        DateTime fromDate,
+        DateTime toDate)
+    {
+        var dateRange = $"{fromDate:dd MMM yyyy} - {toDate:dd MMM yyyy}";
+
+        // Brand colors
+        var primaryColor = "#1976D2";
+        var successColor = "#4CAF50";
+        var errorColor = "#F44336";
+        var warningColor = "#FF9800";
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4.Landscape());
+                page.Margin(25);
+                page.DefaultTextStyle(x => x.FontSize(9));
+
+                // Header
+                page.Header().Element(header =>
+                {
+                    header.Column(col =>
+                    {
+                        col.Item().Row(row =>
+                        {
+                            row.RelativeItem().Column(titleCol =>
+                            {
+                                titleCol.Item().Text("ROI Analysis Report")
+                                    .FontSize(22).Bold().FontColor(primaryColor);
+                                titleCol.Item().Text(quarryName)
+                                    .FontSize(14).FontColor(Colors.Grey.Darken2);
+                                titleCol.Item().Text($"Period: {dateRange} | Generated: {DateTime.Now:dd MMM yyyy HH:mm}")
+                                    .FontSize(9).FontColor(Colors.Grey.Medium);
+                            });
+                        });
+
+                        col.Item().PaddingTop(10);
+
+                        // Stats Cards Row
+                        col.Item().Row(row =>
+                        {
+                            // Investment Card
+                            row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                                "Investment", $"KES {roiData.TotalInvestment:N0}",
+                                $"{roiData.OperatingMonths} months operating", primaryColor, true));
+
+                            // Recovery Card
+                            var recoveryColor = roiData.InvestmentRecoveryPercent >= 100 ? successColor :
+                                roiData.InvestmentRecoveryPercent >= 50 ? warningColor : errorColor;
+                            row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                                "Recovery", $"{roiData.InvestmentRecoveryPercent:N1}%",
+                                roiData.InvestmentRecoveryPercent >= 100 ? "Fully Recovered" : $"KES {roiData.RemainingToRecover:N0} remaining",
+                                recoveryColor, true));
+
+                            // Basic ROI Card
+                            row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                                "Basic ROI", $"{roiData.BasicROI:N1}%",
+                                $"Annualized: {roiData.AnnualizedROI:N1}%", successColor, true));
+
+                            // Profit Margin Card
+                            row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                                "Net Margin", $"{roiData.NetProfitMargin:N1}%",
+                                $"KES {roiData.ProfitPerPiece:N0}/pc profit",
+                                roiData.NetProfitMargin >= 0 ? successColor : errorColor, true));
+
+                            // Net Profit Card
+                            row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                                "Net Profit", $"KES {roiData.NetProfit:N0}",
+                                $"Period total", roiData.NetProfit >= 0 ? successColor : errorColor, true));
+
+                            // Payback Period Card
+                            row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                                "Payback Period", roiData.PaybackPeriodMonths < 1000 ? $"{roiData.PaybackPeriodMonths:N1} mo" : "N/A",
+                                roiData.EstimatedRecoveryDate.HasValue ? $"Est: {roiData.EstimatedRecoveryDate:MMM yyyy}" : "Calculating...",
+                                primaryColor, false));
+                        });
+
+                        col.Item().PaddingTop(8).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                    });
+                });
+
+                // Content
+                page.Content().Element(content =>
+                {
+                    content.PaddingTop(10).Column(col =>
+                    {
+                        // Two-column layout
+                        col.Item().Row(mainRow =>
+                        {
+                            // Left Column - Break-Even Analysis
+                            mainRow.RelativeItem().Padding(5).Column(leftCol =>
+                            {
+                                leftCol.Item().Element(e => SectionHeader(e, "Break-Even Analysis", warningColor));
+                                leftCol.Item().PaddingTop(5).Table(table =>
+                                {
+                                    table.ColumnsDefinition(columns =>
+                                    {
+                                        columns.RelativeColumn(2);
+                                        columns.RelativeColumn(1);
+                                    });
+
+                                    table.Cell().Text("Fixed Costs (Monthly):").FontSize(9);
+                                    table.Cell().AlignRight().Text($"KES {roiData.BreakEven.FixedCosts:N0}").FontSize(9);
+
+                                    table.Cell().Text("Variable Cost/Unit:").FontSize(9);
+                                    table.Cell().AlignRight().Text($"KES {roiData.BreakEven.VariableCostPerUnit:N2}").FontSize(9);
+
+                                    table.Cell().Text("Average Price/Unit:").FontSize(9);
+                                    table.Cell().AlignRight().Text($"KES {roiData.BreakEven.AveragePricePerUnit:N2}").FontSize(9);
+
+                                    table.Cell().Text("Contribution Margin:").FontSize(9);
+                                    table.Cell().AlignRight().Text($"KES {roiData.BreakEven.ContributionMargin:N2}").FontSize(9);
+
+                                    table.Cell().BorderTop(1).BorderColor(Colors.Grey.Lighten2)
+                                        .Text("Break-Even Pieces:").Bold().FontSize(9);
+                                    table.Cell().BorderTop(1).BorderColor(Colors.Grey.Lighten2)
+                                        .AlignRight().Text($"{roiData.BreakEven.BreakEvenPieces:N0} pcs").Bold().FontSize(9);
+
+                                    table.Cell().Text("Break-Even Revenue:").FontSize(9);
+                                    table.Cell().AlignRight().Text($"KES {roiData.BreakEven.BreakEvenRevenue:N0}").FontSize(9);
+
+                                    table.Cell().Text("Current Monthly Pieces:").FontSize(9);
+                                    table.Cell().AlignRight().Text($"{roiData.BreakEven.CurrentMonthlyPieces:N0} pcs").FontSize(9);
+
+                                    table.Cell().Text("Margin of Safety:").Bold().FontSize(9);
+                                    table.Cell().AlignRight().Text($"{roiData.BreakEven.MarginOfSafetyPercent:N1}%")
+                                        .Bold().FontSize(9)
+                                        .FontColor(roiData.BreakEven.MarginOfSafetyPercent > 0 ? successColor : errorColor);
+                                });
+
+                                // Efficiency Metrics
+                                leftCol.Item().PaddingTop(15).Element(e => SectionHeader(e, "Efficiency Metrics", "#2196F3"));
+                                leftCol.Item().PaddingTop(5).Table(table =>
+                                {
+                                    table.ColumnsDefinition(columns =>
+                                    {
+                                        columns.RelativeColumn(2);
+                                        columns.RelativeColumn(1);
+                                    });
+
+                                    table.Cell().Text("Fuel Efficiency:").FontSize(9);
+                                    table.Cell().AlignRight().Text($"{roiData.FuelEfficiency:N1} pcs/L").FontSize(9);
+
+                                    table.Cell().Text("Capacity Utilization:").FontSize(9);
+                                    table.Cell().AlignRight().Text($"{roiData.CapacityUtilization:N1}%").FontSize(9);
+
+                                    table.Cell().Text("Commission Ratio:").FontSize(9);
+                                    table.Cell().AlignRight().Text($"{roiData.CommissionRatio:N1}%").FontSize(9);
+
+                                    table.Cell().Text("Collection Efficiency:").FontSize(9);
+                                    table.Cell().AlignRight().Text($"{roiData.CollectionEfficiency:N1}%").FontSize(9);
+                                });
+                            });
+
+                            // Right Column - Monthly Performance
+                            mainRow.RelativeItem(2).Padding(5).Column(rightCol =>
+                            {
+                                rightCol.Item().Element(e => SectionHeader(e, "Monthly Performance", successColor));
+
+                                if (roiData.MonthlyHistory.Count > 0)
+                                {
+                                    rightCol.Item().PaddingTop(5).Table(table =>
+                                    {
+                                        table.ColumnsDefinition(columns =>
+                                        {
+                                            columns.RelativeColumn(1.2f);  // Month
+                                            columns.RelativeColumn(1);     // Revenue
+                                            columns.RelativeColumn(1);     // Expenses
+                                            columns.RelativeColumn(1);     // Net Profit
+                                            columns.RelativeColumn(0.8f);  // Qty
+                                            columns.RelativeColumn(1);     // Cumulative
+                                            columns.RelativeColumn(0.6f);  // ROI
+                                        });
+
+                                        // Header
+                                        table.Cell().Background(Colors.Grey.Lighten3).Padding(4).Text("Month").Bold().FontSize(8);
+                                        table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text("Revenue").Bold().FontSize(8);
+                                        table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text("Expenses").Bold().FontSize(8);
+                                        table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text("Net Profit").Bold().FontSize(8);
+                                        table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text("Qty").Bold().FontSize(8);
+                                        table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text("Cumulative").Bold().FontSize(8);
+                                        table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text("ROI").Bold().FontSize(8);
+
+                                        // Data rows (limit to last 12 months for PDF)
+                                        var monthsToShow = roiData.MonthlyHistory.TakeLast(12);
+                                        foreach (var month in monthsToShow)
+                                        {
+                                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten3).Padding(3)
+                                                .Text(month.MonthName).FontSize(8);
+                                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten3).Padding(3)
+                                                .AlignRight().Text($"{month.Revenue:N0}").FontSize(8);
+                                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten3).Padding(3)
+                                                .AlignRight().Text($"{month.Expenses:N0}").FontSize(8);
+                                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten3).Padding(3)
+                                                .AlignRight().Text($"{month.NetProfit:N0}").FontSize(8)
+                                                .FontColor(month.NetProfit >= 0 ? successColor : errorColor);
+                                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten3).Padding(3)
+                                                .AlignRight().Text($"{month.Quantity:N0}").FontSize(8);
+                                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten3).Padding(3)
+                                                .AlignRight().Text($"{month.CumulativeProfit:N0}").FontSize(8);
+                                            table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten3).Padding(3)
+                                                .AlignRight().Text($"{month.ROI:N1}%").FontSize(8);
+                                        }
+                                    });
+                                }
+                                else
+                                {
+                                    rightCol.Item().PaddingTop(10).AlignCenter()
+                                        .Text("No monthly data available").FontSize(10).FontColor(Colors.Grey.Medium);
+                                }
+                            });
+                        });
+
+                        // Period Summary Row
+                        col.Item().PaddingTop(15).Background(Colors.Grey.Lighten4).Border(1).BorderColor(Colors.Grey.Lighten2)
+                            .Padding(12).Row(summaryRow =>
+                        {
+                            summaryRow.RelativeItem().Column(sumCol =>
+                            {
+                                sumCol.Item().Text("PERIOD SUMMARY").Bold().FontSize(11);
+                                sumCol.Item().PaddingTop(5).Row(r =>
+                                {
+                                    r.RelativeItem().Text(t => {
+                                        t.Span("Total Revenue: ").Bold();
+                                        t.Span($"KES {roiData.TotalRevenue:N0}");
+                                    });
+                                    r.RelativeItem().Text(t => {
+                                        t.Span("Total Expenses: ").Bold();
+                                        t.Span($"KES {roiData.TotalExpenses:N0}");
+                                    });
+                                    r.RelativeItem().Text(t => {
+                                        t.Span("Total Quantity: ").Bold();
+                                        t.Span($"{roiData.TotalQuantity:N0} pcs");
+                                    });
+                                    r.RelativeItem().Text(t => {
+                                        t.Span("Total Orders: ").Bold();
+                                        t.Span($"{roiData.TotalOrders:N0}");
+                                    });
+                                });
+                            });
+                            summaryRow.ConstantItem(200).Column(netCol =>
+                            {
+                                netCol.Item().AlignRight().Text("Cumulative Net Profit").Bold().FontSize(10);
+                                netCol.Item().AlignRight().Text($"KES {roiData.CumulativeNetProfit:N0}")
+                                    .Bold().FontSize(14)
+                                    .FontColor(roiData.CumulativeNetProfit >= 0 ? successColor : errorColor);
+                            });
+                        });
+                    });
+                });
+
+                // Footer
+                page.Footer().AlignCenter().Text(text =>
+                {
+                    text.Span("QDeskPro ROI Analysis Report | Page ");
+                    text.CurrentPageNumber();
+                    text.Span(" of ");
+                    text.TotalPages();
+                });
+            });
+        });
+
+        return await Task.FromResult(document.GeneratePdf());
+    }
+
+    #endregion
 }
 
 #region Report Data Models
@@ -1543,16 +2827,56 @@ public class SalesReportData
     public double TotalLandRateFee { get; set; }
     public double TotalOtherExpenses { get; set; }
 
-    // Opening balance (previous day's closing balance for the first day of range)
+    // Opening Balance - closing balance from day BEFORE the first date in range (e.g., Nov 30 for Dec 1-10)
+    public double ActualOpeningBalance { get; set; }
+
+    // Cash In Hand (B/F) - closing balance from day BEFORE the last date in range (e.g., Dec 9 for Dec 1-10)
+    // This is used for the Net Income calculation since balances carry over daily
     public double OpeningBalance { get; set; }
 
-    // Net Amount = (TotalSales - UnpaidAmount - TotalExpenses) + OpeningBalance
-    // This matches the clerk report formula for consistency
+    // Net Amount = (Earnings + Cash In Hand B/F + Collections) - Unpaid Orders
     public double NetAmount { get; set; }
+
+    // Collections - payments received during report period for sales made BEFORE the period
+    // These are previously unpaid orders that have now been paid
+    public double TotalCollections { get; set; }
+    public List<CollectionItem> CollectionItems { get; set; } = new();
+
+    // Prepayments - customer deposits received during report period
+    public double TotalPrepayments { get; set; }
+    public List<PrepaymentReportItem> PrepaymentItems { get; set; } = new();
 
     public List<DailySalesBreakdown> DailySummaries { get; set; } = new();
     public List<ProductBreakdownItem> ProductBreakdown { get; set; } = new();
     public List<ClerkBreakdownItem> ClerkBreakdown { get; set; } = new();
+}
+
+/// <summary>
+/// Collection item representing a previously unpaid sale that was paid during the report period
+/// </summary>
+public class CollectionItem
+{
+    public DateTime OriginalSaleDate { get; set; }
+    public DateTime PaymentReceivedDate { get; set; }
+    public string VehicleRegistration { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public double Quantity { get; set; }
+    public double Amount { get; set; }
+    public string? ClientName { get; set; }
+    public string? PaymentReference { get; set; }
+}
+
+/// <summary>
+/// Prepayment item representing a customer deposit received during the report period
+/// </summary>
+public class PrepaymentReportItem
+{
+    public DateTime PrepaymentDate { get; set; }
+    public string VehicleRegistration { get; set; } = "";
+    public string? ClientName { get; set; }
+    public string ProductName { get; set; } = "";
+    public double AmountPaid { get; set; }
+    public string? PaymentReference { get; set; }
 }
 
 public class DailySalesBreakdown
@@ -1681,6 +3005,48 @@ public class DailyBankingItem
     public DateTime Date { get; set; }
     public double Amount { get; set; }
     public int TransactionCount { get; set; }
+}
+
+/// <summary>
+/// Unpaid orders report data with aging analysis
+/// </summary>
+public class UnpaidOrdersReportData
+{
+    public DateTime? FromDate { get; set; }
+    public DateTime? ToDate { get; set; }
+
+    public int TotalCount { get; set; }
+    public double TotalAmount { get; set; }
+
+    // Aging breakdown
+    public int Over30DaysCount { get; set; }
+    public double Over30DaysAmount { get; set; }
+    public int Over60DaysCount { get; set; }
+    public double Over60DaysAmount { get; set; }
+
+    public int AverageDaysUnpaid { get; set; }
+    public int OldestDays { get; set; }
+
+    public List<UnpaidOrderItem> Items { get; set; } = new();
+}
+
+/// <summary>
+/// Individual unpaid order item for reports
+/// </summary>
+public class UnpaidOrderItem
+{
+    public string SaleId { get; set; } = "";
+    public DateTime SaleDate { get; set; }
+    public int DaysUnpaid { get; set; }
+    public string VehicleRegistration { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public double Quantity { get; set; }
+    public double Amount { get; set; }
+    public string? ClientName { get; set; }
+    public string? ClientPhone { get; set; }
+    public string ClerkName { get; set; } = "";
+    public string QuarryName { get; set; } = "";
+    public string QuarryId { get; set; } = "";
 }
 
 #endregion

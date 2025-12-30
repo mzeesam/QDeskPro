@@ -26,8 +26,29 @@ window.downloadFile = function (filename, contentType, base64Data) {
     window.URL.revokeObjectURL(url);
 };
 
+// Download a file from byte array
+window.downloadFileFromBytes = function (filename, contentType, byteArray) {
+    // Create blob from byte array
+    const blob = new Blob([byteArray], { type: contentType });
+
+    // Create download link
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+
+    // Trigger download
+    document.body.appendChild(link);
+    link.click();
+
+    // Cleanup
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+};
+
 // Share text content (for reports)
 window.shareText = async function (title, text) {
+    // Try native share API first (mobile devices)
     if (navigator.share) {
         try {
             await navigator.share({
@@ -39,15 +60,54 @@ window.shareText = async function (title, text) {
             console.log('Share cancelled or failed:', err);
             return false;
         }
-    } else {
-        // Fallback: copy to clipboard
+    }
+
+    // Fallback: Try modern clipboard API (requires HTTPS)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
         try {
             await navigator.clipboard.writeText(text);
             return true;
         } catch (err) {
-            console.error('Failed to copy to clipboard:', err);
+            console.log('Clipboard API failed, using fallback:', err);
+        }
+    }
+
+    // Final fallback: Works on HTTP (no secure context required)
+    // Uses temporary textarea element for copying
+    try {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+
+        // Make it invisible but still accessible
+        textArea.style.position = 'fixed';
+        textArea.style.top = '0';
+        textArea.style.left = '0';
+        textArea.style.width = '2em';
+        textArea.style.height = '2em';
+        textArea.style.padding = '0';
+        textArea.style.border = 'none';
+        textArea.style.outline = 'none';
+        textArea.style.boxShadow = 'none';
+        textArea.style.background = 'transparent';
+        textArea.style.opacity = '0';
+
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        // Try to copy using execCommand (deprecated but works everywhere)
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+
+        if (successful) {
+            return true;
+        } else {
+            console.error('execCommand copy failed');
             return false;
         }
+    } catch (err) {
+        console.error('All copy methods failed:', err);
+        return false;
     }
 };
 

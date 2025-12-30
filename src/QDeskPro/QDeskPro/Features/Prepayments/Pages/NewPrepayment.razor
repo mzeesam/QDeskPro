@@ -1,0 +1,429 @@
+@page "/clerk/prepayments/new"
+@attribute [Authorize(Roles = "Clerk")]
+@rendermode InteractiveServer
+
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.Prepayments.Services
+@using QDeskPro.Features.Sales.Services
+@using QDeskPro.Features.Admin.Services
+@using System.Security.Claims
+
+@inject PrepaymentService PrepaymentService
+@inject SaleService SaleService
+@inject UserService UserService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+@inject IDialogService DialogService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Record Prepayment - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-4 mb-4">
+    @if (_loading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else
+    {
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h5" Class="mb-2">Record Prepayment</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                Record customer deposit/prepayment before product delivery
+            </MudText>
+
+            <MudForm @ref="_form" @bind-IsValid="_isValid">
+                <MudGrid>
+                    @* Vehicle Registration - Required *@
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_prepayment.VehicleRegistration"
+                                      Label="Vehicle Registration"
+                                      Variant="Variant.Outlined"
+                                      Required="true"
+                                      RequiredError="Vehicle registration is required"
+                                      Immediate="true" />
+                    </MudItem>
+
+                    @* Prepayment Date *@
+                    <MudItem xs="12" sm="6">
+                        <MudDatePicker @bind-Date="_prepaymentDate"
+                                       Label="Prepayment Date"
+                                       Variant="Variant.Outlined"
+                                       Required="true"
+                                       RequiredError="Prepayment date is required"
+                                       MaxDate="@DateTime.Today"
+                                       MinDate="@DateTime.Today.AddDays(-14)"
+                                       Editable="false"
+                                       Immediate="true" />
+                    </MudItem>
+
+                    @* Payment Mode - Required *@
+                    <MudItem xs="12" sm="6">
+                        <MudSelect @bind-Value="_prepayment.PaymentMode"
+                                   Label="Payment Mode"
+                                   Variant="Variant.Outlined"
+                                   Required="true"
+                                   RequiredError="Payment mode is required"
+                                   AnchorOrigin="Origin.BottomCenter">
+                            <MudSelectItem Value="@("Cash")">Cash</MudSelectItem>
+                            <MudSelectItem Value="@("MPESA")">MPESA</MudSelectItem>
+                            <MudSelectItem Value="@("Bank Transfer")">Bank Transfer</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+
+                    @* Payment Reference *@
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_prepayment.PaymentReference"
+                                      Label="Payment Reference"
+                                      Variant="Variant.Outlined"
+                                      Placeholder="MPESA code, bank ref, etc." />
+                    </MudItem>
+
+                    @* Amount Paid - Required *@
+                    <MudItem xs="12" sm="6">
+                        <MudNumericField Value="_prepayment.TotalAmountPaid"
+                                         Label="Amount Paid (KES)"
+                                         Variant="Variant.Outlined"
+                                         Min="1"
+                                         Required="true"
+                                         RequiredError="Amount is required"
+                                         Format="N0"
+                                         HideSpinButtons="true"
+                                         Immediate="true"
+                                         ValueChanged="@((double val) => { _prepayment.TotalAmountPaid = val; CalculateEstimatedQuantity(); })" />
+                    </MudItem>
+
+                    @* Intended Product - Optional *@
+                    <MudItem xs="12" sm="6">
+                        <MudSelect Value="_prepayment.IntendedProductId"
+                                   Label="Intended Product (Optional)"
+                                   Variant="Variant.Outlined"
+                                   AnchorOrigin="Origin.BottomCenter"
+                                   Clearable="true"
+                                   ValueChanged="@(async (string value) => await OnIntendedProductChanged(value))">
+                            @foreach (var product in _products)
+                            {
+                                <MudSelectItem Value="@product.Id">@product.ProductName</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+
+                    @* Display Estimated Quantity if Product Selected *@
+                    @if (!string.IsNullOrWhiteSpace(_prepayment.IntendedProductId) && _prepayment.IntendedPricePerUnit > 0)
+                    {
+                        <MudItem xs="12">
+                            <MudPaper Class="pa-3" Elevation="0" Style="background-color: rgba(76, 175, 80, 0.08); border-left: 4px solid #4CAF50;">
+                                <MudStack Spacing="1">
+                                    <MudText Typo="Typo.body2" Color="Color.Success" Class="font-weight-bold">
+                                        Estimated Quantity
+                                    </MudText>
+                                    <MudText Typo="Typo.body2">
+                                        Price per unit: <strong>KES @_prepayment.IntendedPricePerUnit.Value.ToString("N1")</strong>
+                                    </MudText>
+                                    <MudText Typo="Typo.h6" Color="Color.Success">
+                                        Approximately <strong>@_estimatedQuantity.ToString("N0")</strong> pieces
+                                    </MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        (Customer can change product type during fulfillment)
+                                    </MudText>
+                                </MudStack>
+                            </MudPaper>
+                        </MudItem>
+                    }
+                </MudGrid>
+
+                @* Client Details - Expandable Section *@
+                <MudExpansionPanels Class="mt-4 mb-4">
+                    <MudExpansionPanel Text="Client Details (Optional)" Icon="@Icons.Material.Rounded.Person">
+                        <MudGrid Class="pt-2">
+                            <MudItem xs="12">
+                                <MudTextField @bind-Value="_prepayment.ClientName"
+                                              Label="Client Name"
+                                              Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField @bind-Value="_prepayment.ClientPhone"
+                                              Label="Phone Number"
+                                              Variant="Variant.Outlined"
+                                              InputType="InputType.Telephone" />
+                            </MudItem>
+                        </MudGrid>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+
+                @* Notes - Optional *@
+                <MudTextField @bind-Value="_prepayment.Notes"
+                              Label="Notes (Optional)"
+                              Variant="Variant.Outlined"
+                              Lines="3"
+                              Placeholder="Any additional notes about this prepayment..."
+                              Class="mb-4" />
+
+                @* Summary Section *@
+                <MudPaper Class="pa-4 mb-4 summary-card" Elevation="0">
+                    <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">Prepayment Summary</MudText>
+                    <MudStack Spacing="2">
+                        <div class="d-flex justify-space-between">
+                            <MudText>Vehicle Registration</MudText>
+                            <MudText Class="font-weight-medium">@(_prepayment.VehicleRegistration ?? "Not entered")</MudText>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_prepayment.ClientName))
+                        {
+                            <div class="d-flex justify-space-between">
+                                <MudText>Client Name</MudText>
+                                <MudText Class="font-weight-medium">@_prepayment.ClientName</MudText>
+                            </div>
+                        }
+                        <div class="d-flex justify-space-between">
+                            <MudText>Payment Mode</MudText>
+                            <MudText Class="font-weight-medium">@_prepayment.PaymentMode</MudText>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_selectedProductName))
+                        {
+                            <div class="d-flex justify-space-between">
+                                <MudText>Intended Product</MudText>
+                                <MudText Class="font-weight-medium">@_selectedProductName</MudText>
+                            </div>
+                        }
+                        <MudDivider Class="my-2" />
+                        <div class="d-flex justify-space-between">
+                            <MudText Typo="Typo.h6">Total Amount Paid</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Success" Class="font-weight-bold">
+                                KES @_prepayment.TotalAmountPaid.ToString("N0")
+                            </MudText>
+                        </div>
+                    </MudStack>
+                </MudPaper>
+
+                @* Action Buttons *@
+                <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mt-4">
+                    <MudButton Variant="Variant.Text"
+                               OnClick="Cancel"
+                               Disabled="_processing">
+                        Cancel
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               Disabled="@(!_isValid || _processing)"
+                               OnClick="SubmitPrepayment"
+                               Class="touch-target">
+                        @if (_processing)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Record Prepayment
+                    </MudButton>
+                </MudStack>
+            </MudForm>
+        </MudPaper>
+    }
+</MudContainer>
+
+<style>
+    .summary-card {
+        border-radius: 16px;
+        border: 2px solid #4CAF50;
+        background: linear-gradient(135deg, rgba(76, 175, 80, 0.05) 0%, rgba(76, 175, 80, 0.02) 100%);
+    }
+
+    .touch-target {
+        min-height: 44px;
+        min-width: 44px;
+    }
+</style>
+
+@code {
+    private MudForm? _form;
+    private bool _isValid = false;
+    private bool _loading = true;
+    private bool _processing = false;
+    private string _userId = "";
+    private string _userFullName = "";
+    private string _quarryId = "";
+
+    private Prepayment _prepayment = new()
+    {
+        PrepaymentDate = DateTime.Now,
+        PaymentMode = "MPESA",
+        TotalAmountPaid = 0
+    };
+
+    private DateTime? _prepaymentDate = DateTime.Today;
+
+    private List<Product> _products = new();
+    private Quarry? _quarry;
+    private string _selectedProductName = "";
+    private double _estimatedQuantity = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get user info from auth state
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+
+                // Get user's quarry context from database
+                var userContext = await UserService.GetUserQuarryContextAsync(_userId);
+
+                if (userContext != null)
+                {
+                    _userFullName = userContext.UserFullName;
+                    _quarryId = userContext.QuarryId;
+                    _quarry = userContext.Quarry;
+
+                    // Load master data
+                    _products = await SaleService.GetProductsAsync();
+
+                    // Sync the prepayment date
+                    if (_prepaymentDate.HasValue)
+                    {
+                        _prepayment.PrepaymentDate = _prepaymentDate.Value;
+                    }
+                }
+                else
+                {
+                    Snackbar.Add("No quarry assigned to your account. Please contact your manager.", Severity.Warning);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnIntendedProductChanged(string productId)
+    {
+        // Update the prepayment's intended product ID
+        _prepayment.IntendedProductId = productId;
+
+        if (!string.IsNullOrWhiteSpace(productId) && !string.IsNullOrWhiteSpace(_quarryId))
+        {
+            try
+            {
+                // Auto-load price for this product at this quarry
+                var productPrice = await SaleService.GetProductPriceAsync(productId, _quarryId);
+                if (productPrice != null)
+                {
+                    _prepayment.IntendedPricePerUnit = productPrice.Price;
+
+                    // Get product name for display
+                    var product = _products.FirstOrDefault(p => p.Id == productId);
+                    _selectedProductName = product?.ProductName ?? "";
+                }
+                else
+                {
+                    _prepayment.IntendedPricePerUnit = null;
+                    _selectedProductName = "";
+                }
+
+                // Calculate estimated quantity
+                CalculateEstimatedQuantity();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error loading product price: {ex.Message}", Severity.Error);
+            }
+        }
+        else
+        {
+            _prepayment.IntendedPricePerUnit = null;
+            _selectedProductName = "";
+            _estimatedQuantity = 0;
+        }
+
+        StateHasChanged();
+    }
+
+    private void CalculateEstimatedQuantity()
+    {
+        // Sync prepayment date
+        if (_prepaymentDate.HasValue)
+        {
+            _prepayment.PrepaymentDate = _prepaymentDate.Value;
+        }
+
+        // Calculate estimated quantity if product and price are set
+        if (_prepayment.IntendedPricePerUnit.HasValue && _prepayment.IntendedPricePerUnit > 0 && _prepayment.TotalAmountPaid > 0)
+        {
+            _estimatedQuantity = Math.Floor(_prepayment.TotalAmountPaid / _prepayment.IntendedPricePerUnit.Value);
+            _prepayment.IntendedQuantity = _estimatedQuantity;
+        }
+        else
+        {
+            _estimatedQuantity = 0;
+            _prepayment.IntendedQuantity = null;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task SubmitPrepayment()
+    {
+        // Sync prepayment date
+        if (_prepaymentDate.HasValue)
+        {
+            _prepayment.PrepaymentDate = _prepaymentDate.Value;
+        }
+
+        // Build confirmation message
+        var confirmMessage = $"Record prepayment of KES {_prepayment.TotalAmountPaid:N0} for vehicle '{_prepayment.VehicleRegistration}'?";
+        if (!string.IsNullOrWhiteSpace(_selectedProductName))
+        {
+            confirmMessage += $"\n\nEstimated: {_estimatedQuantity:N0} pieces of {_selectedProductName}";
+        }
+
+        var result = await DialogService.ShowMessageBox(
+            "Confirm Prepayment",
+            confirmMessage,
+            yesText: "Record", cancelText: "Cancel");
+
+        if (result != true)
+            return;
+
+        _processing = true;
+        try
+        {
+            var (success, message, prepayment) = await PrepaymentService.CreatePrepaymentAsync(
+                _prepayment, _userId, _quarryId, _userFullName);
+
+            if (success)
+            {
+                var successMsg = $"Prepayment of KES {_prepayment.TotalAmountPaid:N0} recorded successfully for {_prepayment.VehicleRegistration}";
+                if (_estimatedQuantity > 0)
+                {
+                    successMsg += $" (Est. {_estimatedQuantity:N0} pieces of {_selectedProductName})";
+                }
+
+                Snackbar.Add(successMsg, Severity.Success);
+                // Navigate to prepayments list (fresh data will load automatically)
+                NavigationManager.NavigateTo("/clerk/prepayments");
+            }
+            else
+            {
+                Snackbar.Add(message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error recording prepayment: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        NavigationManager.NavigateTo("/clerk/prepayments");
+    }
+}

@@ -165,6 +165,65 @@
                                   Label="Report Time"
                                   Variant="Variant.Outlined" />
                 }
+
+                @* Capital Investment & ROI Section *@
+                <MudExpansionPanels Elevation="0" Class="mt-2">
+                    <MudExpansionPanel Text="Capital Investment & ROI Settings" Icon="@Icons.Material.Rounded.TrendingUp">
+                        <MudStack Spacing="3">
+                            <MudAlert Severity="Severity.Info" Dense="true" Icon="@Icons.Material.Rounded.Info">
+                                Configure these settings to enable ROI analysis and break-even calculations for this quarry.
+                            </MudAlert>
+
+                            <MudNumericField @bind-Value="_editModel.InitialCapitalInvestment"
+                                            Label="Initial Capital Investment"
+                                            Variant="Variant.Outlined"
+                                            Min="0"
+                                            Adornment="Adornment.Start"
+                                            AdornmentText="KES"
+                                            HelperText="Total capital invested in the quarry" />
+
+                            <MudDatePicker @bind-Date="_editModel.OperationsStartDate"
+                                          Label="Operations Start Date"
+                                          Variant="Variant.Outlined"
+                                          MaxDate="@DateTime.Today"
+                                          DateFormat="dd/MM/yyyy"
+                                          HelperText="When the quarry began operations" />
+
+                            <MudNumericField @bind-Value="_editModel.EstimatedMonthlyFixedCosts"
+                                            Label="Estimated Monthly Fixed Costs"
+                                            Variant="Variant.Outlined"
+                                            Min="0"
+                                            Adornment="Adornment.Start"
+                                            AdornmentText="KES"
+                                            HelperText="Rent, salaries, insurance, etc." />
+
+                            <MudNumericField @bind-Value="_editModel.TargetProfitMargin"
+                                            Label="Target Profit Margin (%)"
+                                            Variant="Variant.Outlined"
+                                            Min="0"
+                                            Max="100"
+                                            Adornment="Adornment.End"
+                                            AdornmentText="%"
+                                            HelperText="Desired profit margin for benchmarking (0-100)" />
+
+                            <MudNumericField @bind-Value="_editModel.DailyProductionCapacity"
+                                            Label="Daily Production Capacity"
+                                            Variant="Variant.Outlined"
+                                            Min="0"
+                                            Adornment="Adornment.End"
+                                            AdornmentText="pieces"
+                                            HelperText="Expected daily output for utilization tracking" />
+
+                            <MudNumericField @bind-Value="_editModel.FuelCostPerLiter"
+                                            Label="Fuel Cost per Liter"
+                                            Variant="Variant.Outlined"
+                                            Min="0"
+                                            Adornment="Adornment.Start"
+                                            AdornmentText="KES"
+                                            HelperText="For fuel expense calculations" />
+                        </MudStack>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
             </MudStack>
         </MudForm>
     </DialogContent>
@@ -211,6 +270,14 @@
                 {
                     <MudText><strong>Report Time:</strong> @_selectedQuarry.DailyReportTime.Value.ToString(@"hh\:mm")</MudText>
                 }
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Capital Investment & ROI</MudText>
+                <MudText><strong>Initial Investment:</strong> @(_selectedQuarry.InitialCapitalInvestment.HasValue ? $"KES {_selectedQuarry.InitialCapitalInvestment.Value:N0}" : "Not set")</MudText>
+                <MudText><strong>Operations Started:</strong> @(_selectedQuarry.OperationsStartDate.HasValue ? _selectedQuarry.OperationsStartDate.Value.ToString("dd/MM/yyyy") : "Not set")</MudText>
+                <MudText><strong>Monthly Fixed Costs:</strong> @(_selectedQuarry.EstimatedMonthlyFixedCosts.HasValue ? $"KES {_selectedQuarry.EstimatedMonthlyFixedCosts.Value:N0}" : "Not set")</MudText>
+                <MudText><strong>Target Profit Margin:</strong> @(_selectedQuarry.TargetProfitMargin.HasValue ? $"{_selectedQuarry.TargetProfitMargin.Value:N1}%" : "Not set")</MudText>
+                <MudText><strong>Daily Capacity:</strong> @(_selectedQuarry.DailyProductionCapacity.HasValue ? $"{_selectedQuarry.DailyProductionCapacity.Value:N0} pieces" : "Not set")</MudText>
+                <MudText><strong>Fuel Cost/Liter:</strong> @(_selectedQuarry.FuelCostPerLiter.HasValue ? $"KES {_selectedQuarry.FuelCostPerLiter.Value:N2}" : "Not set")</MudText>
             </MudStack>
         }
     </DialogContent>
@@ -264,7 +331,9 @@
             }
             else if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
             {
-                _quarries = await MasterDataService.GetQuarriesForManagerAsync(_userId);
+                // Use GetAccessibleQuarriesForManagerAsync to include both owned and assigned quarries
+                // This allows Secondary Managers to see quarries they're assigned to
+                _quarries = await MasterDataService.GetAccessibleQuarriesForManagerAsync(_userId);
             }
         }
         catch (Exception ex)
@@ -304,7 +373,14 @@
             EmailRecipients = quarry.EmailRecipients,
             DailyReportEnabled = quarry.DailyReportEnabled,
             DailyReportTime = quarry.DailyReportTime,
-            ManagerId = quarry.ManagerId
+            ManagerId = quarry.ManagerId,
+            // Capital Investment & ROI fields
+            InitialCapitalInvestment = quarry.InitialCapitalInvestment,
+            OperationsStartDate = quarry.OperationsStartDate,
+            EstimatedMonthlyFixedCosts = quarry.EstimatedMonthlyFixedCosts,
+            TargetProfitMargin = quarry.TargetProfitMargin,
+            DailyProductionCapacity = quarry.DailyProductionCapacity,
+            FuelCostPerLiter = quarry.FuelCostPerLiter
         };
         _isEditing = true;
         _dialogVisible = true;

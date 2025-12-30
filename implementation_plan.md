@@ -6,7 +6,7 @@ This document outlines the implementation plan for QDeskPro, a modern unified Bl
 
 ---
 
-## 📊 Progress Summary (Last Updated: 2025-12-23)
+## 📊 Progress Summary (Last Updated: 2025-12-30)
 
 | Phase | Status | Progress |
 |-------|--------|----------|
@@ -17,6 +17,7 @@ This document outlines the implementation plan for QDeskPro, a modern unified Bl
 | **Phase 5: Polish & Optimization** | ✅ Complete | 100% |
 | **Phase 5.5: AI Integration** | ✅ Complete | 100% |
 | **Phase 6: Testing & Deployment** | ❌ Not Started | 0% |
+| **Phase 7: Accounting Module** | ✅ Complete | 100% |
 
 ### Architecture Simplification (2025-12-23)
 
@@ -210,6 +211,29 @@ The application has been simplified from a complex PWA/WebAssembly hybrid to a *
 - AI-Powered Features (AIInsightsPanel, SalesInsightsDialog, RecommendationsDialog, TrendAnalysisDialog)
 - AI API Layer (AIEndpoints.cs with conversation and query endpoints)
 - Configuration & Security (appsettings.json, feature flags, graceful fallback)
+
+**Phase 7 - Accounting Module (100% Complete):**
+- Accounting Foundation:
+  - AccountCategory and AccountType enums
+  - LedgerAccount, JournalEntry, JournalEntryLine, AccountingPeriod entities
+  - Database migration and SQL scripts for production deployment
+  - Default Chart of Accounts (32 accounts per quarry: Assets, Liabilities, Equity, Revenue, Cost of Sales, Expenses)
+- Financial Report Services:
+  - Trial Balance, Profit & Loss, Balance Sheet, Cash Flow Statement
+  - Accounts Receivable Aging (0, 1-30, 31-60, 61-90, 90+ days)
+  - Accounts Payable Summary (broker commissions, accrued fees)
+- Report Export Services:
+  - PDF export via QuestPDF (A4, professional formatting, KES currency)
+  - Excel export via ClosedXML (multi-sheet, formulas preserved, conditional formatting)
+  - Combined financial package export
+- Accounting UI Pages:
+  - Accounting Dashboard, Chart of Accounts, Trial Balance, P&L, Balance Sheet
+  - Cash Flow Statement, AR Aging Report, AP Summary Report
+  - Manager-only access with role-based authorization
+- Manager Dashboard Integration:
+  - Live Operations Dashboard with real-time metrics
+  - Quarry performance comparison (multi-quarry managers)
+  - Excel export for Live Operations Dashboard
 
 ### ❗ What's Remaining (Priority Order)
 
@@ -1657,6 +1681,151 @@ For real-time updates, the application uses SignalR (built into Blazor Server) i
 
 ---
 
+## Phase 7: Accounting Module
+
+**Status: ✅ COMPLETE (100%)**
+
+### 7.1 Accounting Foundation
+
+**Status: ✅ COMPLETE**
+
+**Tasks:**
+- [x] Create accounting enums (`AccountCategory`, `AccountType`)
+- [x] Create accounting entities:
+  - [x] `LedgerAccount` - Chart of Accounts entries
+  - [x] `JournalEntry` - Double-entry bookkeeping headers
+  - [x] `JournalEntryLine` - Journal entry line items
+  - [x] `AccountingPeriod` - Fiscal period management
+- [x] Add DbSets to `AppDbContext`
+- [x] Create database migration (`AddAccountingModule`)
+- [x] Create SQL migration scripts for production deployment:
+  - [x] `scripts/AddAccountingModule.sql` - Creates accounting tables with indexes
+  - [x] `scripts/SeedChartOfAccounts.sql` - Seeds 32 default accounts per quarry
+
+**Chart of Accounts Structure (per quarry):**
+- Assets (1000-1999): Cash, Bank, AR, Prepaid, Fixed Assets
+- Liabilities (2000-2999): Customer Deposits, Accrued, AP, Loans
+- Equity (3000-3999): Owner's Equity, Retained Earnings
+- Revenue (4000-4999): Sales Revenue (by product), Other Income
+- Cost of Sales (5000-5999): Commission, Loaders Fees, Land Rate Fees
+- Expenses (6000-6999): Fuel, Transport, Maintenance, Admin, Marketing, Wages, Bank Charges, Cess, Misc
+
+**Deliverables:**
+- ✅ Complete accounting data model
+- ✅ Database migration and SQL scripts
+- ✅ Default Chart of Accounts (32 accounts)
+
+---
+
+### 7.2 Financial Report Services
+
+**Status: ✅ COMPLETE**
+
+**Tasks:**
+- [x] Create `Features/Accounting/Services/FinancialReportService.cs`:
+  - [x] `GenerateTrialBalanceAsync()` - Debit/Credit balance verification
+  - [x] `GenerateProfitLossAsync()` - Income statement
+  - [x] `GenerateBalanceSheetAsync()` - Financial position snapshot
+  - [x] `GenerateCashFlowStatementAsync()` - Cash flows by activity
+  - [x] `GenerateARAgingReportAsync()` - Receivables aging (0, 1-30, 31-60, 61-90, 90+ days)
+  - [x] `GenerateAPSummaryReportAsync()` - Payables by broker/fee type
+- [x] Create report models:
+  - [x] `TrialBalanceReport` with line items and balance verification
+  - [x] `ProfitLossReport` with Revenue, Cost of Sales, Gross Profit, Expenses, Net Profit
+  - [x] `BalanceSheetReport` with Assets, Liabilities, Equity sections
+  - [x] `CashFlowReport` with Operating, Investing, Financing activities
+  - [x] `ARAgingReport` with aging buckets and customer details
+  - [x] `APSummaryReport` with broker commissions and accrued fees
+- [x] Register services in `Program.cs`
+
+**Deliverables:**
+- ✅ Complete financial report generation
+- ✅ Professional report structures for auditors
+
+---
+
+### 7.3 Report Export Services
+
+**Status: ✅ COMPLETE**
+
+**Tasks:**
+- [x] Create `Features/Accounting/Services/FinancialReportExportService.cs`:
+  - [x] PDF export using QuestPDF:
+    - [x] A4 paper size with 40pt margins
+    - [x] Professional headers with company/quarry name
+    - [x] Footers with page numbers and generation timestamp
+    - [x] Currency formatting (KES with thousands separator)
+    - [x] Red highlighting for negative values
+  - [x] Excel export using ClosedXML:
+    - [x] Multi-sheet workbooks
+    - [x] Frozen header rows
+    - [x] Accounting number format with formulas preserved
+    - [x] Conditional formatting for negatives
+    - [x] Print area configuration
+- [x] Export methods for all 6 report types (PDF and Excel)
+- [x] Combined financial package export (all reports in one workbook)
+
+**Deliverables:**
+- ✅ Professional PDF exports for auditors
+- ✅ Excel exports with working formulas
+- ✅ Combined financial package download
+
+---
+
+### 7.4 Accounting UI Pages
+
+**Status: ✅ COMPLETE**
+
+**Tasks:**
+- [x] Create accounting pages in `Features/Accounting/Pages/`:
+  - [x] `AccountingDashboard.razor` - Overview with quick links to reports
+  - [x] `ChartOfAccounts.razor` - View/manage ledger accounts
+  - [x] `TrialBalance.razor` - Trial balance with export buttons
+  - [x] `ProfitLoss.razor` - P&L statement with date range
+  - [x] `BalanceSheet.razor` - Balance sheet as-of date
+  - [x] `CashFlowStatement.razor` - Cash flow with period selection
+  - [x] `ARAgingReport.razor` - AR aging with customer drill-down
+  - [x] `APSummaryReport.razor` - AP summary by broker
+- [x] Add navigation menu items for accounting section (Manager only)
+- [x] Implement export buttons (PDF and Excel) on each report page
+- [x] Role-based authorization (Manager and Administrator only)
+
+**UI Features:**
+- Quarry selector for managers with multiple quarries
+- Date range/as-of-date pickers
+- Real-time report preview
+- Download buttons for PDF and Excel formats
+- Mobile-responsive tables with MudTable
+
+**Deliverables:**
+- ✅ Complete accounting UI
+- ✅ Professional report viewing and export
+- ✅ Manager-only access control
+
+---
+
+### 7.5 Manager Dashboard Integration
+
+**Status: ✅ COMPLETE**
+
+**Tasks:**
+- [x] Create Live Operations Dashboard in Manager Dashboard:
+  - [x] Real-time sales and operations overview
+  - [x] Today's metrics (Revenue, Orders, Quantity, Collections)
+  - [x] Recent sales activity with clerk attribution
+  - [x] Quarry performance comparison (multi-quarry managers)
+  - [x] Top performing products breakdown
+  - [x] Alert section for unpaid orders
+- [x] Excel export for Live Operations Dashboard
+- [x] Link to full accounting reports from dashboard
+
+**Deliverables:**
+- ✅ Live Operations Dashboard with real-time metrics
+- ✅ Multi-quarry comparison view
+- ✅ Quick access to accounting reports
+
+---
+
 ## Implementation Order Summary
 
 ```
@@ -1689,8 +1858,21 @@ Phase 5 (Polish & Optimization)
 ├── Error handling & logging
 └── Testing
 
+Phase 5.5 (AI Integration)
+├── AI infrastructure & services
+├── AI chat interface
+├── AI-powered insights
+└── Sales query tools
+
 Phase 6 (Deployment)
 └── Production deployment
+
+Phase 7 (Accounting Module) ✅
+├── Chart of Accounts (32 accounts per quarry)
+├── Financial Reports (Trial Balance, P&L, Balance Sheet, Cash Flow)
+├── AR Aging & AP Summary reports
+├── PDF & Excel export
+└── Live Operations Dashboard
 ```
 
 ---

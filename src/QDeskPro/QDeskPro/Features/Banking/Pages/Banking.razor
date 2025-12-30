@@ -2,11 +2,13 @@
 @using Microsoft.AspNetCore.Authorization
 @using QDeskPro.Features.Banking.Services
 @using QDeskPro.Features.Admin.Services
+@using QDeskPro.Features.Reports.Services
 @using QDeskPro.Domain.Entities
 @attribute [Authorize(Roles = "Clerk")]
 @rendermode InteractiveServer
 @inject BankingService BankingService
 @inject UserService UserService
+@inject ReportService ReportService
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -25,6 +27,103 @@
     }
     else
     {
+        @* Net Income Summary Card *@
+        <MudPaper Class="pa-4 mb-4" Elevation="0" Style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+                        <MudText Typo="Typo.h6" Class="font-weight-bold">
+                            <MudIcon Icon="@Icons.Material.Rounded.AccountBalanceWallet" Class="mr-2" />
+                            Financial Summary
+                        </MudText>
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                            <MudPaper Class="px-3 py-1" Elevation="0" Style="background: rgba(255, 255, 255, 0.2); border-radius: 20px;">
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudIconButton Icon="@Icons.Material.Rounded.CalendarToday"
+                                                   Color="Color.Inherit"
+                                                   Size="Size.Small"
+                                                   OnClick="OpenDatePicker"
+                                                   Style="color: white;" />
+                                    <MudText Typo="Typo.body2" Class="font-weight-medium" Style="color: white;">
+                                        @(_selectedDate?.ToString("dd/MM/yyyy") ?? DateTime.Today.ToString("dd/MM/yyyy"))
+                                    </MudText>
+                                </MudStack>
+                            </MudPaper>
+                            @if (_loadingNetIncome)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Style="color: white;" />
+                            }
+                            else
+                            {
+                                <MudIconButton Icon="@Icons.Material.Rounded.Refresh"
+                                               Color="Color.Inherit"
+                                               Size="Size.Small"
+                                               OnClick="LoadNetIncome"
+                                               Style="color: white;" />
+                            }
+                        </MudStack>
+                    </MudStack>
+                </MudItem>
+
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-3" Style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px);">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Style="opacity: 0.9;">Net Income</MudText>
+                            <MudText Typo="Typo.h5" Class="font-weight-bold">KES @_netIncome.ToString("N0")</MudText>
+                            <MudText Typo="Typo.caption" Style="opacity: 0.8; font-size: 0.7rem;">
+                                Total earnings for selected date
+                            </MudText>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-3" Style="background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(10px);">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Style="opacity: 0.9;">Already Banked</MudText>
+                            <MudText Typo="Typo.h5" Class="font-weight-bold">KES @_totalBanked.ToString("N0")</MudText>
+                            <MudText Typo="Typo.caption" Style="opacity: 0.8; font-size: 0.7rem;">
+                                Sum for selected date
+                            </MudText>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-3" Style="background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(10px); border: 2px solid rgba(255, 255, 255, 0.3);">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Style="opacity: 0.9;">Available to Bank</MudText>
+                            <MudText Typo="Typo.h5" Class="font-weight-bold">KES @_availableToBank.ToString("N0")</MudText>
+                            <MudText Typo="Typo.caption" Style="opacity: 0.8; font-size: 0.7rem;">
+                                @if (_availableToBank < 0)
+                                {
+                                    <span style="color: #ffeb3b;">⚠️ Over-banked by KES @(Math.Abs(_availableToBank).ToString("N0"))</span>
+                                }
+                                else if (_availableToBank == 0)
+                                {
+                                    <span>✓ Fully banked</span>
+                                }
+                                else
+                                {
+                                    <span>Remaining to bank</span>
+                                }
+                            </MudText>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @* Hidden Date Picker for Financial Summary *@
+        <MudDatePicker @ref="_datePickerRef"
+                       Date="_selectedDate"
+                       DateChanged="OnDateChanged"
+                       DateFormat="dd/MM/yyyy"
+                       MaxDate="@DateTime.Today"
+                       MinDate="@DateTime.Today.AddDays(-5)"
+                       PickerVariant="PickerVariant.Dialog"
+                       Style="display: none;" />
+
         @* Banking Entry Form *@
         <MudPaper Class="pa-4 mb-4" Elevation="0">
             <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">
@@ -34,14 +133,14 @@
             <MudForm @ref="_form" @bind-IsValid="_isValid">
                 <MudGrid>
                     <MudItem xs="12" sm="6">
-                        <MudDatePicker @bind-Date="_bankingDate"
+                        <MudDatePicker @bind-Date="_banking.BankingDate"
                                        Label="Banking Date"
                                        Variant="Variant.Outlined"
                                        Required="true"
+                                       RequiredError="Please select a date"
                                        MaxDate="@DateTime.Today"
-                                       MinDate="@DateTime.Today.AddDays(-14)"
-                                       DateFormat="dd/MM/yyyy"
-                                       OnChange="UpdateAutoGeneratedItem" />
+                                       MinDate="@DateTime.Today.AddDays(-5)"
+                                       DateFormat="dd/MM/yyyy" />
                     </MudItem>
 
                     <MudItem xs="12" sm="6">
@@ -51,8 +150,10 @@
                                          Min="0"
                                          Required="true"
                                          RequiredError="Please provide the amount details"
+                                         Validation="@(new Func<double, string>(ValidateBankingAmount))"
                                          Adornment="Adornment.Start"
-                                         AdornmentText="KES" />
+                                         AdornmentText="KES"
+                                         HelperText="@GetBankingHelperText()" />
                     </MudItem>
 
                     <MudItem xs="12">
@@ -60,8 +161,7 @@
                                       Label="Description"
                                       Variant="Variant.Outlined"
                                       Required="true"
-                                      Disabled="true"
-                                      HelperText="Auto-generated based on banking date" />
+                                      Placeholder="e.g., Daily deposit" />
                     </MudItem>
 
                     <MudItem xs="12">
@@ -92,7 +192,7 @@
                     }
                     <MudButton Variant="Variant.Filled"
                                Color="Color.Primary"
-                               Disabled="@(!_isValid || _processing)"
+                               Disabled="@(!_isValid || _processing || (!_isEditMode && _availableToBank < 0))"
                                OnClick="SaveBanking"
                                StartIcon="@Icons.Material.Rounded.Save">
                         @if (_processing)
@@ -173,22 +273,29 @@
 
 @code {
     private MudForm? _form;
+    private MudDatePicker? _datePickerRef;
     private bool _isValid = false;
     private bool _loading = true;
     private bool _loadingList = false;
+    private bool _loadingNetIncome = false;
     private bool _processing = false;
     private bool _isEditMode = false;
     private string _userId = "";
     private string _quarryId = "";
+    private DateTime? _selectedDate = DateTime.Today;
+
+    // Financial summary fields
+    private double _netIncome = 0;
+    private double _totalBanked = 0;
+    private double _availableToBank = 0;
 
     private Domain.Entities.Banking _banking = new()
     {
-        BankingDate = DateTime.Now,
+        BankingDate = DateTime.Today, // Will be updated to selected date in ResetForm
         AmountBanked = 0,
         BalanceBF = 0
     };
 
-    private DateTime? _bankingDate = DateTime.Now;
     private List<Domain.Entities.Banking> _bankings = new();
 
     protected override async Task OnInitializedAsync()
@@ -210,11 +317,14 @@
                 {
                     _quarryId = userContext.QuarryId;
 
-                    // Set default auto-generated item
-                    UpdateAutoGeneratedItem();
-
                     // Load existing banking records
                     await RefreshBankingList();
+
+                    // Load net income for selected date
+                    await LoadNetIncome();
+
+                    // Initialize form with selected date
+                    ResetForm();
                 }
                 else
                 {
@@ -232,21 +342,22 @@
         }
     }
 
-    private void UpdateAutoGeneratedItem()
-    {
-        // Auto-generate Item field as per specification: "{BankingDate:dd MMM} Daily Banking"
-        if (_bankingDate.HasValue)
-        {
-            _banking.Item = $"{_bankingDate.Value:dd MMM} Daily Banking";
-        }
-    }
-
     private async Task RefreshBankingList()
     {
         _loadingList = true;
         try
         {
             _bankings = await BankingService.GetBankingForClerkAsync(_userId);
+
+            // Calculate total banked for selected date
+            var selectedDay = _selectedDate ?? DateTime.Today;
+            var dateStamp = selectedDay.ToString("yyyyMMdd");
+            _totalBanked = _bankings
+                .Where(b => b.DateStamp == dateStamp)
+                .Sum(b => b.AmountBanked);
+
+            // Recalculate available amount
+            _availableToBank = _netIncome - _totalBanked;
         }
         catch (Exception ex)
         {
@@ -258,11 +369,84 @@
         }
     }
 
+    private async Task LoadNetIncome()
+    {
+        _loadingNetIncome = true;
+        try
+        {
+            // Generate report for selected date to get net income
+            var selectedDay = _selectedDate ?? DateTime.Today;
+            var report = await ReportService.GenerateClerkReportAsync(selectedDay, selectedDay, _quarryId, _userId);
+
+            _netIncome = report.NetEarnings;
+
+            // Calculate total banked for selected date
+            var dateStamp = selectedDay.ToString("yyyyMMdd");
+            _totalBanked = _bankings
+                .Where(b => b.DateStamp == dateStamp)
+                .Sum(b => b.AmountBanked);
+
+            // Calculate available to bank
+            _availableToBank = _netIncome - _totalBanked;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading net income: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingNetIncome = false;
+        }
+    }
+
+    private async Task OnDateChanged(DateTime? newDate)
+    {
+        _selectedDate = newDate;
+        await LoadNetIncome();
+    }
+
+    private async Task OpenDatePicker()
+    {
+        if (_datePickerRef != null)
+        {
+            await _datePickerRef.OpenAsync();
+        }
+    }
+
+    private string ValidateBankingAmount(double amount)
+    {
+        if (amount <= 0)
+            return "Amount must be greater than 0";
+
+        // Skip validation if in edit mode (editing existing banking)
+        if (_isEditMode)
+            return string.Empty;
+
+        // Check if amount exceeds available
+        if (amount > _availableToBank)
+        {
+            return $"Amount exceeds available balance (KES {_availableToBank:N0})";
+        }
+
+        return string.Empty; // Valid
+    }
+
+    private string GetBankingHelperText()
+    {
+        if (_isEditMode)
+            return "Editing existing banking record";
+
+        if (_availableToBank < 0)
+            return $"Over-banked by KES {Math.Abs(_availableToBank):N0} - cannot add more banking";
+
+        if (_availableToBank == 0)
+            return "Fully banked - no funds available";
+
+        return $"Maximum available: KES {_availableToBank:N0}";
+    }
+
     private async Task SaveBanking()
     {
-        // Sync banking date
-        _banking.BankingDate = _bankingDate;
-
         // RefCode truncation logic (max 10 chars)
         if (!string.IsNullOrWhiteSpace(_banking.TxnReference) && _banking.TxnReference.Length > 10)
         {
@@ -292,6 +476,7 @@
             {
                 Snackbar.Add(message, Severity.Success);
                 await RefreshBankingList();
+                await LoadNetIncome(); // Refresh net income and available balance
                 ResetForm();
             }
             else
@@ -328,6 +513,7 @@
             {
                 Snackbar.Add(message, Severity.Success);
                 await RefreshBankingList();
+                await LoadNetIncome(); // Refresh net income and available balance
                 ResetForm();
             }
             else
@@ -357,7 +543,6 @@
             TxnReference = banking.TxnReference,
             RefCode = banking.RefCode
         };
-        _bankingDate = banking.BankingDate;
         _isEditMode = true;
     }
 
@@ -370,12 +555,10 @@
     {
         _banking = new Domain.Entities.Banking
         {
-            BankingDate = DateTime.Now,
+            BankingDate = _selectedDate ?? DateTime.Today,
             AmountBanked = 0,
             BalanceBF = 0
         };
-        _bankingDate = DateTime.Now;
-        UpdateAutoGeneratedItem();
         _isEditMode = false;
         _form?.ResetAsync();
     }

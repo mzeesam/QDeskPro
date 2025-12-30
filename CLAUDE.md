@@ -202,6 +202,15 @@ public class Sale : BaseEntity
     public string ApplicationUserId { get; set; }  // Clerk who recorded
     public string ClerkName { get; set; }          // Denormalized for reporting
 
+    // Prepayment (✅ COMPLETED)
+    public string? PrepaymentId { get; set; }      // Foreign key to Prepayment (nullable)
+    public double? PrepaymentApplied { get; set; } // Amount from prepayment used for this sale
+    public bool IsPrepaymentSale { get; set; }     // Flag for easier querying
+
+    // Collections Tracking (✅ COMPLETED)
+    public DateTime? PaymentReceivedDate { get; set; }  // When payment was actually received
+    public double? CollectionAmount { get; set; }       // Amount collected today for past sale
+
     // Calculated (read-only, computed from above)
     public double GrossSaleAmount => Quantity * PricePerUnit;
 
@@ -210,6 +219,7 @@ public class Sale : BaseEntity
     public virtual Layer Layer { get; set; }
     public virtual Broker Broker { get; set; }
     public virtual ApplicationUser Clerk { get; set; }
+    public virtual Prepayment? Prepayment { get; set; }
 }
 ```
 
@@ -297,6 +307,56 @@ public class UserQuarry : BaseEntity
     public virtual Quarry Quarry { get; set; }
 }
 ```
+
+### Prepayment ✅ COMPLETED
+
+Customer prepayments/deposits for future product collection:
+
+```csharp
+public class Prepayment : BaseEntity
+{
+    // Customer Identification
+    public string VehicleRegistration { get; set; }  // Primary identifier (required)
+    public string? ClientName { get; set; }          // Optional client name
+    public string? ClientPhone { get; set; }         // Optional phone number
+
+    // Prepayment Details
+    public DateTime PrepaymentDate { get; set; }     // Date payment received
+    public double TotalAmountPaid { get; set; }      // Total amount prepaid
+    public double AmountUsed { get; set; }           // Amount already applied to sales
+    public double RemainingBalance => TotalAmountPaid - AmountUsed;  // Available balance
+
+    // Original Intent (can change during fulfillment)
+    public string? IntendedProductId { get; set; }   // Product customer planned to buy
+    public double? IntendedQuantity { get; set; }    // Quantity planned
+    public double? IntendedPricePerUnit { get; set; }// Price locked at prepayment time
+
+    // Payment Details
+    public string PaymentMode { get; set; }          // Cash, MPESA, Bank Transfer
+    public string? PaymentReference { get; set; }    // Transaction reference
+
+    // Status Tracking
+    public string Status { get; set; }               // Active, Partial, Fulfilled, Refunded
+    public DateTime? FullyFulfilledDate { get; set; }
+
+    // Clerk who recorded prepayment
+    public string ApplicationUserId { get; set; }
+    public string ClerkName { get; set; }
+
+    // Notes
+    public string? Notes { get; set; }
+
+    // Navigation Properties
+    public virtual Product? IntendedProduct { get; set; }
+    public virtual ICollection<Sale> FulfillmentSales { get; set; }
+}
+```
+
+**Status Values**:
+- `Active`: Full balance remaining (AmountUsed = 0)
+- `Partial`: Partially used (0 < AmountUsed < TotalAmountPaid)
+- `Fulfilled`: Fully used (AmountUsed = TotalAmountPaid)
+- `Refunded`: Prepayment refunded to customer
 
 ---
 
@@ -597,6 +657,404 @@ public class UserQuarry : BaseEntity
    - Soft delete (IsActive = false)
    - User cannot login but data preserved
 
+---
+
+### Workflow 9: Prepayment/Deposit Recording ✅ COMPLETED
+
+**Actor**: Clerk
+**Trigger**: Customer makes advance payment before product collection
+
+**Steps**:
+
+1. **Navigate to Prepayments**
+   - Clerk accesses `/clerk/prepayments/new` page
+
+2. **Enter Customer Details**
+   - Vehicle Registration (required) - Primary identifier
+   - Prepayment Date (max today, min 14 days ago)
+   - Client Name (optional)
+   - Client Phone (optional)
+
+3. **Enter Payment Details**
+   - Payment Mode: Cash, MPESA, or Bank Transfer
+   - Payment Reference (transaction code/reference)
+   - Amount Paid (required, must be > 0)
+
+4. **Select Intended Product (Optional)**
+   - Clerk can select product customer intends to buy
+   - System auto-loads price for that product at this quarry
+   - System calculates estimated quantity: `Floor(AmountPaid / PricePerUnit)`
+   - Customer can change product type during fulfillment
+
+5. **Review Summary**
+   - System displays:
+     - Vehicle registration
+     - Payment mode and amount
+     - Estimated quantity if product selected
+     - "Customer can change product type during fulfillment" note
+
+6. **Submit Prepayment**
+   - Confirmation dialog shows summary
+   - On confirm, prepayment saved with:
+     - Status = "Active"
+     - AmountUsed = 0
+     - RemainingBalance = TotalAmountPaid
+     - DateStamp = PrepaymentDate.ToString("yyyyMMdd")
+   - Success notification shown
+   - Navigate to `/clerk/prepayments` list
+
+7. **Post-Save**
+   - Prepayment appears in active prepayments list
+   - Available for application to future sales
+
+---
+
+### Workflow 10: Applying Prepayment to Sale ✅ COMPLETED
+
+**Actor**: Clerk
+**Trigger**: Customer with prepayment comes to collect product
+
+**Steps**:
+
+1. **Start New Sale**
+   - Clerk navigates to `/clerk/sales/new`
+
+2. **Search for Prepayment**
+   - Clerk enters vehicle registration in prepayment search
+   - System shows all active/partial prepayments for that vehicle
+   - Each result shows:
+     - Prepayment date
+     - Amount paid
+     - Amount used
+     - Remaining balance
+     - Status
+     - Intended product (if specified)
+
+3. **Select Prepayment**
+   - Clerk taps on prepayment to select
+   - System auto-fills:
+     - Vehicle registration
+     - Client name (if available)
+     - Client phone (if available)
+     - Intended product (if specified)
+   - System calculates estimated quantity based on intended price
+
+4. **Complete Sale Details**
+   - Clerk selects final product (can differ from intended)
+   - Clerk selects layer
+   - Clerk enters actual quantity
+   - System calculates:
+     - `GrossSaleAmount = Quantity × PricePerUnit`
+     - `PrepaymentAppliedAmount = Min(RemainingBalance, GrossSaleAmount)`
+     - `BalanceDue = GrossSaleAmount - PrepaymentAppliedAmount`
+
+5. **Handle Balance Due**
+   - **Scenario A**: Prepayment covers full order (`BalanceDue = 0`)
+     - No additional payment needed
+     - Payment status auto-set to "Paid"
+
+   - **Scenario B**: Customer pays additional balance (`BalanceDue > 0`)
+     - Clerk collects balance due amount
+     - Clerk selects payment mode for balance
+     - Payment status set to "Paid"
+
+   - **Scenario C**: Prepayment exceeds order amount
+     - Remaining balance stays with customer for future orders
+     - Prepayment status becomes "Partial"
+
+6. **Order Summary Display**
+   - Total Amount: KES X
+   - Commission: - KES Y
+   - Loaders Fee: - KES Z
+   - Land Rate: - KES W (if applicable)
+   - **Prepayment Applied**: - KES P (highlighted in green)
+   - **Balance Due**: KES B (highlighted in orange if > 0)
+
+7. **Submit Sale**
+   - Sale saved with:
+     - `PrepaymentId` = selected prepayment ID
+     - `PrepaymentApplied` = amount used from prepayment
+     - `IsPrepaymentSale` = true
+   - Prepayment updated:
+     - `AmountUsed` += PrepaymentApplied
+     - `RemainingBalance` recalculated
+     - `Status` updated:
+       - "Fulfilled" if RemainingBalance = 0
+       - "Partial" if 0 < RemainingBalance < TotalAmountPaid
+     - `FullyFulfilledDate` set if fully used
+
+8. **Post-Save**
+   - Success notification: "Sale recorded. Prepayment of KES X applied, balance due KES Y"
+   - Navigate to sales list or dashboard
+
+**Multiple Trip Support**:
+- Customer can use one prepayment across multiple sales
+- Each sale uses portion of remaining balance
+- Prepayment tracks all linked sales via `FulfillmentSales` collection
+
+**Example Scenario**:
+```
+Customer Prepayment: KES 10,000
+
+Trip 1: Order KES 3,000 worth
+  - Prepayment applied: KES 3,000
+  - Balance due: KES 0
+  - Prepayment remaining: KES 7,000 (Status: Partial)
+
+Trip 2: Order KES 8,000 worth
+  - Prepayment applied: KES 7,000
+  - Balance due: KES 1,000 (customer pays cash)
+  - Prepayment remaining: KES 0 (Status: Fulfilled)
+```
+
+---
+
+### Workflow 11: Collections Tracking ✅ COMPLETED
+
+**Actor**: Clerk
+**Trigger**: Customer pays for previous unpaid order
+
+**Steps**:
+
+1. **Identify Unpaid Order**
+   - Clerk views unpaid orders list (highlighted in red)
+   - Unpaid orders have `PaymentStatus = "NotPaid"`
+
+2. **Receive Payment**
+   - Customer provides payment for past order
+   - Clerk notes payment date and amount
+
+3. **Update Sale**
+   - Clerk edits the past sale record
+   - Updates:
+     - `PaymentStatus` = "Paid"
+     - `PaymentReceivedDate` = today's date
+     - `CollectionAmount` = amount received
+     - `PaymentReference` = transaction reference
+
+4. **Dashboard Tracking**
+   - Today's collections appear in clerk dashboard
+   - Manager analytics show collections separately from direct sales
+   - Collections contribute to today's cash flow but marked distinctly
+
+5. **Reporting**
+   - Daily report shows:
+     - Sales (today's new orders)
+     - Collections (payments for past orders)
+     - Total cash received = Sales + Collections
+
+---
+
+### Workflow 12: Accounting & Financial Reports ✅ COMPLETED
+
+**Actor**: Manager
+**Trigger**: Manager needs professional financial statements for auditors or financial analysis
+
+**Overview**:
+QDeskPro includes a comprehensive accounting module with double-entry bookkeeping, Chart of Accounts, and professional financial reports. All accounting features are restricted to **Manager** and **Administrator** roles.
+
+**Accounting Settings**:
+- **Accounting Basis**: Cash Basis (records when cash received/paid)
+- **Fiscal Year**: Calendar Year (January - December)
+- **Multi-Quarry Consolidation**: No - Per-Quarry Only
+
+**New Entities**:
+
+```csharp
+// Account Categories
+public enum AccountCategory
+{
+    Assets = 1,        // Resources owned (1000-1999)
+    Liabilities = 2,   // Obligations owed (2000-2999)
+    Equity = 3,        // Owner's stake (3000-3999)
+    Revenue = 4,       // Income from sales (4000-4999)
+    CostOfSales = 5,   // Direct costs (5000-5999)
+    Expenses = 6       // Operating costs (6000-6999)
+}
+
+// Account Types with codes
+public enum AccountType
+{
+    // Assets (100-104)
+    Cash = 100, Bank = 101, AccountsReceivable = 102,
+    PrepaidExpenses = 103, FixedAssets = 104,
+
+    // Liabilities (200-203)
+    CustomerDeposits = 200, AccountsPayable = 201,
+    AccruedExpenses = 202, LoansPayable = 203,
+
+    // Equity (300-301)
+    OwnersEquity = 300, RetainedEarnings = 301,
+
+    // Revenue (400-401)
+    SalesRevenue = 400, OtherIncome = 401,
+
+    // Cost of Sales (500-502)
+    CommissionExpense = 500, LoadersFees = 501, LandRateFees = 502,
+
+    // Operating Expenses (600-609)
+    FuelExpense = 600, TransportationHire = 601, MaintenanceRepairs = 602,
+    ConsumablesUtilities = 603, AdministrativeExpenses = 604,
+    MarketingExpenses = 605, WagesSalaries = 606, BankCharges = 607,
+    CessRoadFees = 608, MiscellaneousExpenses = 609
+}
+
+// Ledger Account entity
+public class LedgerAccount : BaseEntity
+{
+    public string AccountCode { get; set; }      // e.g., "1000", "4000"
+    public string AccountName { get; set; }      // e.g., "Cash on Hand"
+    public AccountCategory Category { get; set; }
+    public AccountType Type { get; set; }
+    public string? ParentAccountId { get; set; }
+    public bool IsSystemAccount { get; set; }
+    public int DisplayOrder { get; set; }
+    public string? Description { get; set; }
+    public bool IsDebitNormal { get; set; }
+}
+
+// Journal Entry for double-entry bookkeeping
+public class JournalEntry : BaseEntity
+{
+    public DateTime EntryDate { get; set; }
+    public string Reference { get; set; }
+    public string Description { get; set; }
+    public string EntryType { get; set; }        // "Auto" or "Manual"
+    public string? SourceEntityType { get; set; } // "Sale", "Expense", etc.
+    public string? SourceEntityId { get; set; }
+    public bool IsPosted { get; set; }
+    public double TotalDebit { get; set; }
+    public double TotalCredit { get; set; }
+    public int FiscalYear { get; set; }
+    public int FiscalPeriod { get; set; }
+    public virtual ICollection<JournalEntryLine> Lines { get; set; }
+}
+
+// Journal Entry Line
+public class JournalEntryLine : BaseEntity
+{
+    public string JournalEntryId { get; set; }
+    public string LedgerAccountId { get; set; }
+    public double DebitAmount { get; set; }
+    public double CreditAmount { get; set; }
+    public string? Memo { get; set; }
+    public int LineNumber { get; set; }
+}
+
+// Accounting Period for fiscal management
+public class AccountingPeriod : BaseEntity
+{
+    public string PeriodName { get; set; }
+    public DateTime StartDate { get; set; }
+    public DateTime EndDate { get; set; }
+    public bool IsClosed { get; set; }
+    public int FiscalYear { get; set; }
+    public int PeriodNumber { get; set; }
+}
+```
+
+**Default Chart of Accounts (32 accounts per quarry)**:
+
+```
+ASSETS (1000-1999)
+├── 1000 Cash on Hand
+├── 1010 Bank Account
+├── 1100 Accounts Receivable
+├── 1200 Prepaid Expenses
+└── 1500 Fixed Assets
+
+LIABILITIES (2000-2999)
+├── 2000 Customer Deposits
+├── 2100 Accrued Expenses
+├── 2200 Accounts Payable
+└── 2300 Loans Payable
+
+EQUITY (3000-3999)
+├── 3000 Owner's Equity
+└── 3100 Retained Earnings
+
+REVENUE (4000-4999)
+├── 4000 Sales Revenue
+├── 4010-4060 Sales by Product (Size 6, Size 9, Size 4, Reject, Hardcore, Beam)
+└── 4500 Other Income
+
+COST OF SALES (5000-5999)
+├── 5000 Commission Expense
+├── 5100 Loaders Fees
+└── 5200 Land Rate Fees
+
+OPERATING EXPENSES (6000-6999)
+├── 6000 Fuel Expense
+├── 6100 Transportation Hire
+├── 6200 Maintenance and Repairs
+├── 6300 Consumables and Utilities
+├── 6400 Administrative Expenses
+├── 6500 Marketing Expenses
+├── 6600 Wages and Salaries
+├── 6700 Bank Charges
+├── 6800 Cess and Road Fees
+└── 6900 Miscellaneous Expenses
+```
+
+**Financial Reports Available**:
+
+| Report | Description | Path |
+|--------|-------------|------|
+| Trial Balance | Lists all accounts with debit/credit balances | `/manager/accounting/trial-balance` |
+| Profit & Loss | Revenue - Expenses = Net Profit | `/manager/accounting/profit-loss` |
+| Balance Sheet | Assets = Liabilities + Equity | `/manager/accounting/balance-sheet` |
+| Cash Flow | Operating/Investing/Financing activities | `/manager/accounting/cash-flow` |
+| AR Aging | Unpaid sales by age buckets (0, 1-30, 31-60, 61-90, 90+) | `/manager/accounting/ar-aging` |
+| AP Summary | Broker commissions and accrued fees payable | `/manager/accounting/ap-summary` |
+
+**Export Formats**:
+- **PDF**: Professional formatting via QuestPDF (A4, proper headers/footers)
+- **Excel**: Multi-sheet workbooks via ClosedXML with formulas preserved
+
+**Services**:
+
+```csharp
+// Accounting operations
+public interface IAccountingService
+{
+    Task<List<LedgerAccount>> GetChartOfAccountsAsync(string quarryId);
+    Task<LedgerAccount> CreateAccountAsync(LedgerAccount account);
+    Task<JournalEntry> CreateManualJournalEntryAsync(JournalEntry entry);
+    Task GenerateJournalEntriesForDateRangeAsync(string quarryId, DateTime from, DateTime to);
+}
+
+// Financial report generation
+public interface IFinancialReportService
+{
+    Task<TrialBalanceReport> GenerateTrialBalanceAsync(string quarryId, DateTime asOfDate);
+    Task<ProfitLossReport> GenerateProfitLossAsync(string quarryId, DateTime from, DateTime to);
+    Task<BalanceSheetReport> GenerateBalanceSheetAsync(string quarryId, DateTime asOfDate);
+    Task<CashFlowReport> GenerateCashFlowStatementAsync(string quarryId, DateTime from, DateTime to);
+    Task<ARAgingReport> GenerateARAgingReportAsync(string quarryId, DateTime asOfDate);
+    Task<APSummaryReport> GenerateAPSummaryReportAsync(string quarryId, DateTime asOfDate);
+}
+
+// Report export
+public interface IFinancialReportExportService
+{
+    Task<byte[]> ExportTrialBalanceToPdfAsync(TrialBalanceReport report);
+    Task<byte[]> ExportProfitLossToPdfAsync(ProfitLossReport report);
+    Task<byte[]> ExportBalanceSheetToPdfAsync(BalanceSheetReport report);
+    Task<byte[]> ExportCashFlowToPdfAsync(CashFlowReport report);
+    Task<byte[]> ExportARAgingToPdfAsync(ARAgingReport report);
+    Task<byte[]> ExportAPSummaryToPdfAsync(APSummaryReport report);
+    // Excel versions also available
+}
+```
+
+**Database Migration Scripts**:
+- `scripts/AddAccountingModule.sql` - Creates accounting tables
+- `scripts/SeedChartOfAccounts.sql` - Seeds 32 accounts per quarry
+
+**Authorization**: All accounting features require `Manager` or `Administrator` role.
+
+---
+
 ### User Roles & Hierarchy
 
 QDeskPro implements a hierarchical user management system with three distinct roles:
@@ -632,6 +1090,9 @@ Administrator
 | View Own Quarries | ✅ | ✅ | ✅ (assigned only) |
 | Analytics Dashboard | ✅ | ✅ (own quarries) | ❌ |
 | Capture Sales | ❌ | ❌ | ✅ |
+| Capture Prepayments | ❌ | ❌ | ✅ |
+| Apply Prepayment to Sale | ❌ | ❌ | ✅ |
+| Track Collections | ❌ | ❌ | ✅ |
 | Capture Expenses | ❌ | ❌ | ✅ |
 | Capture Banking | ❌ | ❌ | ✅ |
 | Capture Fuel Usage | ❌ | ❌ | ✅ |

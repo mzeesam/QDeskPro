@@ -53,12 +53,13 @@
                     </MudItem>
 
                     <MudItem xs="12" sm="6">
-                        <MudDatePicker @bind-Date="_expenseDate"
+                        <MudDatePicker @bind-Date="_expense.ExpenseDate"
                                        Label="Expense Date"
                                        Variant="Variant.Outlined"
                                        Required="true"
+                                       RequiredError="Please select a date"
                                        MaxDate="@DateTime.Today"
-                                       MinDate="@DateTime.Today.AddDays(-14)"
+                                       MinDate="@DateTime.Today.AddDays(-5)"
                                        DateFormat="dd/MM/yyyy" />
                     </MudItem>
 
@@ -116,7 +117,7 @@
 
         @* Expense List *@
         <MudPaper Class="pa-4" Elevation="0">
-            <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">Recent Expenses (Last 14 Days)</MudText>
+            <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">Recent Expenses (Last 5 Days)</MudText>
 
             @if (!_expenses.Any())
             {
@@ -196,12 +197,11 @@
 
     private Expense _expense = new()
     {
-        ExpenseDate = DateTime.Now,
+        ExpenseDate = DateTime.Today,
         Amount = 0,
         Category = "Miscellaneous"
     };
 
-    private DateTime? _expenseDate = DateTime.Now;
     private List<Expense> _expenses = new();
 
     // Expense Categories (Fixed List from implementation_plan.md)
@@ -278,9 +278,6 @@
 
     private async Task SaveExpense()
     {
-        // Sync expense date
-        _expense.ExpenseDate = _expenseDate;
-
         _processing = true;
         try
         {
@@ -364,7 +361,6 @@
             Category = expense.Category,
             TxnReference = expense.TxnReference
         };
-        _expenseDate = expense.ExpenseDate;
         _isEditMode = true;
     }
 
@@ -377,11 +373,10 @@
     {
         _expense = new Expense
         {
-            ExpenseDate = DateTime.Now,
+            ExpenseDate = DateTime.Today,
             Amount = 0,
             Category = "Miscellaneous"
         };
-        _expenseDate = DateTime.Now;
         _isEditMode = false;
         _form?.ResetAsync();
     }

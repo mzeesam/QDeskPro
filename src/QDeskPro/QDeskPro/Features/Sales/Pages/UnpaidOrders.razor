@@ -1,0 +1,318 @@
+@page "/clerk/unpaid-orders"
+@using Microsoft.AspNetCore.Authorization
+@using QDeskPro.Features.Sales.Services
+@using QDeskPro.Features.Admin.Services
+@using QDeskPro.Domain.Entities
+@using System.Security.Claims
+@attribute [Authorize(Roles = "Clerk")]
+@rendermode InteractiveServer
+@inject SaleService SaleService
+@inject UserService UserService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+
+<PageTitle>Unpaid Orders - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudText Typo="Typo.h4" Class="font-weight-bold mb-4">
+        <MudIcon Icon="@Icons.Material.Rounded.PendingActions" Class="mr-2" Color="Color.Warning" />
+        Unpaid Orders
+    </MudText>
+
+    @if (_loading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+    }
+    else
+    {
+        @* Summary Cards *@
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4 summary-card total-amount" Elevation="0">
+                    <div class="d-flex align-center">
+                        <MudAvatar Color="Color.Error" Size="Size.Large" Variant="Variant.Outlined" Class="mr-3">
+                            <MudIcon Icon="@Icons.Material.Rounded.Money" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Unpaid</MudText>
+                            <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Error">
+                                KES @_summary.TotalAmount.ToString("N0")
+                            </MudText>
+                        </div>
+                    </div>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4 summary-card" Elevation="0">
+                    <div class="d-flex align-center">
+                        <MudAvatar Color="Color.Warning" Size="Size.Large" Variant="Variant.Outlined" Class="mr-3">
+                            <MudIcon Icon="@Icons.Material.Rounded.Receipt" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Unpaid Orders</MudText>
+                            <MudText Typo="Typo.h5" Class="font-weight-bold">
+                                @_summary.TotalCount
+                            </MudText>
+                        </div>
+                    </div>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4 summary-card oldest-order" Elevation="0">
+                    <div class="d-flex align-center">
+                        <MudAvatar Color="@(_summary.OldestDays > 30 ? Color.Error : Color.Warning)"
+                                   Size="Size.Large" Variant="Variant.Outlined" Class="mr-3">
+                            <MudIcon Icon="@Icons.Material.Rounded.Schedule" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Oldest Unpaid</MudText>
+                            <MudText Typo="Typo.h5" Class="font-weight-bold"
+                                     Color="@(_summary.OldestDays > 30 ? Color.Error : Color.Warning)">
+                                @_summary.OldestDays days
+                            </MudText>
+                        </div>
+                    </div>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        @* Search *@
+        <MudPaper Class="pa-4 mb-4" Elevation="0">
+            <MudTextField @bind-Value="_searchText"
+                          Label="Search by Vehicle Registration or Client Name"
+                          Variant="Variant.Outlined"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Rounded.Search"
+                          OnKeyUp="OnSearchKeyUp"
+                          Immediate="false"
+                          DebounceInterval="500" />
+        </MudPaper>
+
+        @if (!_unpaidOrders.Any())
+        {
+            <MudPaper Class="pa-8 text-center" Elevation="0">
+                <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Size="Size.Large" Color="Color.Success" />
+                <MudText Typo="Typo.h6" Class="mt-2" Color="Color.Success">No unpaid orders!</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">All your sales are fully paid.</MudText>
+            </MudPaper>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info" Class="mb-4" Dense="true">
+                Click on an order to edit and mark it as paid. The payment will be added to that day's collections.
+            </MudAlert>
+
+            <MudPaper Elevation="0">
+                @foreach (var sale in _unpaidOrders)
+                {
+                    var daysUnpaid = CalculateDaysUnpaid(sale.SaleDate);
+                    var agingClass = GetAgingClass(daysUnpaid);
+
+                    <MudCard Class="@($"mb-3 unpaid-card {agingClass}")" Elevation="1"
+                             Style="cursor: pointer;"
+                             @onclick="@(() => EditSale(sale))">
+                        <MudCardContent>
+                            <MudGrid>
+                                <MudItem xs="12" sm="7">
+                                    <div class="d-flex align-center mb-2">
+                                        <MudIcon Icon="@Icons.Material.Rounded.DirectionsCar" Size="Size.Small" Class="mr-2" />
+                                        <MudText Typo="Typo.h6" Class="font-weight-bold">
+                                            @sale.VehicleRegistration
+                                        </MudText>
+                                        <MudChip T="string" Size="Size.Small"
+                                                 Color="@(daysUnpaid > 30 ? Color.Error : Color.Warning)"
+                                                 Class="ml-2">
+                                            @daysUnpaid days
+                                        </MudChip>
+                                    </div>
+
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-1">
+                                        <MudIcon Icon="@Icons.Material.Rounded.Category" Size="Size.Small" Class="mr-1" />
+                                        @sale.Product?.ProductName |
+                                        Qty: <strong>@sale.Quantity.ToString("N0")</strong> |
+                                        Price: <strong>KES @sale.PricePerUnit.ToString("N0")</strong>
+                                    </MudText>
+
+                                    @if (!string.IsNullOrWhiteSpace(sale.ClientName))
+                                    {
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                            <MudIcon Icon="@Icons.Material.Rounded.Person" Size="Size.Small" Class="mr-1" />
+                                            @sale.ClientName
+                                            @if (!string.IsNullOrWhiteSpace(sale.ClientPhone))
+                                            {
+                                                <span> | @sale.ClientPhone</span>
+                                            }
+                                        </MudText>
+                                    }
+                                </MudItem>
+
+                                <MudItem xs="12" sm="5" Class="d-flex flex-column align-end justify-space-between">
+                                    <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Error">
+                                        KES @sale.GrossSaleAmount.ToString("N0")
+                                    </MudText>
+
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                        Sale Date: @sale.SaleDate?.ToString("dd/MM/yyyy")
+                                    </MudText>
+
+                                    <MudButton Size="Size.Small"
+                                               Variant="Variant.Filled"
+                                               Color="Color.Primary"
+                                               StartIcon="@Icons.Material.Rounded.Payment"
+                                               OnClick="@(() => EditSale(sale))"
+                                               OnClick:stopPropagation="true"
+                                               Class="mt-2">
+                                        Mark as Paid
+                                    </MudButton>
+                                </MudItem>
+                            </MudGrid>
+                        </MudCardContent>
+                    </MudCard>
+                }
+            </MudPaper>
+        }
+    }
+</MudContainer>
+
+<style>
+    .summary-card {
+        border-radius: 12px;
+        border: 1px solid rgba(0,0,0,0.08);
+        transition: all 0.2s ease;
+    }
+
+    .summary-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .total-amount {
+        border-left: 4px solid #F44336;
+    }
+
+    .oldest-order {
+        border-left: 4px solid #FF9800;
+    }
+
+    .unpaid-card {
+        transition: all 0.2s ease;
+        border-left: 4px solid #FF9800;
+    }
+
+    .unpaid-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .aging-warning {
+        background: rgba(255, 152, 0, 0.05);
+        border-left: 4px solid #FF9800;
+    }
+
+    .aging-overdue {
+        background: rgba(244, 67, 54, 0.08);
+        border-left: 4px solid #F44336;
+    }
+
+    .aging-critical {
+        background: rgba(211, 47, 47, 0.12);
+        border-left: 4px solid #D32F2F;
+    }
+</style>
+
+@code {
+    private bool _loading = true;
+    private string _userId = "";
+    private string _quarryId = "";
+    private string _searchText = "";
+
+    private List<Sale> _unpaidOrders = new();
+    private UnpaidOrdersSummary _summary = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get authenticated user
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+
+            if (string.IsNullOrEmpty(_userId))
+            {
+                Snackbar.Add("User not authenticated", Severity.Error);
+                return;
+            }
+
+            // Get user's quarry context from database
+            var userContext = await UserService.GetUserQuarryContextAsync(_userId);
+            if (userContext == null || string.IsNullOrEmpty(userContext.QuarryId))
+            {
+                Snackbar.Add("No quarry assigned to user", Severity.Error);
+                return;
+            }
+            _quarryId = userContext.QuarryId;
+
+            // Load unpaid orders and summary
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Run sequentially to avoid DbContext threading issues
+            _unpaidOrders = await SaleService.GetUnpaidOrdersForQuarryAsync(_quarryId, _searchText);
+            _summary = await SaleService.GetUnpaidOrdersSummaryAsync(_quarryId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading unpaid orders: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnSearchKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || string.IsNullOrWhiteSpace(_searchText) || _searchText.Length >= 3)
+        {
+            await LoadDataAsync();
+        }
+    }
+
+    private int CalculateDaysUnpaid(DateTime? saleDate)
+    {
+        if (saleDate == null) return 0;
+        return (int)(DateTime.Today - saleDate.Value.Date).TotalDays;
+    }
+
+    private string GetAgingClass(int daysUnpaid)
+    {
+        if (daysUnpaid > 30) return "aging-critical";
+        if (daysUnpaid > 14) return "aging-overdue";
+        return "aging-warning";
+    }
+
+    private void EditSale(Sale sale)
+    {
+        NavigationManager.NavigateTo($"/clerk/sales/edit/{sale.Id}");
+    }
+}

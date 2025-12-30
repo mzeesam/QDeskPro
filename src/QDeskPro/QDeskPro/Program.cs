@@ -398,7 +398,12 @@ try
     builder.Services.AddScoped<QDeskPro.Domain.Services.SaleCalculationService>();
     builder.Services.AddScoped<QDeskPro.Features.Dashboard.Services.DashboardService>();
     builder.Services.AddScoped<QDeskPro.Features.Dashboard.Services.AnalyticsService>();
+    builder.Services.AddScoped<QDeskPro.Features.Dashboard.Services.LiveOperationsService>();
+    builder.Services.AddScoped<QDeskPro.Features.Dashboard.Services.DataAnalyticsService>();
+    builder.Services.AddScoped<QDeskPro.Features.Dashboard.Services.ROIAnalysisService>();
+    builder.Services.AddScoped<QDeskPro.Features.AI.Services.PredictiveAnalyticsService>();
     builder.Services.AddScoped<QDeskPro.Features.Sales.Services.SaleService>();
+    builder.Services.AddScoped<QDeskPro.Features.Prepayments.Services.PrepaymentService>();
     builder.Services.AddScoped<QDeskPro.Features.Expenses.Services.ExpenseService>();
     builder.Services.AddScoped<QDeskPro.Features.Banking.Services.BankingService>();
     builder.Services.AddScoped<QDeskPro.Features.FuelUsage.Services.FuelUsageService>();
@@ -407,7 +412,13 @@ try
     builder.Services.AddScoped<QDeskPro.Features.Reports.Services.ExcelExportService>();
     builder.Services.AddScoped<QDeskPro.Features.Reports.Services.ReportExportService>();
     builder.Services.AddScoped<QDeskPro.Features.MasterData.Services.MasterDataService>();
+    builder.Services.AddScoped<QDeskPro.Features.MasterData.Services.DataManagementService>();
     builder.Services.AddScoped<QDeskPro.Features.Admin.Services.UserService>();
+
+    // Register Accounting services
+    builder.Services.AddScoped<QDeskPro.Features.Accounting.Services.IAccountingService, QDeskPro.Features.Accounting.Services.AccountingService>();
+    builder.Services.AddScoped<QDeskPro.Features.Accounting.Services.IFinancialReportService, QDeskPro.Features.Accounting.Services.FinancialReportService>();
+    builder.Services.AddScoped<QDeskPro.Features.Accounting.Services.IFinancialReportExportService, QDeskPro.Features.Accounting.Services.FinancialReportExportService>();
 
     // Configure email settings
     builder.Services.Configure<QDeskPro.Features.Reports.Services.EmailSettings>(
@@ -489,11 +500,11 @@ try
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",  // Required for MudBlazor
             "font-src 'self' https://fonts.gstatic.com",
             "img-src 'self' data: https:",
-            "connect-src 'self' wss: ws:",  // Required for SignalR WebSocket
+            "connect-src 'self' wss: ws: https://cdn.jsdelivr.net",  // Required for SignalR WebSocket + CDN
             "frame-ancestors 'none'",
             "form-action 'self'",
-            "base-uri 'self'",
-            "upgrade-insecure-requests"
+            "base-uri 'self'"
+            // REMOVED: "upgrade-insecure-requests" - This forces HTTPS, disabled for HTTP-only deployment
         );
         context.Response.Headers.Append("Content-Security-Policy", csp);
 
@@ -512,11 +523,15 @@ try
     else
     {
         // Security: HSTS with 1-year max age, preload, and include subdomains
-        app.UseHsts();
+        // DISABLED for HTTP-only deployment - uncomment when SSL/TLS is configured
+        // app.UseHsts();
     }
     // Removed: app.UseStatusCodePagesWithReExecute("/not-found");
     // This was intercepting Account page routes before Razor Components routing could handle them
-    app.UseHttpsRedirection();
+
+    // HTTPS Redirection - Only enable when SSL/TLS is configured on the server
+    // Comment out the line below if deploying to HTTP-only environments
+    // app.UseHttpsRedirection();
 
     // Security: Enable rate limiting
     app.UseRateLimiter();
@@ -528,6 +543,25 @@ try
     app.UseAuthorization();
 
     app.UseAntiforgery();
+
+    // Configure static file serving with explicit MIME types
+    var provider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+    provider.Mappings[".css"] = "text/css";
+    provider.Mappings[".js"] = "application/javascript";
+    provider.Mappings[".json"] = "application/json";
+    provider.Mappings[".woff"] = "font/woff";
+    provider.Mappings[".woff2"] = "font/woff2";
+    provider.Mappings[".svg"] = "image/svg+xml";
+
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        ContentTypeProvider = provider,
+        OnPrepareResponse = ctx =>
+        {
+            // Add cache headers for static files
+            ctx.Context.Response.Headers.Append("Cache-Control", "public,max-age=31536000");
+        }
+    });
 
     app.MapStaticAssets();
     app.MapRazorComponents<App>()

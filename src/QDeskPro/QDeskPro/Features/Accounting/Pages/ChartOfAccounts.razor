@@ -1,0 +1,344 @@
+@page "/manager/accounting/chart-of-accounts"
+@page "/admin/accounting/chart-of-accounts"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Domain.Enums
+@using QDeskPro.Features.Accounting.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject IAccountingService AccountingService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Chart of Accounts - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4 mb-8">
+    <MudStack Spacing="4">
+        @* Header *@
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <div>
+                <MudBreadcrumbs Items="_breadcrumbs" Class="pa-0" />
+                <MudText Typo="Typo.h4" Class="fw-bold mt-2">
+                    <MudIcon Icon="@Icons.Material.Filled.AccountTree" Class="mr-2" Style="vertical-align: middle;" />
+                    Chart of Accounts
+                </MudText>
+                <MudText Typo="Typo.body2" Class="text-muted">
+                    Standard ledger accounts for double-entry bookkeeping
+                </MudText>
+            </div>
+            <MudStack Row="true" Spacing="2">
+                <MudTextField @bind-Value="_searchText" Placeholder="Search accounts..." Variant="Variant.Outlined"
+                             Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                             Immediate="true" DebounceInterval="300" Style="width: 250px;" Dense="true" />
+            </MudStack>
+        </MudStack>
+
+        @* Account Category Tabs *@
+        <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+            <MudTabPanel Text="All Accounts" Icon="@Icons.Material.Filled.List">
+                <MudStack Spacing="3">
+                    @foreach (var category in Enum.GetValues<AccountCategory>())
+                    {
+                        var categoryAccounts = GetFilteredAccounts().Where(a => a.Category == category).ToList();
+                        if (categoryAccounts.Any())
+                        {
+                            <MudExpansionPanels Elevation="0">
+                                <MudExpansionPanel IsInitiallyExpanded="@(_expandedCategory == category)">
+                                    <TitleContent>
+                                        <MudStack Row="true" AlignItems="AlignItems.Center">
+                                            <MudIcon Icon="@GetCategoryIcon(category)" Color="@GetCategoryColor(category)" />
+                                            <MudText Typo="Typo.h6">@GetCategoryName(category)</MudText>
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Default">@categoryAccounts.Count accounts</MudChip>
+                                        </MudStack>
+                                    </TitleContent>
+                                    <ChildContent>
+                                        <MudTable Items="@categoryAccounts" Dense="true" Hover="true" Bordered="true">
+                                            <HeaderContent>
+                                                <MudTh Style="width: 100px;">Code</MudTh>
+                                                <MudTh>Account Name</MudTh>
+                                                <MudTh>Type</MudTh>
+                                                <MudTh>Description</MudTh>
+                                                <MudTh Style="width: 100px;">System</MudTh>
+                                            </HeaderContent>
+                                            <RowTemplate>
+                                                <MudTd DataLabel="Code">
+                                                    <MudText Typo="Typo.body2" Class="fw-bold" Style="font-family: monospace;">
+                                                        @context.AccountCode
+                                                    </MudText>
+                                                </MudTd>
+                                                <MudTd DataLabel="Account Name">
+                                                    <MudStack Spacing="0">
+                                                        <MudText Typo="Typo.body2">@context.AccountName</MudText>
+                                                        @if (!string.IsNullOrEmpty(context.ParentAccountId))
+                                                        {
+                                                            <MudText Typo="Typo.caption" Class="text-muted">
+                                                                ↳ Sub-account
+                                                            </MudText>
+                                                        }
+                                                    </MudStack>
+                                                </MudTd>
+                                                <MudTd DataLabel="Type">
+                                                    <MudChip T="string" Size="Size.Small" Color="@GetCategoryColor(context.Category)">
+                                                        @GetAccountTypeName(context.Type)
+                                                    </MudChip>
+                                                </MudTd>
+                                                <MudTd DataLabel="Description">
+                                                    <MudText Typo="Typo.caption" Class="text-muted">
+                                                        @(context.Description ?? "-")
+                                                    </MudText>
+                                                </MudTd>
+                                                <MudTd DataLabel="System">
+                                                    @if (context.IsSystemAccount)
+                                                    {
+                                                        <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Default" />
+                                                    }
+                                                </MudTd>
+                                            </RowTemplate>
+                                        </MudTable>
+                                    </ChildContent>
+                                </MudExpansionPanel>
+                            </MudExpansionPanels>
+                        }
+                    }
+                </MudStack>
+            </MudTabPanel>
+
+            @foreach (var category in Enum.GetValues<AccountCategory>())
+            {
+                <MudTabPanel Text="@GetCategoryName(category)" Icon="@GetCategoryIcon(category)">
+                    @{
+                        var categoryAccounts = GetFilteredAccounts().Where(a => a.Category == category).ToList();
+                    }
+                    @if (categoryAccounts.Any())
+                    {
+                        <MudTable Items="@categoryAccounts" Dense="true" Hover="true" Bordered="true" Striped="true">
+                            <HeaderContent>
+                                <MudTh Style="width: 100px;">Code</MudTh>
+                                <MudTh>Account Name</MudTh>
+                                <MudTh>Type</MudTh>
+                                <MudTh>Description</MudTh>
+                                <MudTh Style="width: 100px;">System</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Code">
+                                    <MudText Typo="Typo.body2" Class="fw-bold" Style="font-family: monospace;">
+                                        @context.AccountCode
+                                    </MudText>
+                                </MudTd>
+                                <MudTd DataLabel="Account Name">
+                                    <MudStack Spacing="0">
+                                        <MudText Typo="Typo.body2">@context.AccountName</MudText>
+                                        @if (!string.IsNullOrEmpty(context.ParentAccountId))
+                                        {
+                                            <MudText Typo="Typo.caption" Class="text-muted">
+                                                ↳ Sub-account
+                                            </MudText>
+                                        }
+                                    </MudStack>
+                                </MudTd>
+                                <MudTd DataLabel="Type">
+                                    <MudChip T="string" Size="Size.Small" Color="@GetCategoryColor(context.Category)">
+                                        @GetAccountTypeName(context.Type)
+                                    </MudChip>
+                                </MudTd>
+                                <MudTd DataLabel="Description">
+                                    <MudText Typo="Typo.caption" Class="text-muted">
+                                        @(context.Description ?? "-")
+                                    </MudText>
+                                </MudTd>
+                                <MudTd DataLabel="System">
+                                    @if (context.IsSystemAccount)
+                                    {
+                                        <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Default" />
+                                    }
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Info">
+                            No accounts in this category.
+                        </MudAlert>
+                    }
+                </MudTabPanel>
+            }
+        </MudTabs>
+
+        @* Account Structure Summary *@
+        <MudPaper Class="pa-4 rounded-lg" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Account Structure Summary</MudText>
+            <MudGrid>
+                @foreach (var category in Enum.GetValues<AccountCategory>())
+                {
+                    var count = _accounts.Count(a => a.Category == category);
+                    var codeRange = GetCodeRange(category);
+                    <MudItem xs="12" sm="6" md="4" lg="2">
+                        <MudPaper Class="pa-3 rounded-lg" Elevation="0" Style="@($"background: var(--mud-palette-{GetCategoryColorName(category)}-lighten); border-left: 4px solid var(--mud-palette-{GetCategoryColorName(category)});")">
+                            <MudText Typo="Typo.caption" Class="text-muted">@codeRange</MudText>
+                            <MudText Typo="Typo.body1" Class="fw-bold">@GetCategoryName(category)</MudText>
+                            <MudText Typo="Typo.body2">@count accounts</MudText>
+                        </MudPaper>
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudPaper>
+
+        @* Help Info *@
+        <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+            <MudText Typo="Typo.body2">
+                <strong>About Chart of Accounts:</strong> This is a standard double-entry bookkeeping chart of accounts.
+                System accounts (marked with <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" />) are automatically
+                used for transaction recording and cannot be modified. Custom accounts can be added for additional tracking needs.
+            </MudText>
+        </MudAlert>
+    </MudStack>
+</MudContainer>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new BreadcrumbItem("Accounting", "/manager/accounting", false, Icons.Material.Filled.AccountBalance),
+        new BreadcrumbItem("Chart of Accounts", null, true)
+    };
+
+    private List<LedgerAccount> _accounts = new();
+    private string _searchText = "";
+    private AccountCategory? _expandedCategory = AccountCategory.Assets;
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAccounts();
+    }
+
+    private async Task LoadAccounts()
+    {
+        _loading = true;
+        try
+        {
+            _accounts = await DbContext.LedgerAccounts
+                .Where(a => a.IsActive)
+                .OrderBy(a => a.AccountCode)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading accounts: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private List<LedgerAccount> GetFilteredAccounts()
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+            return _accounts;
+
+        var search = _searchText.ToLower();
+        return _accounts.Where(a =>
+            a.AccountCode.ToLower().Contains(search) ||
+            a.AccountName.ToLower().Contains(search) ||
+            (a.Description?.ToLower().Contains(search) ?? false)
+        ).ToList();
+    }
+
+    private string GetCategoryName(AccountCategory category) => category switch
+    {
+        AccountCategory.Assets => "Assets",
+        AccountCategory.Liabilities => "Liabilities",
+        AccountCategory.Equity => "Equity",
+        AccountCategory.Revenue => "Revenue",
+        AccountCategory.CostOfSales => "Cost of Sales",
+        AccountCategory.Expenses => "Expenses",
+        _ => category.ToString()
+    };
+
+    private string GetAccountTypeName(AccountType type) => type switch
+    {
+        // Assets
+        AccountType.Cash => "Cash",
+        AccountType.Bank => "Bank",
+        AccountType.AccountsReceivable => "Accounts Receivable",
+        AccountType.PrepaidExpenses => "Prepaid Expenses",
+        AccountType.FixedAssets => "Fixed Assets",
+        // Liabilities
+        AccountType.AccountsPayable => "Accounts Payable",
+        AccountType.CustomerDeposits => "Customer Deposits",
+        AccountType.AccruedExpenses => "Accrued Expenses",
+        AccountType.LoansPayable => "Loans Payable",
+        // Equity
+        AccountType.OwnersEquity => "Owner's Equity",
+        AccountType.RetainedEarnings => "Retained Earnings",
+        // Revenue
+        AccountType.SalesRevenue => "Sales Revenue",
+        AccountType.OtherIncome => "Other Income",
+        // Cost of Sales
+        AccountType.CommissionExpense => "Commission Expense",
+        AccountType.LoadersFees => "Loaders Fees",
+        AccountType.LandRateFees => "Land Rate Fees",
+        // Operating Expenses
+        AccountType.FuelExpense => "Fuel Expense",
+        AccountType.TransportationHire => "Transportation Hire",
+        AccountType.MaintenanceRepairs => "Maintenance & Repairs",
+        AccountType.ConsumablesUtilities => "Consumables & Utilities",
+        AccountType.AdministrativeExpenses => "Administrative",
+        AccountType.MarketingExpenses => "Marketing",
+        AccountType.WagesSalaries => "Wages & Salaries",
+        AccountType.BankCharges => "Bank Charges",
+        AccountType.CessRoadFees => "Cess & Road Fees",
+        AccountType.MiscellaneousExpenses => "Miscellaneous",
+        _ => type.ToString()
+    };
+
+    private string GetCategoryIcon(AccountCategory category) => category switch
+    {
+        AccountCategory.Assets => Icons.Material.Filled.AccountBalanceWallet,
+        AccountCategory.Liabilities => Icons.Material.Filled.CreditCard,
+        AccountCategory.Equity => Icons.Material.Filled.Savings,
+        AccountCategory.Revenue => Icons.Material.Filled.TrendingUp,
+        AccountCategory.CostOfSales => Icons.Material.Filled.ProductionQuantityLimits,
+        AccountCategory.Expenses => Icons.Material.Filled.Receipt,
+        _ => Icons.Material.Filled.Category
+    };
+
+    private Color GetCategoryColor(AccountCategory category) => category switch
+    {
+        AccountCategory.Assets => Color.Success,
+        AccountCategory.Liabilities => Color.Error,
+        AccountCategory.Equity => Color.Info,
+        AccountCategory.Revenue => Color.Primary,
+        AccountCategory.CostOfSales => Color.Warning,
+        AccountCategory.Expenses => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private string GetCategoryColorName(AccountCategory category) => category switch
+    {
+        AccountCategory.Assets => "success",
+        AccountCategory.Liabilities => "error",
+        AccountCategory.Equity => "info",
+        AccountCategory.Revenue => "primary",
+        AccountCategory.CostOfSales => "warning",
+        AccountCategory.Expenses => "secondary",
+        _ => "default"
+    };
+
+    private string GetCodeRange(AccountCategory category) => category switch
+    {
+        AccountCategory.Assets => "1000-1999",
+        AccountCategory.Liabilities => "2000-2999",
+        AccountCategory.Equity => "3000-3999",
+        AccountCategory.Revenue => "4000-4999",
+        AccountCategory.CostOfSales => "5000-5999",
+        AccountCategory.Expenses => "6000-6999",
+        _ => ""
+    };
+}

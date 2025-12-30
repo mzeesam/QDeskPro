@@ -1,0 +1,412 @@
+@page "/clerk/prepayments"
+@attribute [Authorize(Roles = "Clerk")]
+@rendermode InteractiveServer
+
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.Prepayments.Services
+@using QDeskPro.Features.Admin.Services
+@using System.Security.Claims
+
+@inject PrepaymentService PrepaymentService
+@inject UserService UserService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Prepayments - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h4" Class="font-weight-bold">
+            <MudIcon Icon="@Icons.Material.Rounded.Savings" Class="mr-2" />
+            Prepayments
+        </MudText>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Success"
+                   StartIcon="@Icons.Material.Rounded.Add"
+                   Href="/clerk/prepayments/new"
+                   Class="touch-target">
+            New Prepayment
+        </MudButton>
+    </MudStack>
+
+    @if (_loading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else
+    {
+        @* Summary Cards *@
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4 summary-card" Elevation="0">
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Active Prepayments</MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Primary" Class="font-weight-bold">
+                            @_summaryStats.TotalCount
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4 summary-card" Elevation="0">
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total Amount</MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Success" Class="font-weight-bold">
+                            KES @_summaryStats.TotalAmount.ToString("N0")
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudPaper Class="pa-4 summary-card" Elevation="0">
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Remaining Balance</MudText>
+                        <MudText Typo="Typo.h4" Color="Color.Warning" Class="font-weight-bold">
+                            KES @_summaryStats.TotalRemaining.ToString("N0")
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        @* Search and Filter *@
+        <MudPaper Class="pa-4 mb-4" Elevation="0">
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_searchQuery"
+                                  Label="Search by Vehicle Registration"
+                                  Variant="Variant.Outlined"
+                                  Adornment="Adornment.End"
+                                  AdornmentIcon="@Icons.Material.Rounded.Search"
+                                  OnKeyUp="SearchPrepayments"
+                                  OnAdornmentClick="SearchPrepayments"
+                                  Clearable="true"
+                                  OnClearButtonClick="ClearSearch"
+                                  Immediate="false" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_selectedStatus"
+                               Label="Filter by Status"
+                               Variant="Variant.Outlined"
+                               AnchorOrigin="Origin.BottomCenter"
+                               Clearable="true"
+                               OnClearButtonClick="ClearStatusFilter">
+                        <MudSelectItem Value="@("Active")">Active</MudSelectItem>
+                        <MudSelectItem Value="@("Partial")">Partial</MudSelectItem>
+                        <MudSelectItem Value="@("Fulfilled")">Fulfilled</MudSelectItem>
+                        <MudSelectItem Value="@("Refunded")">Refunded</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @* Prepayments Table *@
+        <MudPaper Class="pa-4" Elevation="0">
+            @if (!_displayedPrepayments.Any())
+            {
+                <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info">
+                    @if (!string.IsNullOrWhiteSpace(_searchQuery))
+                    {
+                        <text>No prepayments found matching "@_searchQuery"</text>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_selectedStatus))
+                    {
+                        <text>No @_selectedStatus.ToLower() prepayments found</text>
+                    }
+                    else
+                    {
+                        <text>No prepayments recorded yet</text>
+                    }
+                </MudAlert>
+            }
+            else
+            {
+                <MudTable Items="@_displayedPrepayments"
+                          T="Prepayment"
+                          Hover="true"
+                          Breakpoint="Breakpoint.Sm"
+                          Dense="true"
+                          Loading="@_loadingList"
+                          RowClass="cursor-pointer"
+                          OnRowClick="@(args => ViewDetails(args.Item))">
+                    <HeaderContent>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Vehicle</MudTh>
+                        <MudTh>Client</MudTh>
+                        <MudTh>Product</MudTh>
+                        <MudTh Style="text-align: right">Amount Paid</MudTh>
+                        <MudTh Style="text-align: right">Used</MudTh>
+                        <MudTh Style="text-align: right">Balance</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Date">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body2">@context.PrepaymentDate.ToString("dd/MM/yy")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.PrepaymentDate.ToString("hh:mm tt")</MudText>
+                            </MudStack>
+                        </MudTd>
+                        <MudTd DataLabel="Vehicle">
+                            <MudText Typo="Typo.body2" Class="font-weight-bold">@context.VehicleRegistration</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Client">
+                            @if (!string.IsNullOrWhiteSpace(context.ClientName))
+                            {
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.body2">@context.ClientName</MudText>
+                                    @if (!string.IsNullOrWhiteSpace(context.ClientPhone))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.ClientPhone</MudText>
+                                    }
+                                </MudStack>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">-</MudText>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Product">
+                            @if (context.IntendedProduct != null)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info">@context.IntendedProduct.ProductName</MudChip>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Any</MudText>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Amount Paid" Style="text-align: right">
+                            <MudText Typo="Typo.body2" Class="font-weight-medium">
+                                KES @context.TotalAmountPaid.ToString("N0")
+                            </MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Used" Style="text-align: right">
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                KES @context.AmountUsed.ToString("N0")
+                            </MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Balance" Style="text-align: right">
+                            <MudText Typo="Typo.body1" Color="Color.Warning" Class="font-weight-bold">
+                                KES @context.RemainingBalance.ToString("N0")
+                            </MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Status">
+                            @{
+                                var statusColor = context.Status switch
+                                {
+                                    "Active" => Color.Success,
+                                    "Partial" => Color.Warning,
+                                    "Fulfilled" => Color.Info,
+                                    "Refunded" => Color.Error,
+                                    _ => Color.Default
+                                };
+                            }
+                            <MudChip T="string" Size="Size.Small" Color="@statusColor">@context.Status</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Actions">
+                            <MudStack Row="true" Spacing="1">
+                                <MudIconButton Icon="@Icons.Material.Rounded.Visibility"
+                                               Size="Size.Small"
+                                               Color="Color.Primary"
+                                               OnClick="@(() => ViewDetails(context))"
+                                               Title="View Details" />
+                                @if (context.Status == "Active" || context.Status == "Partial")
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Rounded.ShoppingCart"
+                                                   Size="Size.Small"
+                                                   Color="Color.Success"
+                                                   OnClick="@(() => FulfillPrepayment(context))"
+                                                   Title="Fulfill Prepayment" />
+                                }
+                            </MudStack>
+                        </MudTd>
+                    </RowTemplate>
+                    <PagerContent>
+                        <MudTablePager PageSizeOptions="new int[] { 12, 25, 50 }" />
+                    </PagerContent>
+                </MudTable>
+            }
+        </MudPaper>
+    }
+</MudContainer>
+
+<style>
+    .cursor-pointer {
+        cursor: pointer;
+    }
+
+    .cursor-pointer:hover {
+        background-color: rgba(0, 0, 0, 0.04);
+    }
+
+    .summary-card {
+        border-radius: 12px;
+        border-left: 4px solid #1976D2;
+    }
+
+    .touch-target {
+        min-height: 44px;
+        min-width: 44px;
+    }
+</style>
+
+@code {
+    private bool _loading = true;
+    private bool _loadingList = false;
+    private string _userId = "";
+    private string _quarryId = "";
+
+    private string _searchQuery = "";
+    private string _selectedStatus = "";
+
+    private List<Prepayment> _allPrepayments = new();
+    private List<Prepayment> _displayedPrepayments = new();
+
+    private PrepaymentSummaryStats _summaryStats = new();
+
+    private class PrepaymentSummaryStats
+    {
+        public int TotalCount { get; set; }
+        public double TotalAmount { get; set; }
+        public double TotalRemaining { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get user info from auth state
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+
+                // Get user's quarry context from database
+                var userContext = await UserService.GetUserQuarryContextAsync(_userId);
+
+                if (userContext != null)
+                {
+                    _quarryId = userContext.QuarryId;
+
+                    // Load prepayments
+                    await RefreshPrepaymentList();
+                }
+                else
+                {
+                    Snackbar.Add("No quarry assigned to your account. Please contact your manager.", Severity.Warning);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading prepayments: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Refresh data on every render to catch navigation from other pages
+        if (!firstRender && !_loading && !string.IsNullOrWhiteSpace(_quarryId))
+        {
+            await RefreshPrepaymentList();
+        }
+    }
+
+    private async Task RefreshPrepaymentList()
+    {
+        _loadingList = true;
+        try
+        {
+            // Load all prepayments for the quarry
+            _allPrepayments = await PrepaymentService.GetAllPrepaymentsAsync(_quarryId);
+
+            // Apply filters
+            ApplyFilters();
+
+            // Calculate summary stats (for active and partial only)
+            var activeOrPartial = _allPrepayments
+                .Where(p => p.Status == "Active" || p.Status == "Partial")
+                .ToList();
+
+            _summaryStats = new PrepaymentSummaryStats
+            {
+                TotalCount = activeOrPartial.Count,
+                TotalAmount = activeOrPartial.Sum(p => p.TotalAmountPaid),
+                TotalRemaining = activeOrPartial.Sum(p => p.RemainingBalance)
+            };
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading prepayment list: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingList = false;
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        _displayedPrepayments = _allPrepayments;
+
+        // Filter by search query
+        if (!string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            _displayedPrepayments = _displayedPrepayments
+                .Where(p => p.VehicleRegistration.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        // Filter by status
+        if (!string.IsNullOrWhiteSpace(_selectedStatus))
+        {
+            _displayedPrepayments = _displayedPrepayments
+                .Where(p => p.Status == _selectedStatus)
+                .ToList();
+        }
+
+        // Sort by date descending
+        _displayedPrepayments = _displayedPrepayments
+            .OrderByDescending(p => p.PrepaymentDate)
+            .ToList();
+    }
+
+    private async Task SearchPrepayments()
+    {
+        ApplyFilters();
+        await Task.CompletedTask;
+    }
+
+    private async Task ClearSearch()
+    {
+        _searchQuery = "";
+        ApplyFilters();
+        await Task.CompletedTask;
+    }
+
+    private async Task ClearStatusFilter()
+    {
+        _selectedStatus = "";
+        ApplyFilters();
+        await Task.CompletedTask;
+    }
+
+    private void ViewDetails(Prepayment prepayment)
+    {
+        NavigationManager.NavigateTo($"/clerk/prepayments/{prepayment.Id}");
+    }
+
+    private void FulfillPrepayment(Prepayment prepayment)
+    {
+        // Navigate to New Sale page with prepayment ID as query parameter
+        NavigationManager.NavigateTo($"/clerk/sales/new?prepaymentId={prepayment.Id}");
+    }
+}

@@ -1,0 +1,100 @@
+@using MudBlazor
+@using QDeskPro.Features.Dashboard.Services
+
+<MudCard Elevation="0" Class="comparison-card pa-4 rounded-lg">
+    <MudCardContent>
+        <MudText Typo="Typo.h6" Class="mb-3">Period Comparison</MudText>
+
+        <MudGrid Spacing="2">
+            <MudItem xs="6">
+                <MudPaper Elevation="0" Class="pa-3 rounded-lg comparison-period">
+                    <MudText Typo="Typo.caption" Class="text-muted">Current Period</MudText>
+                    <MudText Typo="Typo.body2" Class="font-weight-bold">
+                        @CurrentPeriod.FromDate.ToString("MMM dd") - @CurrentPeriod.ToDate.ToString("MMM dd")
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="6">
+                <MudPaper Elevation="0" Class="pa-3 rounded-lg comparison-period">
+                    <MudText Typo="Typo.caption" Class="text-muted">Previous Period</MudText>
+                    <MudText Typo="Typo.body2" Class="font-weight-bold">
+                        @PreviousPeriod.FromDate.ToString("MMM dd") - @PreviousPeriod.ToDate.ToString("MMM dd")
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-3" />
+
+        <MudStack Spacing="2">
+            @* Revenue comparison *@
+            <div class="d-flex justify-space-between align-center py-2">
+                <MudText Typo="Typo.body2">Revenue</MudText>
+                <div class="d-flex align-center gap-2">
+                    <MudText Typo="Typo.body2" Class="font-weight-bold">
+                        KES @CurrentPeriod.Revenue.ToString("N0")
+                    </MudText>
+                    <MudChip T="string" Size="Size.Small"
+                            Color="@(RevenueChangePercent >= 0 ? Color.Success : Color.Error)"
+                            Icon="@(RevenueChangePercent >= 0 ? Icons.Material.Filled.TrendingUp : Icons.Material.Filled.TrendingDown)">
+                        @((RevenueChangePercent > 0 ? "+" : ""))@RevenueChangePercent.ToString("F1")%
+                    </MudChip>
+                </div>
+            </div>
+
+            @* Expenses comparison *@
+            <div class="d-flex justify-space-between align-center py-2">
+                <MudText Typo="Typo.body2">Expenses</MudText>
+                <div class="d-flex align-center gap-2">
+                    <MudText Typo="Typo.body2" Class="font-weight-bold">
+                        KES @CurrentPeriod.Expenses.ToString("N0")
+                    </MudText>
+                    <MudChip T="string" Size="Size.Small"
+                            Color="@(ExpenseChangePercent <= 0 ? Color.Success : Color.Error)"
+                            Icon="@(ExpenseChangePercent >= 0 ? Icons.Material.Filled.TrendingUp : Icons.Material.Filled.TrendingDown)">
+                        @((ExpenseChangePercent > 0 ? "+" : ""))@ExpenseChangePercent.ToString("F1")%
+                    </MudChip>
+                </div>
+            </div>
+
+            @* Quantity comparison *@
+            <div class="d-flex justify-space-between align-center py-2">
+                <MudText Typo="Typo.body2">Quantity</MudText>
+                <div class="d-flex align-center gap-2">
+                    <MudText Typo="Typo.body2" Class="font-weight-bold">
+                        @CurrentPeriod.Quantity.ToString("N0") pcs
+                    </MudText>
+                    <MudChip T="string" Size="Size.Small"
+                            Color="@(QuantityChangePercent >= 0 ? Color.Success : Color.Error)"
+                            Icon="@(QuantityChangePercent >= 0 ? Icons.Material.Filled.TrendingUp : Icons.Material.Filled.TrendingDown)">
+                        @((QuantityChangePercent > 0 ? "+" : ""))@QuantityChangePercent.ToString("F1")%
+                    </MudChip>
+                </div>
+            </div>
+
+            @* Margin comparison *@
+            <div class="d-flex justify-space-between align-center py-2">
+                <MudText Typo="Typo.body2">Profit Margin</MudText>
+                <div class="d-flex align-center gap-2">
+                    <MudText Typo="Typo.body2" Class="font-weight-bold">
+                        @CurrentPeriod.MarginPercent.ToString("F1")%
+                    </MudText>
+                    <MudChip T="string" Size="Size.Small"
+                            Color="@(MarginChange >= 0 ? Color.Success : Color.Error)"
+                            Icon="@(MarginChange >= 0 ? Icons.Material.Filled.TrendingUp : Icons.Material.Filled.TrendingDown)">
+                        @((MarginChange > 0 ? "+" : ""))@MarginChange.ToString("F1") pp
+                    </MudChip>
+                </div>
+            </div>
+        </MudStack>
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public PeriodMetrics CurrentPeriod { get; set; } = new();
+    [Parameter] public PeriodMetrics PreviousPeriod { get; set; } = new();
+    [Parameter] public double RevenueChangePercent { get; set; }
+    [Parameter] public double ExpenseChangePercent { get; set; }
+    [Parameter] public double QuantityChangePercent { get; set; }
+    [Parameter] public double MarginChange { get; set; }
+}

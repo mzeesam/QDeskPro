@@ -1,0 +1,669 @@
+@page "/clerk/prepayments/{Id}"
+@attribute [Authorize(Roles = "Clerk,Manager,Administrator")]
+@rendermode InteractiveServer
+
+@using MudBlazor
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.Prepayments.Services
+@using System.Security.Claims
+
+@inject PrepaymentService PrepaymentService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+@inject IDialogService DialogService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Prepayment Details - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    @if (_loading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_prepayment == null)
+    {
+        <MudAlert Severity="Severity.Error" Icon="@Icons.Material.Rounded.Error">
+            Prepayment not found
+        </MudAlert>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Href="/clerk/prepayments"
+                   Class="mt-4">
+            Back to Prepayments
+        </MudButton>
+    }
+    else
+    {
+        @* Header with Back Button and Actions *@
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudButton Variant="Variant.Text"
+                       StartIcon="@Icons.Material.Rounded.ArrowBack"
+                       Href="/clerk/prepayments">
+                Back to Prepayments
+            </MudButton>
+            <MudStack Row="true" Spacing="2">
+                @if (_prepayment.Status == "Active" || _prepayment.Status == "Partial")
+                {
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               StartIcon="@Icons.Material.Rounded.ShoppingCart"
+                               OnClick="FulfillPrepayment">
+                        Fulfill Prepayment
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Rounded.Edit"
+                               OnClick="@ShowEditDialog">
+                        Edit
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Error"
+                               StartIcon="@Icons.Material.Rounded.Undo"
+                               OnClick="@ShowRefundDialog">
+                        Refund
+                    </MudButton>
+                }
+                @if (_prepayment.AmountUsed == 0)
+                {
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Error"
+                               StartIcon="@Icons.Material.Rounded.Delete"
+                               OnClick="@ShowDeleteDialog">
+                        Delete
+                    </MudButton>
+                }
+            </MudStack>
+        </MudStack>
+
+        @* Prepayment Summary Card *@
+        <MudPaper Class="pa-6 mb-4" Elevation="2">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+                        <MudText Typo="Typo.h4" Class="font-weight-bold">
+                            @_prepayment.VehicleRegistration
+                        </MudText>
+                        @{
+                            var statusColor = _prepayment.Status switch
+                            {
+                                "Active" => Color.Success,
+                                "Partial" => Color.Warning,
+                                "Fulfilled" => Color.Info,
+                                "Refunded" => Color.Error,
+                                _ => Color.Default
+                            };
+                        }
+                        <MudChip T="string" Color="@statusColor" Size="Size.Large" Class="font-weight-bold">
+                            @_prepayment.Status
+                        </MudChip>
+                    </MudStack>
+                </MudItem>
+
+                @* Client Details *@
+                @if (!string.IsNullOrWhiteSpace(_prepayment.ClientName))
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Client Name</MudText>
+                            <MudText Typo="Typo.body1" Class="font-weight-medium">@_prepayment.ClientName</MudText>
+                        </MudStack>
+                    </MudItem>
+                }
+                @if (!string.IsNullOrWhiteSpace(_prepayment.ClientPhone))
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Phone Number</MudText>
+                            <MudText Typo="Typo.body1" Class="font-weight-medium">@_prepayment.ClientPhone</MudText>
+                        </MudStack>
+                    </MudItem>
+                }
+
+                @* Prepayment Date *@
+                <MudItem xs="12" sm="6">
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Prepayment Date</MudText>
+                        <MudText Typo="Typo.body1" Class="font-weight-medium">
+                            @_prepayment.PrepaymentDate.ToString("dddd, dd MMMM yyyy 'at' hh:mm tt")
+                        </MudText>
+                    </MudStack>
+                </MudItem>
+
+                @* Clerk Name *@
+                <MudItem xs="12" sm="6">
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Recorded By</MudText>
+                        <MudText Typo="Typo.body1" Class="font-weight-medium">@_prepayment.ClerkName</MudText>
+                    </MudStack>
+                </MudItem>
+
+                @* Payment Details *@
+                <MudItem xs="12" sm="6">
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Payment Mode</MudText>
+                        <MudChip T="string" Size="Size.Medium" Color="Color.Info">@_prepayment.PaymentMode</MudChip>
+                    </MudStack>
+                </MudItem>
+
+                @if (!string.IsNullOrWhiteSpace(_prepayment.PaymentReference))
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Payment Reference</MudText>
+                            <MudText Typo="Typo.body1" Class="font-weight-medium">@_prepayment.PaymentReference</MudText>
+                        </MudStack>
+                    </MudItem>
+                }
+
+                @* Intended Product *@
+                @if (_prepayment.IntendedProduct != null)
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Intended Product</MudText>
+                            <MudChip T="string" Size="Size.Medium" Color="Color.Primary">
+                                @_prepayment.IntendedProduct.ProductName
+                            </MudChip>
+                        </MudStack>
+                    </MudItem>
+
+                    @if (_prepayment.IntendedQuantity.HasValue)
+                    {
+                        <MudItem xs="12" sm="6">
+                            <MudStack Spacing="1">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Estimated Quantity</MudText>
+                                <MudText Typo="Typo.body1" Class="font-weight-medium">
+                                    @_prepayment.IntendedQuantity.Value.ToString("N0") pieces @("@") KES @_prepayment.IntendedPricePerUnit?.ToString("N1")
+                                </MudText>
+                            </MudStack>
+                        </MudItem>
+                    }
+                }
+
+                @* Divider *@
+                <MudItem xs="12">
+                    <MudDivider Class="my-2" />
+                </MudItem>
+
+                @* Financial Summary *@
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-4 summary-box" Elevation="0" Style="background-color: rgba(76, 175, 80, 0.08);">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Color="Color.Success">Total Amount Paid</MudText>
+                            <MudText Typo="Typo.h5" Color="Color.Success" Class="font-weight-bold">
+                                KES @_prepayment.TotalAmountPaid.ToString("N0")
+                            </MudText>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-4 summary-box" Elevation="0" Style="background-color: rgba(25, 118, 210, 0.08);">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Color="Color.Primary">Amount Used</MudText>
+                            <MudText Typo="Typo.h5" Color="Color.Primary" Class="font-weight-bold">
+                                KES @_prepayment.AmountUsed.ToString("N0")
+                            </MudText>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-4 summary-box" Elevation="0" Style="background-color: rgba(255, 152, 0, 0.08);">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Color="Color.Warning">Remaining Balance</MudText>
+                            <MudText Typo="Typo.h5" Color="Color.Warning" Class="font-weight-bold">
+                                KES @_prepayment.RemainingBalance.ToString("N0")
+                            </MudText>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
+                @* Notes *@
+                @if (!string.IsNullOrWhiteSpace(_prepayment.Notes))
+                {
+                    <MudItem xs="12">
+                        <MudDivider Class="my-2" />
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Notes</MudText>
+                            <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@_prepayment.Notes</MudText>
+                        </MudStack>
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudPaper>
+
+        @* Fulfillment History *@
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">
+                <MudIcon Icon="@Icons.Material.Rounded.History" Class="mr-2" />
+                Fulfillment History
+            </MudText>
+
+            @if (_prepayment.FulfillmentSales == null || !_prepayment.FulfillmentSales.Any())
+            {
+                <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info">
+                    No fulfillment sales recorded yet. Customer hasn't collected any product against this prepayment.
+                </MudAlert>
+            }
+            else
+            {
+                <MudTable Items="@_prepayment.FulfillmentSales"
+                          T="Sale"
+                          Hover="true"
+                          Breakpoint="Breakpoint.Sm"
+                          Dense="true">
+                    <HeaderContent>
+                        <MudTh>Sale Date</MudTh>
+                        <MudTh>Product</MudTh>
+                        <MudTh Style="text-align: right">Quantity</MudTh>
+                        <MudTh Style="text-align: right">Sale Amount</MudTh>
+                        <MudTh Style="text-align: right">Prepayment Applied</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Sale Date">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body2">@context.SaleDate?.ToString("dd/MM/yy")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.SaleDate?.ToString("hh:mm tt")</MudText>
+                            </MudStack>
+                        </MudTd>
+                        <MudTd DataLabel="Product">
+                            <MudText Typo="Typo.body2">@context.Product?.ProductName</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Quantity" Style="text-align: right">
+                            <MudText Typo="Typo.body2">@context.Quantity.ToString("N0")</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Sale Amount" Style="text-align: right">
+                            <MudText Typo="Typo.body2" Class="font-weight-medium">
+                                KES @context.GrossSaleAmount.ToString("N0")
+                            </MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Prepayment Applied" Style="text-align: right">
+                            <MudText Typo="Typo.body2" Color="Color.Success" Class="font-weight-bold">
+                                KES @(context.PrepaymentApplied?.ToString("N0") ?? "0")
+                            </MudText>
+                        </MudTd>
+                    </RowTemplate>
+                    <FooterContent>
+                        <MudTh colspan="3" Style="text-align: right; font-weight: bold;">Total:</MudTh>
+                        <MudTh Style="text-align: right; font-weight: bold;">
+                            KES @_prepayment.FulfillmentSales.Sum(s => s.GrossSaleAmount).ToString("N0")
+                        </MudTh>
+                        <MudTh Style="text-align: right; font-weight: bold; color: #4CAF50;">
+                            KES @_prepayment.FulfillmentSales.Sum(s => s.PrepaymentApplied ?? 0).ToString("N0")
+                        </MudTh>
+                    </FooterContent>
+                </MudTable>
+            }
+        </MudPaper>
+    }
+</MudContainer>
+
+<style>
+    .summary-box {
+        border-radius: 12px;
+        border-left: 4px solid;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public string Id { get; set; } = "";
+
+    private bool _loading = true;
+    private Prepayment? _prepayment;
+    private string _userId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get user info from auth state
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+            }
+
+            // Load prepayment details
+            _prepayment = await PrepaymentService.GetPrepaymentAsync(Id);
+
+            if (_prepayment == null)
+            {
+                Snackbar.Add("Prepayment not found", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading prepayment details: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void FulfillPrepayment()
+    {
+        // Navigate to New Sale page with prepayment ID as query parameter
+        NavigationManager.NavigateTo($"/clerk/sales/new?prepaymentId={Id}");
+    }
+
+    private async Task ShowRefundDialog()
+    {
+        if (_prepayment == null) return;
+
+        var parameters = new DialogParameters<RefundDialog>
+        {
+            { x => x.PrepaymentAmount, _prepayment.RemainingBalance },
+            { x => x.VehicleRegistration, _prepayment.VehicleRegistration }
+        };
+
+        var options = new DialogOptions
+        {
+            CloseOnEscapeKey = true,
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true
+        };
+
+        var dialog = await DialogService.ShowAsync<RefundDialog>("Refund Prepayment", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data is string reason)
+        {
+            await ProcessRefund(reason);
+        }
+    }
+
+    private async Task ProcessRefund(string reason)
+    {
+        if (_prepayment == null) return;
+
+        try
+        {
+            var (success, message, refundAmount) = await PrepaymentService.RefundPrepaymentAsync(
+                _prepayment.Id, _userId, reason);
+
+            if (success)
+            {
+                Snackbar.Add($"Successfully refunded KES {refundAmount:N0}. {message}", Severity.Success);
+                // Reload prepayment details
+                _prepayment = await PrepaymentService.GetPrepaymentAsync(Id);
+                StateHasChanged();
+            }
+            else
+            {
+                Snackbar.Add(message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error processing refund: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ShowEditDialog()
+    {
+        if (_prepayment == null) return;
+
+        var parameters = new DialogParameters<EditDialog>
+        {
+            { x => x.ClientName, _prepayment.ClientName },
+            { x => x.ClientPhone, _prepayment.ClientPhone },
+            { x => x.Notes, _prepayment.Notes }
+        };
+
+        var options = new DialogOptions
+        {
+            CloseOnEscapeKey = true,
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true
+        };
+
+        var dialog = await DialogService.ShowAsync<EditDialog>("Edit Prepayment Details", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled && result.Data is EditDialogResult editResult)
+        {
+            await ProcessEdit(editResult);
+        }
+    }
+
+    private async Task ProcessEdit(EditDialogResult editResult)
+    {
+        if (_prepayment == null) return;
+
+        try
+        {
+            // Create updated prepayment object
+            var updatedPrepayment = new Prepayment
+            {
+                Id = _prepayment.Id,
+                ClientName = editResult.ClientName,
+                ClientPhone = editResult.ClientPhone,
+                Notes = editResult.Notes
+            };
+
+            var (success, message) = await PrepaymentService.UpdatePrepaymentAsync(updatedPrepayment, _userId);
+
+            if (success)
+            {
+                Snackbar.Add("Prepayment updated successfully", Severity.Success);
+                // Reload prepayment details
+                _prepayment = await PrepaymentService.GetPrepaymentAsync(Id);
+                StateHasChanged();
+            }
+            else
+            {
+                Snackbar.Add(message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error updating prepayment: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ShowDeleteDialog()
+    {
+        if (_prepayment == null) return;
+
+        bool? result = await DialogService.ShowMessageBox(
+            "Delete Prepayment",
+            $"Are you sure you want to delete this prepayment for {_prepayment.VehicleRegistration}? This action cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel",
+            options: new DialogOptions { MaxWidth = MaxWidth.Small });
+
+        if (result == true)
+        {
+            await ProcessDelete();
+        }
+    }
+
+    private async Task ProcessDelete()
+    {
+        if (_prepayment == null) return;
+
+        try
+        {
+            var (success, message) = await PrepaymentService.DeletePrepaymentAsync(_prepayment.Id, _userId);
+
+            if (success)
+            {
+                Snackbar.Add("Prepayment deleted successfully", Severity.Success);
+                // Navigate back to prepayments list with force reload
+                NavigationManager.NavigateTo("/clerk/prepayments", forceLoad: true);
+            }
+            else
+            {
+                Snackbar.Add(message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error deleting prepayment: {ex.Message}", Severity.Error);
+        }
+    }
+
+    public class EditDialogResult
+    {
+        public string ClientName { get; set; } = "";
+        public string ClientPhone { get; set; } = "";
+        public string Notes { get; set; } = "";
+    }
+}
+
+@* Refund Dialog Component *@
+@code {
+    public class RefundDialog : ComponentBase
+    {
+        [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+        [Parameter] public double PrepaymentAmount { get; set; }
+        [Parameter] public string VehicleRegistration { get; set; } = "";
+
+        private string _reason = "";
+
+        protected override void BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder)
+        {
+            builder.OpenComponent<MudDialog>(0);
+            builder.AddAttribute(1, "DialogContent", (RenderFragment)(contentBuilder =>
+            {
+                contentBuilder.OpenComponent<MudStack>(0);
+                contentBuilder.AddAttribute(1, "Spacing", 3);
+                contentBuilder.AddAttribute(2, "ChildContent", (RenderFragment)(stackBuilder =>
+                {
+                    stackBuilder.OpenComponent<MudAlert>(0);
+                    stackBuilder.AddAttribute(1, "Severity", Severity.Warning);
+                    stackBuilder.AddAttribute(2, "Icon", Icons.Material.Rounded.Warning);
+                    stackBuilder.AddAttribute(3, "ChildContent", (RenderFragment)(alertBuilder =>
+                    {
+                        alertBuilder.AddContent(0, $"You are about to refund KES {PrepaymentAmount:N0} for vehicle {VehicleRegistration}. This action cannot be undone.");
+                    }));
+                    stackBuilder.CloseComponent();
+
+                    stackBuilder.OpenComponent<MudTextField<string>>(1);
+                    stackBuilder.AddAttribute(2, "Value", _reason);
+                    stackBuilder.AddAttribute(3, "ValueChanged", EventCallback.Factory.Create<string>(this, value => _reason = value));
+                    stackBuilder.AddAttribute(4, "Label", "Reason for Refund");
+                    stackBuilder.AddAttribute(5, "Variant", Variant.Outlined);
+                    stackBuilder.AddAttribute(6, "Lines", 3);
+                    stackBuilder.AddAttribute(7, "Required", true);
+                    stackBuilder.AddAttribute(8, "RequiredError", "Please provide a reason for the refund");
+                    stackBuilder.CloseComponent();
+                }));
+                contentBuilder.CloseComponent();
+            }));
+            builder.AddAttribute(2, "DialogActions", (RenderFragment)(actionsBuilder =>
+            {
+                actionsBuilder.OpenComponent<MudButton>(0);
+                actionsBuilder.AddAttribute(1, "OnClick", EventCallback.Factory.Create(this, () => MudDialog.Cancel()));
+                actionsBuilder.AddAttribute(2, "ChildContent", (RenderFragment)(btnBuilder => btnBuilder.AddContent(0, "Cancel")));
+                actionsBuilder.CloseComponent();
+
+                actionsBuilder.OpenComponent<MudButton>(1);
+                actionsBuilder.AddAttribute(2, "Color", Color.Error);
+                actionsBuilder.AddAttribute(3, "Variant", Variant.Filled);
+                actionsBuilder.AddAttribute(4, "Disabled", string.IsNullOrWhiteSpace(_reason));
+                actionsBuilder.AddAttribute(5, "OnClick", EventCallback.Factory.Create(this, () => MudDialog.Close(DialogResult.Ok(_reason))));
+                actionsBuilder.AddAttribute(6, "ChildContent", (RenderFragment)(btnBuilder => btnBuilder.AddContent(0, "Refund")));
+                actionsBuilder.CloseComponent();
+            }));
+            builder.CloseComponent();
+        }
+    }
+
+    public class EditDialog : ComponentBase
+    {
+        [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+        [Parameter] public string ClientName { get; set; } = "";
+        [Parameter] public string ClientPhone { get; set; } = "";
+        [Parameter] public string Notes { get; set; } = "";
+
+        private string _clientName = "";
+        private string _clientPhone = "";
+        private string _notes = "";
+
+        protected override void OnInitialized()
+        {
+            _clientName = ClientName ?? "";
+            _clientPhone = ClientPhone ?? "";
+            _notes = Notes ?? "";
+        }
+
+        protected override void BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder)
+        {
+            builder.OpenComponent<MudDialog>(0);
+            builder.AddAttribute(1, "DialogContent", (RenderFragment)(contentBuilder =>
+            {
+                contentBuilder.OpenComponent<MudStack>(0);
+                contentBuilder.AddAttribute(1, "Spacing", 3);
+                contentBuilder.AddAttribute(2, "ChildContent", (RenderFragment)(stackBuilder =>
+                {
+                    stackBuilder.OpenComponent<MudText>(0);
+                    stackBuilder.AddAttribute(1, "Typo", Typo.body1);
+                    stackBuilder.AddAttribute(2, "Class", "mb-2");
+                    stackBuilder.AddAttribute(3, "ChildContent", (RenderFragment)(textBuilder =>
+                    {
+                        textBuilder.AddContent(0, "Update client details and notes for this prepayment.");
+                    }));
+                    stackBuilder.CloseComponent();
+
+                    // Client Name Field
+                    stackBuilder.OpenComponent<MudTextField<string>>(1);
+                    stackBuilder.AddAttribute(2, "Value", _clientName);
+                    stackBuilder.AddAttribute(3, "ValueChanged", EventCallback.Factory.Create<string>(this, value => _clientName = value));
+                    stackBuilder.AddAttribute(4, "Label", "Client Name");
+                    stackBuilder.AddAttribute(5, "Variant", Variant.Outlined);
+                    stackBuilder.CloseComponent();
+
+                    // Client Phone Field
+                    stackBuilder.OpenComponent<MudTextField<string>>(2);
+                    stackBuilder.AddAttribute(2, "Value", _clientPhone);
+                    stackBuilder.AddAttribute(3, "ValueChanged", EventCallback.Factory.Create<string>(this, value => _clientPhone = value));
+                    stackBuilder.AddAttribute(4, "Label", "Client Phone");
+                    stackBuilder.AddAttribute(5, "Variant", Variant.Outlined);
+                    stackBuilder.CloseComponent();
+
+                    // Notes Field
+                    stackBuilder.OpenComponent<MudTextField<string>>(3);
+                    stackBuilder.AddAttribute(2, "Value", _notes);
+                    stackBuilder.AddAttribute(3, "ValueChanged", EventCallback.Factory.Create<string>(this, value => _notes = value));
+                    stackBuilder.AddAttribute(4, "Label", "Notes");
+                    stackBuilder.AddAttribute(5, "Variant", Variant.Outlined);
+                    stackBuilder.AddAttribute(6, "Lines", 4);
+                    stackBuilder.CloseComponent();
+                }));
+                contentBuilder.CloseComponent();
+            }));
+            builder.AddAttribute(2, "DialogActions", (RenderFragment)(actionsBuilder =>
+            {
+                actionsBuilder.OpenComponent<MudButton>(0);
+                actionsBuilder.AddAttribute(1, "OnClick", EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, args => MudDialog.Cancel()));
+                actionsBuilder.AddAttribute(2, "ChildContent", (RenderFragment)(btnBuilder => btnBuilder.AddContent(0, "Cancel")));
+                actionsBuilder.CloseComponent();
+
+                actionsBuilder.OpenComponent<MudButton>(1);
+                actionsBuilder.AddAttribute(2, "Color", Color.Primary);
+                actionsBuilder.AddAttribute(3, "Variant", Variant.Filled);
+                actionsBuilder.AddAttribute(4, "OnClick", EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, args =>
+                {
+                    var result = new EditDialogResult
+                    {
+                        ClientName = _clientName,
+                        ClientPhone = _clientPhone,
+                        Notes = _notes
+                    };
+                    MudDialog.Close(DialogResult.Ok(result));
+                }));
+                actionsBuilder.AddAttribute(5, "ChildContent", (RenderFragment)(btnBuilder => btnBuilder.AddContent(0, "Save Changes")));
+                actionsBuilder.CloseComponent();
+            }));
+            builder.CloseComponent();
+        }
+    }
+}

@@ -530,8 +530,15 @@
     {
         try
         {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _temporaryPassword);
-            Snackbar.Add("Password copied to clipboard", Severity.Success);
+            var success = await JS.InvokeAsync<bool>("shareText", "Temporary Password", _temporaryPassword);
+            if (success)
+            {
+                Snackbar.Add("Password copied to clipboard", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Failed to copy password. Please copy it manually.", Severity.Warning);
+            }
         }
         catch
         {

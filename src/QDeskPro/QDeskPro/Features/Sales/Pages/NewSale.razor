@@ -1,12 +1,15 @@
 @page "/clerk/sales/new"
 @using Microsoft.AspNetCore.Authorization
 @using QDeskPro.Features.Sales.Services
+@using QDeskPro.Features.Prepayments.Services
 @using QDeskPro.Features.Admin.Services
 @using QDeskPro.Domain.Services
 @using QDeskPro.Domain.Entities
+@using Microsoft.AspNetCore.WebUtilities
 @attribute [Authorize(Roles = "Clerk")]
 @rendermode InteractiveServer
 @inject SaleService SaleService
+@inject PrepaymentService PrepaymentService
 @inject SaleCalculationService CalculationService
 @inject UserService UserService
 @inject AuthenticationStateProvider AuthStateProvider
@@ -28,6 +31,103 @@
     }
     else
     {
+        @* Prepayment Application Section (Optional) *@
+        <MudExpansionPanels Class="mb-4">
+            <MudExpansionPanel Text="Apply Prepayment (Optional)"
+                               Icon="@Icons.Material.Rounded.AccountBalanceWallet"
+                               IsExpanded="@(_selectedPrepayment != null)">
+                <MudGrid>
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_vehicleSearchQuery"
+                                      Label="Search Vehicle Registration"
+                                      Variant="Variant.Outlined"
+                                      Adornment="Adornment.End"
+                                      AdornmentIcon="@Icons.Material.Rounded.Search"
+                                      OnKeyUp="SearchPrepayments"
+                                      OnAdornmentClick="SearchPrepayments"
+                                      Clearable="true"
+                                      Placeholder="Enter at least 2 characters to search"
+                                      Immediate="false" />
+                    </MudItem>
+
+                    @if (_searchingPrepayments)
+                    {
+                        <MudItem xs="12">
+                            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
+                        </MudItem>
+                    }
+
+                    @if (_availablePrepayments.Any())
+                    {
+                        <MudItem xs="12">
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">Available Prepayments:</MudText>
+                            <MudList T="string" Dense="true">
+                                @foreach (var prep in _availablePrepayments)
+                                {
+                                    var isSelected = _selectedPrepayment?.Id == prep.Id;
+                                    <MudListItem T="string" OnClick="@(() => SelectPrepayment(prep))"
+                                                 Class="@(isSelected ? "selected-prepayment" : "prepayment-item")"
+                                                 Style="cursor: pointer; border-radius: 8px; margin-bottom: 8px;">
+                                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                            <div>
+                                                <MudText Typo="Typo.body1" Class="font-weight-bold">@prep.VehicleRegistration</MudText>
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                    @prep.PrepaymentDate.ToString("dd/MM/yyyy")
+                                                    @if (!string.IsNullOrWhiteSpace(prep.ClientName))
+                                                    {
+                                                        <text> • @prep.ClientName</text>
+                                                    }
+                                                    @if (prep.IntendedProduct != null)
+                                                    {
+                                                        <text> • @prep.IntendedProduct.ProductName</text>
+                                                    }
+                                                </MudText>
+                                            </div>
+                                            <MudStack Spacing="1" AlignItems="AlignItems.End">
+                                                <MudText Typo="Typo.body1" Color="Color.Success" Class="font-weight-bold">
+                                                    KES @prep.RemainingBalance.ToString("N0")
+                                                </MudText>
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">@prep.Status</MudChip>
+                                            </MudStack>
+                                        </MudStack>
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        </MudItem>
+                    }
+
+                    @if (_selectedPrepayment != null)
+                    {
+                        <MudItem xs="12">
+                            <MudAlert Severity="Severity.Success" Icon="@Icons.Material.Rounded.CheckCircle" Class="mt-2">
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                    <div>
+                                        <MudText Typo="Typo.body1" Class="font-weight-bold">
+                                            Prepayment Selected: KES @_selectedPrepayment.RemainingBalance.ToString("N0") available
+                                        </MudText>
+                                        <MudText Typo="Typo.caption">
+                                            @_selectedPrepayment.VehicleRegistration
+                                            @if (_selectedPrepayment.IntendedProduct != null)
+                                            {
+                                                <text> • Est. @(_estimatedQuantity.ToString("N0")) pieces of @_selectedPrepayment.IntendedProduct.ProductName</text>
+                                            }
+                                        </MudText>
+                                    </div>
+                                    <MudButton Size="Size.Small"
+                                               Variant="Variant.Text"
+                                               Color="Color.Error"
+                                               OnClick="ClearPrepayment"
+                                               StartIcon="@Icons.Material.Rounded.Clear">
+                                        Clear
+                                    </MudButton>
+                                </MudStack>
+                            </MudAlert>
+                        </MudItem>
+                    }
+                </MudGrid>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
+
         <MudForm @ref="_form" @bind-IsValid="_isValid">
             <MudPaper Class="pa-4 mb-4" Elevation="0">
                 <MudGrid>
@@ -77,21 +177,25 @@
 
                     @* Sale Date *@
                     <MudItem xs="12" sm="6">
-                        <MudDatePicker @bind-Date="_saleDate"
+                        <MudDatePicker Date="_saleDate"
+                                       DateChanged="OnSaleDateChanged"
                                        Label="Sale Date"
                                        Variant="Variant.Outlined"
                                        Required="true"
+                                       RequiredError="Please select a date"
                                        MaxDate="@DateTime.Today"
-                                       MinDate="@DateTime.Today.AddDays(-14)"
+                                       MinDate="@DateTime.Today.AddDays(-5)"
                                        DateFormat="dd/MM/yyyy" />
                     </MudItem>
 
                     @* Sale Time *@
                     <MudItem xs="12" sm="6">
-                        <MudTimePicker @bind-Time="_saleTime"
+                        <MudTimePicker Time="_saleTime"
+                                       TimeChanged="OnSaleTimeChanged"
                                        Label="Sale Time"
                                        Variant="Variant.Outlined"
                                        Required="true"
+                                       RequiredError="Please select a time"
                                        TimeFormat="HH:mm" />
                     </MudItem>
 
@@ -178,6 +282,33 @@
                                       Variant="Variant.Outlined"
                                       Lines="2" />
                     </MudItem>
+
+                    @* Land Rate Option - Always visible for transparency *@
+                    <MudItem xs="12">
+                        <MudPaper Class="pa-3" Elevation="0" Style="background-color: rgba(76, 175, 80, 0.05); border-radius: 8px;">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                <div>
+                                    <MudText Typo="Typo.body1" Class="font-weight-medium">Include Land Rate Fee</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @if (_landRateVisible)
+                                        {
+                                            <span>Toggle to include or exclude land rate expense for this sale</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: orange;">Land rate fee not configured for this quarry</span>
+                                        }
+                                    </MudText>
+                                </div>
+                                <MudSwitch T="bool"
+                                           Value="_sale.IncludeLandRate"
+                                           ValueChanged="OnLandRateToggleChanged"
+                                           Color="Color.Success"
+                                           UnCheckedColor="Color.Default"
+                                           Disabled="@(!_landRateVisible)" />
+                            </MudStack>
+                        </MudPaper>
+                    </MudItem>
                 </MudGrid>
             </MudPaper>
 
@@ -223,18 +354,33 @@
                         <MudText Color="Color.Secondary">Loaders Fee</MudText>
                         <MudText Color="Color.Secondary">- KES @_calculations.LoadersFee.ToString("N1")</MudText>
                     </div>
-                    @if (_landRateVisible && _calculations.LandRateFee > 0)
+                    @if (_landRateVisible && _sale.IncludeLandRate && _calculations.LandRateFee > 0)
                     {
                         <div class="d-flex justify-space-between">
                             <MudText Color="Color.Secondary">Land Rate Fee</MudText>
                             <MudText Color="Color.Secondary">- KES @_calculations.LandRateFee.ToString("N1")</MudText>
                         </div>
                     }
+                    else if (_landRateVisible && !_sale.IncludeLandRate)
+                    {
+                        <div class="d-flex justify-space-between">
+                            <MudText Color="Color.Secondary" Style="text-decoration: line-through;">Land Rate Fee</MudText>
+                            <MudText Color="Color.Secondary" Style="text-decoration: line-through;">Excluded</MudText>
+                        </div>
+                    }
+                    @if (_selectedPrepayment != null)
+                    {
+                        <MudDivider Class="my-2" />
+                        <div class="d-flex justify-space-between">
+                            <MudText Color="Color.Success">Prepayment Applied</MudText>
+                            <MudText Color="Color.Success">- KES @PrepaymentAppliedAmount.ToString("N1")</MudText>
+                        </div>
+                    }
                     <MudDivider Class="my-2" />
                     <div class="d-flex justify-space-between">
-                        <MudText Typo="Typo.h6">Net Amount</MudText>
-                        <MudText Typo="Typo.h6" Color="Color.Primary" Class="font-weight-bold" Style="text-decoration: underline;">
-                            KES @_calculations.NetAmount.ToString("N1")
+                        <MudText Typo="Typo.h6">@(_selectedPrepayment != null ? "Balance Due" : "Net Amount")</MudText>
+                        <MudText Typo="Typo.h6" Color="@(BalanceDue > 0 && _selectedPrepayment != null ? Color.Warning : Color.Primary)" Class="font-weight-bold" Style="text-decoration: underline;">
+                            KES @BalanceDue.ToString("N1")
                         </MudText>
                     </div>
                 </MudStack>
@@ -274,6 +420,23 @@
         min-height: 44px;
         min-width: 44px;
     }
+
+    .prepayment-item {
+        padding: 12px;
+        border: 1px solid #e0e0e0;
+        transition: all 0.2s ease;
+    }
+
+    .prepayment-item:hover {
+        background-color: rgba(76, 175, 80, 0.08);
+        border-color: #4CAF50;
+    }
+
+    .selected-prepayment {
+        padding: 12px;
+        background-color: rgba(76, 175, 80, 0.12);
+        border: 2px solid #4CAF50;
+    }
 </style>
 
 @code {
@@ -293,7 +456,7 @@
         PaymentStatus = "Paid",
         Quantity = 0,
         PricePerUnit = 0,
-        CommissionPerUnit = 0
+        CommissionPerUnit = 1
     };
 
     private DateTime? _saleDate = DateTime.Today;
@@ -304,6 +467,24 @@
     private List<Broker> _brokers = new();
     private Quarry? _quarry;
     private SaleCalculationResult _calculations = new();
+
+    // Prepayment-related fields
+    private string _vehicleSearchQuery = "";
+    private bool _searchingPrepayments = false;
+    private List<Prepayment> _availablePrepayments = new();
+    private Prepayment? _selectedPrepayment = null;
+    private double _estimatedQuantity = 0;
+
+    // Calculated prepayment amounts
+    private double PrepaymentAppliedAmount =>
+        _selectedPrepayment != null
+        ? Math.Min(_selectedPrepayment.RemainingBalance, _calculations.GrossAmount)
+        : 0;
+
+    private double BalanceDue =>
+        _selectedPrepayment != null
+            ? _calculations.GrossAmount - PrepaymentAppliedAmount  // What customer still owes
+            : _calculations.NetAmount;  // What quarry keeps after deductions
 
     // Kenya counties for destination dropdown
     private static readonly string[] KenyaCounties = new[]
@@ -354,6 +535,28 @@
 
                     // Check if land rate is visible
                     _landRateVisible = _quarry?.LandRateFee > 0;
+
+                    // Sync the sale date to fix date picker validation issue
+                    // This ensures _sale.SaleDate is properly set from the picker values
+                    if (_saleDate.HasValue && _saleTime.HasValue)
+                    {
+                        _sale.SaleDate = _saleDate.Value.Date.Add(_saleTime.Value);
+                    }
+                    else if (_saleDate.HasValue)
+                    {
+                        _sale.SaleDate = _saleDate.Value;
+                    }
+
+                    // Check for prepaymentId in query string
+                    var uri = new Uri(NavigationManager.Uri);
+                    if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("prepaymentId", out var prepaymentIdValue))
+                    {
+                        var prepaymentId = prepaymentIdValue.FirstOrDefault();
+                        if (!string.IsNullOrWhiteSpace(prepaymentId))
+                        {
+                            await LoadPrepaymentByIdAsync(prepaymentId);
+                        }
+                    }
                 }
                 else
                 {
@@ -380,6 +583,19 @@
         {
             try
             {
+                // Get product to check if land rate should be auto-disabled
+                var product = _products.FirstOrDefault(p => p.Id == productId);
+                var productName = product?.ProductName?.ToLower() ?? "";
+
+                // Auto-set land rate to OFF (value = 0) for Beam, Hardcore, or Reject products
+                // Clerk can still manually enable it if needed
+                if (productName.Contains("beam") ||
+                    productName.Contains("hardcore") ||
+                    productName.Contains("reject"))
+                {
+                    _sale.IncludeLandRate = false;
+                }
+
                 // Auto-load price for this product at this quarry
                 var productPrice = await SaleService.GetProductPriceAsync(productId, _quarryId);
                 if (productPrice != null)
@@ -417,17 +633,145 @@
         var selectedProduct = _products.FirstOrDefault(p => p.Id == _sale.ProductId);
         var productName = selectedProduct?.ProductName ?? "";
 
-        // Calculate all amounts
+        // Calculate all amounts (respecting land rate inclusion flag)
+        // Don't apply loaders fee for beam or hardcore products
+        var loadersFee = (productName.Contains("beam", StringComparison.OrdinalIgnoreCase) ||
+                         productName.Contains("hardcore", StringComparison.OrdinalIgnoreCase))
+            ? null
+            : _quarry?.LoadersFee;
+
         _calculations = CalculationService.CalculateAll(
             _sale.Quantity,
             _sale.PricePerUnit,
             _sale.CommissionPerUnit,
             productName,
-            _quarry?.LoadersFee,
+            loadersFee,
             _quarry?.LandRateFee,
-            _quarry?.RejectsFee
+            _quarry?.RejectsFee,
+            _sale.IncludeLandRate
         );
 
+        StateHasChanged();
+    }
+
+    private void OnLandRateToggleChanged(bool value)
+    {
+        _sale.IncludeLandRate = value;
+        CalculateOrderSummary();
+    }
+
+    private void OnSaleDateChanged(DateTime? date)
+    {
+        _saleDate = date;
+        SyncSaleDateTime();
+    }
+
+    private void OnSaleTimeChanged(TimeSpan? time)
+    {
+        _saleTime = time;
+        SyncSaleDateTime();
+    }
+
+    private void SyncSaleDateTime()
+    {
+        if (_saleDate.HasValue && _saleTime.HasValue)
+        {
+            _sale.SaleDate = _saleDate.Value.Date.Add(_saleTime.Value);
+        }
+        else if (_saleDate.HasValue)
+        {
+            _sale.SaleDate = _saleDate.Value;
+        }
+        CalculateOrderSummary();
+    }
+
+    private async Task LoadPrepaymentByIdAsync(string prepaymentId)
+    {
+        try
+        {
+            var prepayment = await PrepaymentService.GetPrepaymentAsync(prepaymentId);
+            if (prepayment != null && (prepayment.Status == "Active" || prepayment.Status == "Partial"))
+            {
+                await SelectPrepayment(prepayment);
+            }
+            else if (prepayment != null)
+            {
+                Snackbar.Add($"Prepayment is {prepayment.Status} and cannot be used", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading prepayment: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task SearchPrepayments()
+    {
+        if (string.IsNullOrWhiteSpace(_vehicleSearchQuery) || _vehicleSearchQuery.Length < 2)
+        {
+            _availablePrepayments.Clear();
+            return;
+        }
+
+        _searchingPrepayments = true;
+        try
+        {
+            _availablePrepayments = await PrepaymentService.SearchPrepaymentsByVehicleAsync(
+                _vehicleSearchQuery, _quarryId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error searching prepayments: {ex.Message}", Severity.Error);
+            _availablePrepayments.Clear();
+        }
+        finally
+        {
+            _searchingPrepayments = false;
+        }
+    }
+
+    private async Task SelectPrepayment(Prepayment prepayment)
+    {
+        _selectedPrepayment = prepayment;
+
+        // Auto-fill vehicle registration if empty
+        if (string.IsNullOrWhiteSpace(_sale.VehicleRegistration))
+        {
+            _sale.VehicleRegistration = prepayment.VehicleRegistration;
+        }
+
+        // Auto-fill client details if available
+        if (!string.IsNullOrWhiteSpace(prepayment.ClientName))
+        {
+            _sale.ClientName = prepayment.ClientName;
+            _sale.ClientPhone = prepayment.ClientPhone;
+        }
+
+        // If intended product specified, pre-select it
+        if (!string.IsNullOrWhiteSpace(prepayment.IntendedProductId))
+        {
+            _sale.ProductId = prepayment.IntendedProductId;
+            await OnProductChanged(prepayment.IntendedProductId);
+
+            // Calculate suggested quantity based on remaining balance
+            if (prepayment.IntendedPricePerUnit.HasValue && prepayment.IntendedPricePerUnit > 0)
+            {
+                _estimatedQuantity = Math.Floor(prepayment.RemainingBalance / prepayment.IntendedPricePerUnit.Value);
+                _sale.Quantity = _estimatedQuantity;
+            }
+        }
+
+        CalculateOrderSummary();
+        StateHasChanged();
+    }
+
+    private void ClearPrepayment()
+    {
+        _selectedPrepayment = null;
+        _availablePrepayments.Clear();
+        _vehicleSearchQuery = "";
+        _estimatedQuantity = 0;
+        CalculateOrderSummary();
         StateHasChanged();
     }
 
@@ -443,9 +787,23 @@
             _sale.SaleDate = _saleDate.Value;
         }
 
-        // Show confirmation dialog
+        // Build confirmation message
         var selectedProduct = _products.FirstOrDefault(p => p.Id == _sale.ProductId);
         var confirmMessage = $"Submit '{_sale.VehicleRegistration} - {selectedProduct?.ProductName}' {_sale.Quantity:N0} pieces?";
+
+        // Add prepayment details to confirmation if applicable
+        if (_selectedPrepayment != null)
+        {
+            confirmMessage += $"\n\nPrepayment Applied: KES {PrepaymentAppliedAmount:N0}";
+            if (BalanceDue > 0)
+            {
+                confirmMessage += $"\nBalance Due: KES {BalanceDue:N0}";
+            }
+            else
+            {
+                confirmMessage += $"\nFully paid by prepayment";
+            }
+        }
 
         var result = await DialogService.ShowMessageBox(
             "Confirm Sale",
@@ -458,11 +816,44 @@
         _processing = true;
         try
         {
-            var (success, message, sale) = await SaleService.CreateSaleAsync(_sale, _userId, _quarryId, _userFullName);
+            // Prepare prepayment parameters
+            string? prepaymentId = _selectedPrepayment?.Id;
+            double prepaymentAmount = PrepaymentAppliedAmount;
 
-            if (success)
+            // Create the sale (with or without prepayment)
+            var (success, message, sale) = await SaleService.CreateSaleAsync(
+                _sale, _userId, _quarryId, _userFullName, prepaymentId, prepaymentAmount);
+
+            if (success && sale != null)
             {
-                Snackbar.Add(message, Severity.Success);
+                // If prepayment was applied, update the prepayment record
+                if (!string.IsNullOrEmpty(prepaymentId) && prepaymentAmount > 0)
+                {
+                    var (prepaymentSuccess, prepaymentMessage) = await PrepaymentService.ApplyPrepaymentToSaleAsync(
+                        prepaymentId, sale.Id, prepaymentAmount);
+
+                    if (!prepaymentSuccess)
+                    {
+                        // Sale was created but prepayment application failed
+                        Snackbar.Add($"Sale created but prepayment update failed: {prepaymentMessage}", Severity.Warning);
+                    }
+                    else
+                    {
+                        // Success with prepayment
+                        var successMsg = $"Sale recorded successfully";
+                        if (BalanceDue > 0)
+                        {
+                            successMsg += $". Balance due: KES {BalanceDue:N0}";
+                        }
+                        Snackbar.Add(successMsg, Severity.Success);
+                    }
+                }
+                else
+                {
+                    // Success without prepayment
+                    Snackbar.Add(message, Severity.Success);
+                }
+
                 // Navigate to dashboard
                 NavigationManager.NavigateTo("/clerk/dashboard");
             }

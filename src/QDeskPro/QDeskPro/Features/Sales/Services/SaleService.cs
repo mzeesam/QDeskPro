@@ -3,6 +3,7 @@ namespace QDeskPro.Features.Sales.Services;
 using Microsoft.EntityFrameworkCore;
 using QDeskPro.Data;
 using QDeskPro.Domain.Entities;
+using QDeskPro.Features.Reports.Services;
 
 /// <summary>
 /// Service for sale operations (CRUD)
@@ -10,17 +11,26 @@ using QDeskPro.Domain.Entities;
 public class SaleService
 {
     private readonly AppDbContext _context;
+    private readonly ReportService _reportService;
 
-    public SaleService(AppDbContext context)
+    public SaleService(AppDbContext context, ReportService reportService)
     {
         _context = context;
+        _reportService = reportService;
     }
 
     /// <summary>
-    /// Create a new sale with all required audit fields and data manipulation
+    /// Create a new sale with all required audit fields and data manipulation.
+    /// Supports prepayment application for fulfillment sales.
     /// Following exact specifications from implementation_plan.md
     /// </summary>
-    public async Task<(bool Success, string Message, Sale? Sale)> CreateSaleAsync(Sale sale, string userId, string quarryId, string userFullName)
+    public async Task<(bool Success, string Message, Sale? Sale)> CreateSaleAsync(
+        Sale sale,
+        string userId,
+        string quarryId,
+        string userFullName,
+        string? prepaymentId = null,
+        double prepaymentAmount = 0)
     {
         try
         {
@@ -41,6 +51,46 @@ public class SaleService
             sale.CreatedBy = userId;
             sale.IsActive = true;
 
+            // Handle prepayment application
+            if (!string.IsNullOrEmpty(prepaymentId) && prepaymentAmount > 0)
+            {
+                sale.PrepaymentId = prepaymentId;
+                sale.PrepaymentApplied = prepaymentAmount;
+                sale.IsPrepaymentSale = true;
+
+                // Adjust payment status based on remaining balance
+                var remainingAmount = sale.GrossSaleAmount - prepaymentAmount;
+
+                if (remainingAmount <= 0)
+                {
+                    // Fully paid by prepayment (or overpaid)
+                    sale.PaymentStatus = "Paid";
+                    sale.PaymentReceivedDate = sale.SaleDate;
+                }
+                else
+                {
+                    // Customer still owes balance - mark as unpaid
+                    // They can pay the balance later, which will be tracked via PaymentReceivedDate
+                    sale.PaymentStatus = "Not Paid";
+                    sale.PaymentReceivedDate = null;
+                }
+            }
+            else
+            {
+                // No prepayment - existing logic for regular sales
+                // Set PaymentReceivedDate based on initial payment status
+                // If paid immediately, payment date = sale date
+                // If unpaid, payment date is null until payment is collected later
+                if (sale.PaymentStatus == "Paid")
+                {
+                    sale.PaymentReceivedDate = sale.SaleDate;
+                }
+                else
+                {
+                    sale.PaymentReceivedDate = null;
+                }
+            }
+
             _context.Sales.Add(sale);
             await _context.SaveChangesAsync();
 
@@ -53,11 +103,11 @@ public class SaleService
     }
 
     /// <summary>
-    /// Get sales for a clerk (last 14 days)
+    /// Get sales for a clerk (last 5 days)
     /// </summary>
     public async Task<List<Sale>> GetSalesForClerkAsync(string userId)
     {
-        var cutoffDate = DateTime.Today.AddDays(-14);
+        var cutoffDate = DateTime.Today.AddDays(-5);
 
         return await _context.Sales
             .Where(s => s.ApplicationUserId == userId)
@@ -142,6 +192,22 @@ public class SaleService
             existing.PricePerUnit = sale.PricePerUnit;
             existing.BrokerId = sale.BrokerId;
             existing.CommissionPerUnit = sale.CommissionPerUnit;
+            existing.IncludeLandRate = sale.IncludeLandRate;
+
+            // Track payment received date when status changes
+            // This enables collections tracking for previously unpaid orders
+            if (sale.PaymentStatus == "Paid" && existing.PaymentStatus != "Paid")
+            {
+                // Payment just received - use provided date or default to today
+                existing.PaymentReceivedDate = sale.PaymentReceivedDate ?? DateTime.Today;
+            }
+            else if (sale.PaymentStatus != "Paid" && existing.PaymentStatus == "Paid")
+            {
+                // Reverted to unpaid - clear payment received date
+                existing.PaymentReceivedDate = null;
+            }
+            // If status unchanged and already Paid, keep existing PaymentReceivedDate
+
             existing.PaymentStatus = sale.PaymentStatus;
             existing.PaymentMode = sale.PaymentMode;
             existing.PaymentReference = sale.PaymentReference;
@@ -150,6 +216,9 @@ public class SaleService
             existing.ModifiedBy = userId;
 
             await _context.SaveChangesAsync();
+
+            // Trigger cascade recalculation of closing balances
+            await RecalculateClosingBalancesFromDate(existing.SaleDate.Value, existing.QId, userId);
 
             return (true, "Sale updated successfully");
         }
@@ -177,6 +246,9 @@ public class SaleService
             sale.ModifiedBy = userId;
 
             await _context.SaveChangesAsync();
+
+            // Trigger cascade recalculation of closing balances
+            await RecalculateClosingBalancesFromDate(sale.SaleDate!.Value, sale.QId, userId);
 
             return (true, "Sale deleted successfully");
         }
@@ -265,10 +337,10 @@ public class SaleService
         }
         else
         {
-            // Date validation: Max today, Min 14 days ago
-            if (sale.SaleDate.Value.Date < DateTime.Today.AddDays(-14))
+            // Date validation: Max today, Min 5 days ago
+            if (sale.SaleDate.Value.Date < DateTime.Today.AddDays(-5))
             {
-                errors.Add("Cannot backdate sale more than 14 days");
+                errors.Add("Cannot backdate sale more than 5 days");
             }
 
             if (sale.SaleDate.Value.Date > DateTime.Today)
@@ -315,4 +387,97 @@ public class SaleService
 
         return errors;
     }
+
+    /// <summary>
+    /// Get all unpaid orders for a quarry (no date limit - show ALL unpaid)
+    /// Used by clerk unpaid orders page to track debtors
+    /// </summary>
+    public async Task<List<Sale>> GetUnpaidOrdersForQuarryAsync(string quarryId, string? searchText = null)
+    {
+        var query = _context.Sales
+            .Where(s => s.QId == quarryId)
+            .Where(s => s.PaymentStatus != "Paid")
+            .Where(s => s.IsActive)
+            .AsQueryable();
+
+        // Apply search filter if provided
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            query = query.Where(s =>
+                s.VehicleRegistration.Contains(searchText) ||
+                (s.ClientName != null && s.ClientName.Contains(searchText)));
+        }
+
+        return await query
+            .Include(s => s.Product)
+            .Include(s => s.Layer)
+            .Include(s => s.Broker)
+            .OrderBy(s => s.SaleDate) // Oldest first
+            .ThenByDescending(s => s.DateCreated)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Get summary statistics for unpaid orders
+    /// </summary>
+    public async Task<UnpaidOrdersSummary> GetUnpaidOrdersSummaryAsync(string quarryId)
+    {
+        var unpaidSales = await _context.Sales
+            .Where(s => s.QId == quarryId)
+            .Where(s => s.PaymentStatus != "Paid")
+            .Where(s => s.IsActive)
+            .Select(s => new { s.GrossSaleAmount, s.SaleDate })
+            .ToListAsync();
+
+        var summary = new UnpaidOrdersSummary
+        {
+            TotalCount = unpaidSales.Count,
+            TotalAmount = unpaidSales.Sum(s => s.GrossSaleAmount),
+            OldestDays = unpaidSales.Any() && unpaidSales.Min(s => s.SaleDate) != null
+                ? (int)(DateTime.Today - unpaidSales.Min(s => s.SaleDate)!.Value.Date).TotalDays
+                : 0
+        };
+
+        return summary;
+    }
+
+    /// <summary>
+    /// Recalculate closing balances for all days from startDate to today
+    /// This ensures the opening balance chain remains accurate after historical edits
+    /// </summary>
+    private async Task RecalculateClosingBalancesFromDate(DateTime startDate, string quarryId, string userId)
+    {
+        var startStamp = startDate.ToString("yyyyMMdd");
+        var todayStamp = DateTime.Today.ToString("yyyyMMdd");
+
+        // Get all dates that have DailyNotes and need recalculation (from startDate to today)
+        var affectedDates = await _context.DailyNotes
+            .Where(n => string.Compare(n.DateStamp, startStamp) >= 0)
+            .Where(n => string.Compare(n.DateStamp, todayStamp) <= 0)
+            .Where(n => n.QId == quarryId)
+            .Where(n => n.IsActive)
+            .OrderBy(n => n.DateStamp)
+            .Select(n => n.DateStamp)
+            .ToListAsync();
+
+        // Recalculate each affected day's report (this auto-updates closing balance)
+        foreach (var dateStamp in affectedDates)
+        {
+            var date = DateTime.ParseExact(dateStamp, "yyyyMMdd",
+                System.Globalization.CultureInfo.InvariantCulture);
+
+            // Regenerate the report - this will recalculate and save the closing balance
+            await _reportService.GenerateClerkReportAsync(date, date, quarryId, userId);
+        }
+    }
+}
+
+/// <summary>
+/// Summary statistics for unpaid orders
+/// </summary>
+public class UnpaidOrdersSummary
+{
+    public int TotalCount { get; set; }
+    public double TotalAmount { get; set; }
+    public int OldestDays { get; set; }
 }

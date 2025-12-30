@@ -279,6 +279,80 @@ namespace QDeskPro.Data.Migrations
                     b.ToTable("AIMessages");
                 });
 
+            modelBuilder.Entity("QDeskPro.Domain.Entities.AccountingPeriod", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ClosedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ClosedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ClosingNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DateModified")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DateStamp")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("EndDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("FiscalYear")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsClosed")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PeriodName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("PeriodNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PeriodType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("QId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FiscalYear");
+
+                    b.HasIndex("QId");
+
+                    b.HasIndex("QId", "FiscalYear", "PeriodNumber")
+                        .IsUnique()
+                        .HasFilter("[QId] IS NOT NULL");
+
+                    b.ToTable("AccountingPeriods");
+                });
+
             modelBuilder.Entity("QDeskPro.Domain.Entities.ApplicationUser", b =>
                 {
                     b.Property<string>("Id")
@@ -290,6 +364,9 @@ namespace QDeskPro.Data.Migrations
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CreatedByManagerId")
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("Email")
                         .HasMaxLength(256)
@@ -344,6 +421,8 @@ namespace QDeskPro.Data.Migrations
                         .HasColumnType("nvarchar(256)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedByManagerId");
 
                     b.HasIndex("NormalizedEmail")
                         .HasDatabaseName("EmailIndex");
@@ -619,6 +698,152 @@ namespace QDeskPro.Data.Migrations
                     b.ToTable("FuelUsages");
                 });
 
+            modelBuilder.Entity("QDeskPro.Domain.Entities.JournalEntry", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DateModified")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DateStamp")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("EntryDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EntryType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("FiscalPeriod")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FiscalYear")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPosted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PostedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("PostedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("QId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("SourceEntityId")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("SourceEntityType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<double>("TotalCredit")
+                        .HasColumnType("float");
+
+                    b.Property<double>("TotalDebit")
+                        .HasColumnType("float");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntryDate");
+
+                    b.HasIndex("FiscalYear");
+
+                    b.HasIndex("QId");
+
+                    b.HasIndex("Reference");
+
+                    b.HasIndex("FiscalYear", "FiscalPeriod");
+
+                    b.HasIndex("SourceEntityType", "SourceEntityId");
+
+                    b.ToTable("JournalEntries");
+                });
+
+            modelBuilder.Entity("QDeskPro.Domain.Entities.JournalEntryLine", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<double>("CreditAmount")
+                        .HasColumnType("float");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DateModified")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DateStamp")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<double>("DebitAmount")
+                        .HasColumnType("float");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("JournalEntryId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("LedgerAccountId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("LineNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Memo")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("QId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JournalEntryId");
+
+                    b.HasIndex("LedgerAccountId");
+
+                    b.ToTable("JournalEntryLines");
+                });
+
             modelBuilder.Entity("QDeskPro.Domain.Entities.Layer", b =>
                 {
                     b.Property<string>("Id")
@@ -664,6 +889,186 @@ namespace QDeskPro.Data.Migrations
                     b.HasIndex("QuarryId");
 
                     b.ToTable("Layers");
+                });
+
+            modelBuilder.Entity("QDeskPro.Domain.Entities.LedgerAccount", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("AccountCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("AccountName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DateModified")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DateStamp")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDebitNormal")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSystemAccount")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ParentAccountId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("QId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountCode");
+
+                    b.HasIndex("Category");
+
+                    b.HasIndex("ParentAccountId");
+
+                    b.HasIndex("QId");
+
+                    b.HasIndex("QId", "AccountCode")
+                        .IsUnique()
+                        .HasFilter("[QId] IS NOT NULL");
+
+                    b.ToTable("LedgerAccounts");
+                });
+
+            modelBuilder.Entity("QDeskPro.Domain.Entities.Prepayment", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<double>("AmountUsed")
+                        .HasColumnType("float");
+
+                    b.Property<string>("ApplicationUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ClerkName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ClientName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ClientPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DateModified")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DateStamp")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("FullyFulfilledDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<double?>("IntendedPricePerUnit")
+                        .HasColumnType("float");
+
+                    b.Property<string>("IntendedProductId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<double?>("IntendedQuantity")
+                        .HasColumnType("float");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PaymentMode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PaymentReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("PrepaymentDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("QId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<double>("TotalAmountPaid")
+                        .HasColumnType("float");
+
+                    b.Property<string>("VehicleRegistration")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationUserId");
+
+                    b.HasIndex("DateStamp");
+
+                    b.HasIndex("IntendedProductId");
+
+                    b.HasIndex("PrepaymentDate");
+
+                    b.HasIndex("QId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("VehicleRegistration");
+
+                    b.ToTable("Prepayments");
                 });
 
             modelBuilder.Entity("QDeskPro.Domain.Entities.Product", b =>
@@ -757,6 +1162,9 @@ namespace QDeskPro.Data.Migrations
                     b.Property<string>("CreatedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<double?>("DailyProductionCapacity")
+                        .HasColumnType("float");
+
                     b.Property<bool>("DailyReportEnabled")
                         .HasColumnType("bit");
 
@@ -774,6 +1182,15 @@ namespace QDeskPro.Data.Migrations
 
                     b.Property<string>("EmailRecipients")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<double?>("EstimatedMonthlyFixedCosts")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("FuelCostPerLiter")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("InitialCapitalInvestment")
+                        .HasColumnType("float");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -794,6 +1211,9 @@ namespace QDeskPro.Data.Migrations
                     b.Property<string>("ModifiedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTime?>("OperationsStartDate")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("QId")
                         .HasColumnType("nvarchar(max)");
 
@@ -803,6 +1223,9 @@ namespace QDeskPro.Data.Migrations
                         .HasColumnType("nvarchar(200)");
 
                     b.Property<double?>("RejectsFee")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("TargetProfitMargin")
                         .HasColumnType("float");
 
                     b.HasKey("Id");
@@ -901,7 +1324,13 @@ namespace QDeskPro.Data.Migrations
                     b.Property<string>("Destination")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("IncludeLandRate")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPrepaymentSale")
                         .HasColumnType("bit");
 
                     b.Property<string>("LayerId")
@@ -914,12 +1343,21 @@ namespace QDeskPro.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<DateTime?>("PaymentReceivedDate")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("PaymentReference")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("PaymentStatus")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<double?>("PrepaymentApplied")
+                        .HasColumnType("float");
+
+                    b.Property<string>("PrepaymentId")
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<double>("PricePerUnit")
                         .HasColumnType("float");
@@ -950,6 +1388,8 @@ namespace QDeskPro.Data.Migrations
                     b.HasIndex("DateStamp");
 
                     b.HasIndex("LayerId");
+
+                    b.HasIndex("PrepaymentId");
 
                     b.HasIndex("ProductId");
 
@@ -1084,6 +1524,16 @@ namespace QDeskPro.Data.Migrations
                     b.Navigation("Conversation");
                 });
 
+            modelBuilder.Entity("QDeskPro.Domain.Entities.ApplicationUser", b =>
+                {
+                    b.HasOne("QDeskPro.Domain.Entities.ApplicationUser", "CreatedByManager")
+                        .WithMany("CreatedUsers")
+                        .HasForeignKey("CreatedByManagerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CreatedByManager");
+                });
+
             modelBuilder.Entity("QDeskPro.Domain.Entities.Broker", b =>
                 {
                     b.HasOne("QDeskPro.Domain.Entities.Quarry", "Quarry")
@@ -1094,6 +1544,25 @@ namespace QDeskPro.Data.Migrations
                     b.Navigation("Quarry");
                 });
 
+            modelBuilder.Entity("QDeskPro.Domain.Entities.JournalEntryLine", b =>
+                {
+                    b.HasOne("QDeskPro.Domain.Entities.JournalEntry", "JournalEntry")
+                        .WithMany("Lines")
+                        .HasForeignKey("JournalEntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("QDeskPro.Domain.Entities.LedgerAccount", "LedgerAccount")
+                        .WithMany("JournalEntryLines")
+                        .HasForeignKey("LedgerAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("JournalEntry");
+
+                    b.Navigation("LedgerAccount");
+                });
+
             modelBuilder.Entity("QDeskPro.Domain.Entities.Layer", b =>
                 {
                     b.HasOne("QDeskPro.Domain.Entities.Quarry", "Quarry")
@@ -1102,6 +1571,26 @@ namespace QDeskPro.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Quarry");
+                });
+
+            modelBuilder.Entity("QDeskPro.Domain.Entities.LedgerAccount", b =>
+                {
+                    b.HasOne("QDeskPro.Domain.Entities.LedgerAccount", "ParentAccount")
+                        .WithMany("ChildAccounts")
+                        .HasForeignKey("ParentAccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ParentAccount");
+                });
+
+            modelBuilder.Entity("QDeskPro.Domain.Entities.Prepayment", b =>
+                {
+                    b.HasOne("QDeskPro.Domain.Entities.Product", "IntendedProduct")
+                        .WithMany()
+                        .HasForeignKey("IntendedProductId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("IntendedProduct");
                 });
 
             modelBuilder.Entity("QDeskPro.Domain.Entities.ProductPrice", b =>
@@ -1159,6 +1648,11 @@ namespace QDeskPro.Data.Migrations
                         .HasForeignKey("LayerId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("QDeskPro.Domain.Entities.Prepayment", "Prepayment")
+                        .WithMany("FulfillmentSales")
+                        .HasForeignKey("PrepaymentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("QDeskPro.Domain.Entities.Product", "Product")
                         .WithMany()
                         .HasForeignKey("ProductId")
@@ -1169,6 +1663,8 @@ namespace QDeskPro.Data.Migrations
                     b.Navigation("Clerk");
 
                     b.Navigation("Layer");
+
+                    b.Navigation("Prepayment");
 
                     b.Navigation("Product");
                 });
@@ -1197,9 +1693,28 @@ namespace QDeskPro.Data.Migrations
 
             modelBuilder.Entity("QDeskPro.Domain.Entities.ApplicationUser", b =>
                 {
+                    b.Navigation("CreatedUsers");
+
                     b.Navigation("OwnedQuarries");
 
                     b.Navigation("QuarryAssignments");
+                });
+
+            modelBuilder.Entity("QDeskPro.Domain.Entities.JournalEntry", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("QDeskPro.Domain.Entities.LedgerAccount", b =>
+                {
+                    b.Navigation("ChildAccounts");
+
+                    b.Navigation("JournalEntryLines");
+                });
+
+            modelBuilder.Entity("QDeskPro.Domain.Entities.Prepayment", b =>
+                {
+                    b.Navigation("FulfillmentSales");
                 });
 
             modelBuilder.Entity("QDeskPro.Domain.Entities.Product", b =>

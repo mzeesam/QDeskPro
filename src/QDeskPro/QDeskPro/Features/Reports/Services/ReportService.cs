@@ -115,12 +115,57 @@ public class ReportService
         report.Bankings = bankings;
         report.Banked = bankings.Sum(b => b.AmountBanked);
 
-        // 6. Calculate Report Summary
+        // 6. Get Collections (payments received during report period for sales made BEFORE the period)
+        var collections = await _context.Sales
+            .Where(s => s.ApplicationUserId == userId)
+            .Where(s => s.IsActive)
+            .Where(s => s.PaymentStatus == "Paid")
+            .Where(s => s.PaymentReceivedDate >= fromDate && s.PaymentReceivedDate <= toDate)
+            .Where(s => s.SaleDate < fromDate) // Sale was made before report period
+            .Include(s => s.Product)
+            .ToListAsync();
+
+        report.CollectionItems = collections.Select(c => new ClerkCollectionItem
+        {
+            OriginalSaleDate = c.SaleDate ?? DateTime.Today,
+            PaymentReceivedDate = c.PaymentReceivedDate ?? DateTime.Today,
+            VehicleRegistration = c.VehicleRegistration,
+            ProductName = c.Product?.ProductName ?? "",
+            Quantity = c.Quantity,
+            Amount = c.GrossSaleAmount,
+            ClientName = c.ClientName,
+            PaymentReference = c.PaymentReference
+        }).ToList();
+
+        report.TotalCollections = collections.Sum(c => c.GrossSaleAmount);
+
+        // 7. Get Prepayments (customer deposits received during report period)
+        var prepayments = await _context.Prepayments
+            .Where(p => p.ApplicationUserId == userId)
+            .Where(p => p.IsActive)
+            .Where(p => p.PrepaymentDate >= fromDate && p.PrepaymentDate <= toDate)
+            .Include(p => p.IntendedProduct)
+            .ToListAsync();
+
+        report.PrepaymentItems = prepayments.Select(p => new PrepaymentReportItem
+        {
+            PrepaymentDate = p.PrepaymentDate,
+            VehicleRegistration = p.VehicleRegistration,
+            ClientName = p.ClientName,
+            ProductName = p.IntendedProduct?.ProductName ?? "Not Specified",
+            AmountPaid = p.TotalAmountPaid,
+            PaymentReference = p.PaymentReference
+        }).ToList();
+
+        report.TotalPrepayments = prepayments.Sum(p => p.TotalAmountPaid);
+
+        // 8. Calculate Report Summary
+        // Formula: Net Earnings = (Earnings + Opening Balance + Collections + Prepayments) - Unpaid
         report.Earnings = report.TotalSales - report.TotalExpenses;
-        report.NetEarnings = (report.Earnings + report.OpeningBalance) - report.Unpaid;
+        report.NetEarnings = (report.Earnings + report.OpeningBalance + report.TotalCollections + report.TotalPrepayments) - report.Unpaid;
         report.CashInHand = report.NetEarnings - report.Banked;
 
-        // 7. Update/Create Closing Balance for single-day reports
+        // 9. Update/Create Closing Balance for single-day reports
         if (isSingleDay)
         {
             var todayNote = await _context.DailyNotes
@@ -278,9 +323,68 @@ public class ReportService
         report.Bankings = bankings;
         report.Banked = bankings.Sum(b => b.AmountBanked);
 
-        // 6. Calculate Report Summary
+        // 6. Get Collections (payments received during report period for sales made BEFORE the period)
+        var collectionsQuery = _context.Sales
+            .Where(s => s.QId == quarryId)
+            .Where(s => s.IsActive)
+            .Where(s => s.PaymentStatus == "Paid")
+            .Where(s => s.PaymentReceivedDate >= fromDate && s.PaymentReceivedDate <= toDate)
+            .Where(s => s.SaleDate < fromDate); // Sale was made before report period
+
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            collectionsQuery = collectionsQuery.Where(s => s.ApplicationUserId == userId);
+        }
+
+        var collections = await collectionsQuery
+            .Include(s => s.Product)
+            .ToListAsync();
+
+        report.CollectionItems = collections.Select(c => new ClerkCollectionItem
+        {
+            OriginalSaleDate = c.SaleDate ?? DateTime.Today,
+            PaymentReceivedDate = c.PaymentReceivedDate ?? DateTime.Today,
+            VehicleRegistration = c.VehicleRegistration,
+            ProductName = c.Product?.ProductName ?? "",
+            Quantity = c.Quantity,
+            Amount = c.GrossSaleAmount,
+            ClientName = c.ClientName,
+            PaymentReference = c.PaymentReference
+        }).ToList();
+
+        report.TotalCollections = collections.Sum(c => c.GrossSaleAmount);
+
+        // 7. Get Prepayments (customer deposits received during report period)
+        var prepaymentsQuery = _context.Prepayments
+            .Where(p => p.QId == quarryId)
+            .Where(p => p.IsActive)
+            .Where(p => p.PrepaymentDate >= fromDate && p.PrepaymentDate <= toDate);
+
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            prepaymentsQuery = prepaymentsQuery.Where(p => p.ApplicationUserId == userId);
+        }
+
+        var prepayments = await prepaymentsQuery
+            .Include(p => p.IntendedProduct)
+            .ToListAsync();
+
+        report.PrepaymentItems = prepayments.Select(p => new PrepaymentReportItem
+        {
+            PrepaymentDate = p.PrepaymentDate,
+            VehicleRegistration = p.VehicleRegistration,
+            ClientName = p.ClientName,
+            ProductName = p.IntendedProduct?.ProductName ?? "Not Specified",
+            AmountPaid = p.TotalAmountPaid,
+            PaymentReference = p.PaymentReference
+        }).ToList();
+
+        report.TotalPrepayments = prepayments.Sum(p => p.TotalAmountPaid);
+
+        // 8. Calculate Report Summary
+        // Formula: Net Earnings = (Earnings + Opening Balance + Collections + Prepayments) - Unpaid
         report.Earnings = report.TotalSales - report.TotalExpenses;
-        report.NetEarnings = (report.Earnings + report.OpeningBalance) - report.Unpaid;
+        report.NetEarnings = (report.Earnings + report.OpeningBalance + report.TotalCollections + report.TotalPrepayments) - report.Unpaid;
         report.CashInHand = report.NetEarnings - report.Banked;
 
         return report;
@@ -347,11 +451,17 @@ public class ReportService
             });
         }
 
-        // SOURCE 3: Loaders Fee Expenses (Auto-generated from Sales)
+        // SOURCE 3: Loaders Fee Expenses (Auto-generated from Sales, excluding beam and hardcore products)
         if (quarry.LoadersFee > 0)
         {
             foreach (var sale in sales)
             {
+                var productName = sale.Product?.ProductName ?? "";
+                // Don't apply loaders fee for beam or hardcore products
+                if (productName.Contains("beam", StringComparison.OrdinalIgnoreCase) ||
+                    productName.Contains("hardcore", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 allExpenses.Add(new SaleReportLineItem
                 {
                     ItemDate = DateOnly.FromDateTime(sale.SaleDate ?? DateTime.Today),
@@ -363,10 +473,15 @@ public class ReportService
         }
 
         // SOURCE 4: Land Rate Fee Expenses (Auto-generated from Sales)
+        // IMPORTANT: Only create land rate expense if sale.IncludeLandRate is true
         if (quarry.LandRateFee > 0)
         {
             foreach (var sale in sales)
             {
+                // Skip land rate expense if the sale has it excluded
+                if (!sale.IncludeLandRate)
+                    continue;
+
                 var productName = sale.Product?.ProductName ?? "";
                 double feeRate;
 
@@ -470,11 +585,17 @@ public class ReportService
             });
         }
 
-        // SOURCE 3: Loaders Fee Expenses (Auto-generated from Sales)
+        // SOURCE 3: Loaders Fee Expenses (Auto-generated from Sales, excluding beam and hardcore products)
         if (quarry.LoadersFee > 0)
         {
             foreach (var sale in sales)
             {
+                var productName = sale.Product?.ProductName ?? "";
+                // Don't apply loaders fee for beam or hardcore products
+                if (productName.Contains("beam", StringComparison.OrdinalIgnoreCase) ||
+                    productName.Contains("hardcore", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 allExpenses.Add(new SaleReportLineItem
                 {
                     ItemDate = DateOnly.FromDateTime(sale.SaleDate ?? DateTime.Today),
@@ -486,10 +607,15 @@ public class ReportService
         }
 
         // SOURCE 4: Land Rate Fee Expenses (Auto-generated from Sales)
+        // IMPORTANT: Only create land rate expense if sale.IncludeLandRate is true
         if (quarry.LandRateFee > 0)
         {
             foreach (var sale in sales)
             {
+                // Skip land rate expense if the sale has it excluded
+                if (!sale.IncludeLandRate)
+                    continue;
+
                 var productName = sale.Product?.ProductName ?? "";
                 double feeRate;
 
@@ -545,6 +671,14 @@ public class ClerkReportData
     public double Unpaid { get; set; }
     public bool UnpaidOrders { get; set; }
 
+    // Collections (payments received for older unpaid sales)
+    public List<ClerkCollectionItem> CollectionItems { get; set; } = new();
+    public double TotalCollections { get; set; }
+
+    // Prepayments (customer deposits received)
+    public List<PrepaymentReportItem> PrepaymentItems { get; set; } = new();
+    public double TotalPrepayments { get; set; }
+
     // Expenses (from 4 sources)
     public List<SaleReportLineItem> ExpenseItems { get; set; } = new();
     public double TotalExpenses { get; set; }
@@ -561,7 +695,22 @@ public class ClerkReportData
 
     // Summary
     public double Earnings { get; set; } // TotalSales - TotalExpenses
-    public double NetEarnings { get; set; } // (Earnings + OpeningBalance) - Unpaid
+    public double NetEarnings { get; set; } // (Earnings + OpeningBalance + Collections + Prepayments) - Unpaid
+}
+
+/// <summary>
+/// Collection item for clerk reports (payments received for older unpaid sales)
+/// </summary>
+public class ClerkCollectionItem
+{
+    public DateTime OriginalSaleDate { get; set; }
+    public DateTime PaymentReceivedDate { get; set; }
+    public string VehicleRegistration { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public double Quantity { get; set; }
+    public double Amount { get; set; }
+    public string? ClientName { get; set; }
+    public string? PaymentReference { get; set; }
 }
 
 /// <summary>

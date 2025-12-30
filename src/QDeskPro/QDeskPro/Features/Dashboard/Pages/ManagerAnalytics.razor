@@ -1,0 +1,897 @@
+@page "/manager/analytics"
+@page "/manager/analytics/{quarryId?}"
+@page "/admin/analytics"
+@page "/admin/analytics/{quarryId?}"
+@using QDeskPro.Features.Dashboard.Services
+@using QDeskPro.Features.Dashboard.Components
+@using QDeskPro.Features.Dashboard.Models
+@using QDeskPro.Features.AI.Components
+@using QDeskPro.Features.Reports.Services
+@using QDeskPro.Features.MasterData.Services
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AnalyticsService AnalyticsService
+@inject AppDbContext DbContext
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ReportService ReportService
+@inject ReportExportService ExportService
+@inject DataManagementService DataManagementService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode InteractiveServer
+
+<PageTitle>Analytics Dashboard - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4 mb-8">
+    <MudStack Spacing="4">
+        @* Header with gradient accent *@
+        <div class="dashboard-header">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <div>
+                    <MudText Typo="Typo.h4" Class="fw-bold dashboard-title">Analytics Dashboard</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted mt-1">
+                        @if (_fromDate.HasValue && _toDate.HasValue)
+                        {
+                            <span>@_fromDate.Value.ToString("MMM dd") - @_toDate.Value.ToString("MMM dd, yyyy")</span>
+                        }
+                    </MudText>
+                </div>
+                <MudButton Variant="Variant.Filled"
+                          Color="Color.Primary"
+                          StartIcon="@Icons.Material.Filled.Refresh"
+                          OnClick="@(async () => await LoadDashboardDataAsync())"
+                          Disabled="_loading"
+                          Class="refresh-btn">
+                    Refresh Data
+                </MudButton>
+            </MudStack>
+        </div>
+
+        @* Filters Card *@
+        <MudPaper Elevation="0" Class="filter-card pa-4 rounded-lg">
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string"
+                              @bind-Value="_selectedQuarryId"
+                              Label="Quarry"
+                              Variant="Variant.Outlined"
+                              AnchorOrigin="Origin.BottomCenter"
+                              Dense="true"
+                              Disabled="_loading">
+                        @if (_userRole == "Administrator")
+                        {
+                            <MudSelectItem Value="@((string?)null)">All Quarries</MudSelectItem>
+                        }
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudDatePicker @bind-Date="_fromDate"
+                                  Label="From Date"
+                                  Variant="Variant.Outlined"
+                                  MaxDate="DateTime.Today"
+                                  Dense="true"
+                                  Disabled="_loading" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudDatePicker @bind-Date="_toDate"
+                                  Label="To Date"
+                                  Variant="Variant.Outlined"
+                                  MinDate="_fromDate"
+                                  MaxDate="DateTime.Today"
+                                  Dense="true"
+                                  Disabled="_loading" />
+                </MudItem>
+                <MudItem xs="12" sm="2">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              FullWidth="true"
+                              OnClick="@(async () => await LoadDashboardDataAsync())"
+                              Disabled="_loading"
+                              Class="mt-1">
+                        Apply
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+        }
+        else if (!_quarries.Any())
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="my-4">
+                No quarries found. Please contact your administrator to set up a quarry.
+            </MudAlert>
+        }
+        else if (_stats != null)
+        {
+            @* Main Metric Cards with Modern Styling *@
+            <MudGrid>
+                @* Total Revenue Card *@
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="metric-card metric-card-revenue">
+                        <div class="metric-icon-container">
+                            <MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Large" />
+                        </div>
+                        <div class="metric-content">
+                            <MudText Typo="Typo.caption" Class="metric-label">Total Revenue</MudText>
+                            <MudText Typo="Typo.h5" Class="metric-value">KES @_stats.TotalRevenue.ToString("N0")</MudText>
+                            <MudText Typo="Typo.caption" Class="metric-subtext">
+                                <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Small" Class="mr-1" />
+                                Avg: KES @_stats.DailyAverageRevenue.ToString("N0")/day
+                            </MudText>
+                        </div>
+                    </div>
+                </MudItem>
+
+                @* Sales Orders Card *@
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="metric-card metric-card-orders">
+                        <div class="metric-icon-container">
+                            <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Size="Size.Large" />
+                        </div>
+                        <div class="metric-content">
+                            <MudText Typo="Typo.caption" Class="metric-label">Sales Orders</MudText>
+                            <MudText Typo="Typo.h5" Class="metric-value">@_stats.TotalOrders</MudText>
+                            <MudText Typo="Typo.caption" Class="metric-subtext">
+                                <MudIcon Icon="@Icons.Material.Filled.Speed" Size="Size.Small" Class="mr-1" />
+                                Avg: @_stats.DailyAverageOrders.ToString("N1")/day
+                            </MudText>
+                        </div>
+                    </div>
+                </MudItem>
+
+                @* Total Quantity Card *@
+                <MudItem xs="12" sm="6" md="3">
+                    <MudTooltip Placement="Placement.Bottom" Arrow="true" MaxWidth="400">
+                        <ChildContent>
+                            <div class="metric-card metric-card-quantity">
+                                <div class="metric-icon-container">
+                                    <MudIcon Icon="@Icons.Material.Filled.Inventory" Size="Size.Large" />
+                                </div>
+                                <div class="metric-content">
+                                    <MudText Typo="Typo.caption" Class="metric-label">Total Quantity</MudText>
+                                    <MudText Typo="Typo.h5" Class="metric-value">@_stats.TotalQuantity.ToString("N0") pcs</MudText>
+                                    <MudText Typo="Typo.caption" Class="metric-subtext">
+                                        <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Size="Size.Small" Class="mr-1" />
+                                        Over @_stats.DateRangeDays days
+                                    </MudText>
+                                </div>
+                            </div>
+                        </ChildContent>
+                        <TooltipContent>
+                            <div style="padding: 8px;">
+                                <MudText Typo="Typo.caption" Class="fw-bold mb-2" Style="color: #1976D2;">Product Distribution</MudText>
+                                @if (_productData?.Products != null && _productData.Products.Any())
+                                {
+                                    @foreach (var product in _productData.Products.OrderByDescending(p => p.Quantity))
+                                    {
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                            <MudText Typo="Typo.caption">@product.ProductName:</MudText>
+                                            <MudText Typo="Typo.caption" Class="fw-bold ml-2">@product.Quantity.ToString("N0") pcs</MudText>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Default">No data available</MudText>
+                                }
+                            </div>
+                        </TooltipContent>
+                    </MudTooltip>
+                </MudItem>
+
+                @* Fuel Consumed Card *@
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="metric-card metric-card-fuel">
+                        <div class="metric-icon-container">
+                            <MudIcon Icon="@Icons.Material.Filled.LocalGasStation" Size="Size.Large" />
+                        </div>
+                        <div class="metric-content">
+                            <MudText Typo="Typo.caption" Class="metric-label">Fuel Consumed</MudText>
+                            <MudText Typo="Typo.h5" Class="metric-value">@_stats.TotalFuelConsumed.ToString("N0") ltrs</MudText>
+                            <MudText Typo="Typo.caption" Class="metric-subtext">
+                                <MudIcon Icon="@Icons.Material.Filled.WaterDrop" Size="Size.Small" Class="mr-1" />
+                                Total usage
+                            </MudText>
+                        </div>
+                    </div>
+                </MudItem>
+            </MudGrid>
+
+            @* Small Metric Cards Row *@
+            <div class="small-metrics-row">
+                <div class="small-metric-card small-metric-gradient-1">
+                    <MudIcon Icon="@Icons.Material.Filled.PriceChange" Size="Size.Small" Class="small-metric-icon" />
+                    <div class="small-metric-content">
+                        <span class="small-metric-value">KES @_stats.AvgRevenuePerPiece.ToString("N1")</span>
+                        <span class="small-metric-label">Avg Price/Piece</span>
+                    </div>
+                </div>
+
+                <div class="small-metric-card small-metric-gradient-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Small" Class="small-metric-icon" />
+                    <div class="small-metric-content">
+                        <span class="small-metric-value">KES @_stats.AvgCostPerPiece.ToString("N1")</span>
+                        <span class="small-metric-label">Avg Cost/Piece</span>
+                    </div>
+                </div>
+
+                <div class="small-metric-card small-metric-gradient-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Opacity" Size="Size.Small" Class="small-metric-icon" />
+                    <div class="small-metric-content">
+                        <span class="small-metric-value">@_stats.LitersPerPiece.ToString("N3")</span>
+                        <span class="small-metric-label">Ltrs/Piece</span>
+                    </div>
+                </div>
+
+                <div class="small-metric-card small-metric-gradient-4">
+                    <MudIcon Icon="@Icons.Material.Filled.LocalGasStation" Size="Size.Small" Class="small-metric-icon" />
+                    <div class="small-metric-content">
+                        <span class="small-metric-value">@_stats.DailyAverageFuel.ToString("N1")</span>
+                        <span class="small-metric-label">Ltrs/Day</span>
+                    </div>
+                </div>
+
+                <div class="small-metric-card small-metric-gradient-5">
+                    <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Size="Size.Small" Class="small-metric-icon" />
+                    <div class="small-metric-content">
+                        <span class="small-metric-value">KES @_stats.DailyAverageBanked.ToString("N0")</span>
+                        <span class="small-metric-label">Banked/Day</span>
+                    </div>
+                </div>
+
+                <div class="small-metric-card small-metric-gradient-6">
+                    <MudIcon Icon="@Icons.Material.Filled.ViewInAr" Size="Size.Small" Class="small-metric-icon" />
+                    <div class="small-metric-content">
+                        <span class="small-metric-value">@_stats.DailyAveragePieces.ToString("N0")</span>
+                        <span class="small-metric-label">Pieces/Day</span>
+                    </div>
+                </div>
+            </div>
+
+            @* Charts Row *@
+            <MudGrid>
+                @* Sales Performance Chart *@
+                <MudItem xs="12" lg="8">
+                    <MudCard Elevation="0" Class="chart-card pa-4 rounded-lg">
+                        <MudCardContent>
+                            <div class="chart-header">
+                                <MudText Typo="Typo.h6" Class="chart-title">Sales Performance</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                                    @_stats.DateRangeDays days
+                                </MudChip>
+                            </div>
+                            @if (_trendsData != null && _trendsData.Labels.Any())
+                            {
+                                <SalesChart CanvasId="salesPerformanceChart"
+                                           Height="350px"
+                                           Labels="_trendsData.Labels"
+                                           RevenueData="_trendsData.RevenueData"
+                                           ExpensesData="_trendsData.ExpensesData" />
+                            }
+                            else
+                            {
+                                <MudText Align="Align.Center" Class="pa-8" Color="Color.Default">
+                                    No sales data available for selected period
+                                </MudText>
+                            }
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+
+                @* Profit Analysis *@
+                <MudItem xs="12" lg="4">
+                    <MudCard Elevation="0" Class="chart-card profit-card pa-4 rounded-lg" Style="height: 100%;">
+                        <MudCardContent>
+                            <MudText Typo="Typo.h6" Class="chart-title mb-2">Profit Analysis</MudText>
+
+                            @* Profit Margin Gauge *@
+                            <ProfitGauge CanvasId="profitMarginGauge"
+                                        Height="200px"
+                                        ProfitMargin="_stats.ProfitMargin" />
+
+                            @* Profit Details *@
+                            <MudStack Spacing="1" Class="mt-4">
+                                <MudDivider />
+                                @if (_stats.OpeningBalance != 0)
+                                {
+                                    <div class="profit-row">
+                                        <MudText Typo="Typo.body2">Opening Balance</MudText>
+                                        <MudText Typo="Typo.body2">KES @_stats.OpeningBalance.ToString("N0")</MudText>
+                                    </div>
+                                }
+                                <div class="profit-row profit-row-highlight">
+                                    <MudText Typo="Typo.body2">Net Income</MudText>
+                                    <MudText Typo="Typo.body2" Class="fw-bold" Color="@(_stats.NetIncome >= 0 ? Color.Success : Color.Error)">
+                                        KES @_stats.NetIncome.ToString("N0")
+                                    </MudText>
+                                </div>
+                                @if (_stats.UnpaidOrders > 0)
+                                {
+                                    <div class="profit-row">
+                                        <MudText Typo="Typo.body2" Color="Color.Warning">Unpaid Orders</MudText>
+                                        <MudText Typo="Typo.body2" Color="Color.Warning">KES @_stats.UnpaidOrders.ToString("N0")</MudText>
+                                    </div>
+                                }
+                                <div class="profit-row">
+                                    <MudText Typo="Typo.body2">Total Expenses</MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Error">KES @_stats.TotalExpenses.ToString("N0")</MudText>
+                                </div>
+                                <div class="profit-row indented">
+                                    <MudText Typo="Typo.caption">
+                                        <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Style="font-size: 8px; color: #FF9800;" Class="mr-1" />
+                                        Commission
+                                    </MudText>
+                                    <MudText Typo="Typo.caption">KES @_stats.Commission.ToString("N0")</MudText>
+                                </div>
+                                <div class="profit-row indented">
+                                    <MudText Typo="Typo.caption">
+                                        <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Style="font-size: 8px; color: #2196F3;" Class="mr-1" />
+                                        Loaders Fee
+                                    </MudText>
+                                    <MudText Typo="Typo.caption">KES @_stats.LoadersFee.ToString("N0")</MudText>
+                                </div>
+                                @if (_stats.LandRateFee > 0)
+                                {
+                                    <div class="profit-row indented">
+                                        <MudText Typo="Typo.caption">
+                                            <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Style="font-size: 8px; color: #4CAF50;" Class="mr-1" />
+                                            Land Rate
+                                        </MudText>
+                                        <MudText Typo="Typo.caption">KES @_stats.LandRateFee.ToString("N0")</MudText>
+                                    </div>
+                                }
+                                @if (_stats.ManualExpenses > 0)
+                                {
+                                    <div class="profit-row indented">
+                                        <MudText Typo="Typo.caption">
+                                            <MudIcon Icon="@Icons.Material.Filled.Circle" Size="Size.Small" Style="font-size: 8px; color: #9C27B0;" Class="mr-1" />
+                                            Other Expenses
+                                        </MudText>
+                                        <MudText Typo="Typo.caption">KES @_stats.ManualExpenses.ToString("N0")</MudText>
+                                    </div>
+                                }
+                            </MudStack>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+
+            @* Product Breakdown and Daily Summary *@
+            <MudGrid>
+                @* Product Breakdown *@
+                <MudItem xs="12" md="5">
+                    <MudCard Elevation="0" Class="chart-card pa-4 rounded-lg">
+                        <MudCardContent>
+                            <MudText Typo="Typo.h6" Class="chart-title mb-4">Product Breakdown</MudText>
+                            @if (_productData != null && _productData.Labels.Any())
+                            {
+                                <ProductBreakdown CanvasId="productPieChart"
+                                                 Height="300px"
+                                                 Labels="_productData.Labels"
+                                                 Data="_productData.RevenueData" />
+                            }
+                            else
+                            {
+                                <MudText Align="Align.Center" Class="pa-8" Color="Color.Default">
+                                    No product data available
+                                </MudText>
+                            }
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+
+                @* Daily Summary Table *@
+                <MudItem xs="12" md="7">
+                    <MudCard Elevation="0" Class="chart-card pa-4 rounded-lg">
+                        <MudCardContent>
+                            <div class="chart-header mb-4">
+                                <MudText Typo="Typo.h6" Class="chart-title">Daily Breakdown</MudText>
+                                <MudText Typo="Typo.caption" Class="text-muted">Full expense calculations</MudText>
+                            </div>
+                            @if (_dailySummaries != null && _dailySummaries.Any())
+                            {
+                                <MudTable Items="@_dailySummaries"
+                                         T="DailySummary"
+                                         Dense="true"
+                                         Hover="true"
+                                         Breakpoint="Breakpoint.Sm"
+                                         Height="350px"
+                                         FixedHeader="true"
+                                         Class="daily-table">
+                                    <HeaderContent>
+                                        <MudTh>Date</MudTh>
+                                        <MudTh Style="text-align: right">Orders</MudTh>
+                                        <MudTh Style="text-align: right">Quantity</MudTh>
+                                        <MudTh Style="text-align: right">Revenue</MudTh>
+                                        <MudTh Style="text-align: right">Expenses</MudTh>
+                                        <MudTh Style="text-align: right">Net</MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd DataLabel="Date">
+                                            <MudLink Underline="Underline.Hover"
+                                                    Color="Color.Primary"
+                                                    Style="cursor: pointer; font-weight: 500;"
+                                                    Href="@($"/manager/daily-report-detail?Date={context.Date:yyyy-MM-dd}&QuarryId={_selectedQuarryId}")">
+                                                @context.Date.ToString("dd/MM/yyyy")
+                                            </MudLink>
+                                        </MudTd>
+                                        <MudTd DataLabel="Orders" Style="text-align: right">@context.Orders</MudTd>
+                                        <MudTd DataLabel="Quantity" Style="text-align: right">@context.Quantity.ToString("N0")</MudTd>
+                                        <MudTd DataLabel="Revenue" Style="text-align: right">@context.Revenue.ToString("N0")</MudTd>
+                                        <MudTd DataLabel="Expenses" Style="text-align: right">@context.Expenses.ToString("N0")</MudTd>
+                                        <MudTd DataLabel="Net" Style="text-align: right">
+                                            <MudText Color="@(context.NetAmount >= 0 ? Color.Success : Color.Error)">
+                                                @context.NetAmount.ToString("N0")
+                                            </MudText>
+                                        </MudTd>
+                                    </RowTemplate>
+                                    <FooterContent>
+                                        <MudTh Class="table-footer-cell">Total</MudTh>
+                                        <MudTh Style="text-align: right" Class="table-footer-cell">@_dailySummaries.Sum(s => s.Orders)</MudTh>
+                                        <MudTh Style="text-align: right" Class="table-footer-cell">@_dailySummaries.Sum(s => s.Quantity).ToString("N0")</MudTh>
+                                        <MudTh Style="text-align: right" Class="table-footer-cell">@_dailySummaries.Sum(s => s.Revenue).ToString("N0")</MudTh>
+                                        <MudTh Style="text-align: right" Class="table-footer-cell">@_dailySummaries.Sum(s => s.Expenses).ToString("N0")</MudTh>
+                                        <MudTh Style="text-align: right" Class="table-footer-cell">
+                                            <MudText Color="@(_dailySummaries.Sum(s => s.NetAmount) >= 0 ? Color.Success : Color.Error)" Class="fw-bold">
+                                                @_dailySummaries.Sum(s => s.NetAmount).ToString("N0")
+                                            </MudText>
+                                        </MudTh>
+                                    </FooterContent>
+                                </MudTable>
+                            }
+                            else
+                            {
+                                <MudText Align="Align.Center" Class="pa-8" Color="Color.Default">
+                                    No daily data available
+                                </MudText>
+                            }
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+
+            @* AI Insights Panel *@
+            <MudGrid>
+                <MudItem xs="12">
+                    <AIInsightsPanel QuarryId="@_selectedQuarryId"
+                                    FromDate="@_fromDate"
+                                    ToDate="@_toDate" />
+                </MudItem>
+            </MudGrid>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Filled" Class="my-4">
+                No analytics data available for the selected date range. Try selecting a different date range or quarry.
+            </MudAlert>
+        }
+    </MudStack>
+</MudContainer>
+
+<style>
+    /* Dashboard Header */
+    .dashboard-header {
+        background: linear-gradient(135deg, rgba(25, 118, 210, 0.05) 0%, rgba(0, 188, 212, 0.05) 100%);
+        padding: 24px;
+        border-radius: 16px;
+        border-left: 4px solid #1976D2;
+        margin-bottom: 8px;
+    }
+
+    .dashboard-title {
+        background: linear-gradient(135deg, #1565C0, #0097A7);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .refresh-btn {
+        border-radius: 12px !important;
+        box-shadow: 0 4px 14px rgba(25, 118, 210, 0.35) !important;
+    }
+
+    /* Filter Card */
+    .filter-card {
+        background: white;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    }
+
+    /* Main Metric Cards */
+    .metric-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+        padding: 24px;
+        border-radius: 16px;
+        background: white;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .metric-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        opacity: 0.1;
+        transform: translate(30%, -30%);
+    }
+
+    .metric-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    .metric-card-revenue { border-top: 4px solid #1976D2; }
+    .metric-card-revenue::before { background: #1976D2; }
+    .metric-card-revenue .metric-icon-container { background: linear-gradient(135deg, #1976D2, #1565C0); }
+
+    .metric-card-orders { border-top: 4px solid #4CAF50; }
+    .metric-card-orders::before { background: #4CAF50; }
+    .metric-card-orders .metric-icon-container { background: linear-gradient(135deg, #4CAF50, #388E3C); }
+
+    .metric-card-quantity { border-top: 4px solid #2196F3; }
+    .metric-card-quantity::before { background: #2196F3; }
+    .metric-card-quantity .metric-icon-container { background: linear-gradient(135deg, #2196F3, #1976D2); }
+
+    .metric-card-fuel { border-top: 4px solid #FF9800; }
+    .metric-card-fuel::before { background: #FF9800; }
+    .metric-card-fuel .metric-icon-container { background: linear-gradient(135deg, #FF9800, #F57C00); }
+
+    .metric-icon-container {
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .metric-icon-container .mud-icon-root {
+        color: white !important;
+    }
+
+    .metric-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .metric-label {
+        color: #64748B;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-size: 0.7rem !important;
+    }
+
+    .metric-value {
+        font-weight: 800 !important;
+        color: #1E293B;
+        margin: 4px 0;
+        line-height: 1.2;
+    }
+
+    .metric-subtext {
+        color: #4CAF50;
+        display: flex;
+        align-items: center;
+        font-weight: 500;
+    }
+
+    /* Small Metric Cards Row */
+    .small-metrics-row {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 12px;
+        margin: 8px 0 16px 0;
+    }
+
+    @@media (max-width: 1280px) {
+        .small-metrics-row {
+            grid-template-columns: repeat(3, 1fr);
+        }
+    }
+
+    @@media (max-width: 600px) {
+        .small-metrics-row {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    .small-metric-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        color: white;
+        transition: all 0.3s ease;
+        box-shadow: 0 3px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .small-metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .small-metric-gradient-1 { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .small-metric-gradient-2 { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+    .small-metric-gradient-3 { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+    .small-metric-gradient-4 { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
+    .small-metric-gradient-5 { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+    .small-metric-gradient-6 { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); color: #1E293B; }
+
+    .small-metric-icon {
+        opacity: 0.9;
+    }
+
+    .small-metric-content {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .small-metric-value {
+        font-weight: 700;
+        font-size: 0.95rem;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .small-metric-label {
+        font-size: 0.65rem;
+        opacity: 0.85;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        white-space: nowrap;
+    }
+
+    /* Chart Cards */
+    .chart-card {
+        background: white;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    }
+
+    .chart-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+    }
+
+    .chart-title {
+        font-weight: 700;
+        color: #1E293B;
+    }
+
+    /* Profit Card */
+    .profit-card {
+        background: linear-gradient(180deg, white 0%, #f8fafc 100%);
+    }
+
+    .profit-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 0;
+    }
+
+    .profit-row-highlight {
+        background: linear-gradient(90deg, rgba(76, 175, 80, 0.08) 0%, transparent 100%);
+        padding: 8px 12px;
+        border-radius: 8px;
+        margin: -2px -8px;
+    }
+
+    .profit-row.indented {
+        padding-left: 16px;
+        padding-top: 2px;
+        padding-bottom: 2px;
+    }
+
+    /* Daily Table */
+    .daily-table .mud-table-head th {
+        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        letter-spacing: 0.5px;
+        color: #64748B;
+    }
+
+    .table-footer-cell {
+        background: linear-gradient(180deg, #e8f4fd 0%, #e0f2fe 100%) !important;
+        font-weight: 700 !important;
+    }
+
+    /* Animation */
+    @@keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .metric-card, .small-metric-card, .chart-card {
+        animation: fadeInUp 0.5s ease-out forwards;
+    }
+</style>
+
+@code {
+    [Parameter] public string? quarryId { get; set; }
+
+    private List<Quarry> _quarries = new();
+    private string? _selectedQuarryId;
+    private DateTime? _fromDate = DateTime.Today.AddDays(-30);
+    private DateTime? _toDate = DateTime.Today;
+    private string _userId = string.Empty;
+    private string _userRole = string.Empty;
+    private bool _loading = true;
+
+    private AnalyticsDashboardStats? _stats;
+    private SalesTrendsData? _trendsData;
+    private ProductBreakdownData? _productData;
+    private List<DailySummary>? _dailySummaries;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Get current user
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+                _userRole = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? string.Empty;
+
+                Console.WriteLine($"[ManagerAnalytics] User authenticated: {_userId}, Role: {_userRole}");
+
+                // Load quarries based on user role
+                if (_userRole == "Administrator")
+                {
+                    // Administrators can see all quarries
+                    _quarries = await DbContext.Quarries
+                        .Where(q => q.IsActive)
+                        .OrderBy(q => q.QuarryName)
+                        .ToListAsync();
+
+                    Console.WriteLine($"[ManagerAnalytics] Admin loaded {_quarries.Count} quarries");
+
+                    // Auto-select quarry from URL parameter if provided
+                    if (!string.IsNullOrEmpty(quarryId) && _quarries.Any(q => q.Id == quarryId))
+                    {
+                        _selectedQuarryId = quarryId;
+                        Console.WriteLine($"[ManagerAnalytics] Auto-selected quarry from URL: {_selectedQuarryId}");
+                    }
+                }
+                else if (_userRole == "Manager")
+                {
+                    // Managers can see quarries they own
+                    _quarries = await DbContext.Quarries
+                        .Where(q => q.IsActive && q.ManagerId == _userId)
+                        .OrderBy(q => q.QuarryName)
+                        .ToListAsync();
+
+                    Console.WriteLine($"[ManagerAnalytics] Manager loaded {_quarries.Count} owned quarries");
+
+                    // Auto-select quarry from URL parameter if provided
+                    if (!string.IsNullOrEmpty(quarryId) && _quarries.Any(q => q.Id == quarryId))
+                    {
+                        _selectedQuarryId = quarryId;
+                        Console.WriteLine($"[ManagerAnalytics] Auto-selected quarry from URL: {_selectedQuarryId}");
+                    }
+                    // Otherwise, default to first quarry if available
+                    else if (_quarries.Any())
+                    {
+                        _selectedQuarryId = _quarries.First().Id;
+                        Console.WriteLine($"[ManagerAnalytics] Selected quarry: {_selectedQuarryId}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[ManagerAnalytics] WARNING: Manager has no quarries!");
+                    }
+                }
+
+                await LoadDashboardDataAsync();
+            }
+            else
+            {
+                Console.WriteLine("[ManagerAnalytics] User not authenticated");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ManagerAnalytics] Error in OnInitializedAsync: {ex.Message}");
+            Console.WriteLine($"[ManagerAnalytics] Stack trace: {ex.StackTrace}");
+            Snackbar.Add($"Error initializing page: {ex.Message}", Severity.Error);
+            _loading = false;
+        }
+    }
+
+    private async Task LoadDashboardDataAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var from = _fromDate ?? DateTime.Today.AddDays(-30);
+            var to = _toDate ?? DateTime.Today;
+
+            Console.WriteLine($"[ManagerAnalytics] Loading data for quarry: {_selectedQuarryId ?? "ALL"}, from: {from:yyyy-MM-dd}, to: {to:yyyy-MM-dd}");
+
+            // Load all data in parallel
+            var statsTask = AnalyticsService.GetDashboardStatsAsync(_selectedQuarryId, from, to);
+            var trendsTask = AnalyticsService.GetSalesTrendsAsync(_selectedQuarryId, from, to);
+            var productTask = AnalyticsService.GetProductBreakdownAsync(_selectedQuarryId, from, to);
+            var dailyTask = AnalyticsService.GetDailyBreakdownAsync(_selectedQuarryId, from, to);
+
+            await Task.WhenAll(statsTask, trendsTask, productTask, dailyTask);
+
+            _stats = await statsTask;
+            _trendsData = await trendsTask;
+            _productData = await productTask;
+            _dailySummaries = await dailyTask;
+
+            Console.WriteLine($"[ManagerAnalytics] Data loaded successfully:");
+            Console.WriteLine($"  - Stats: Revenue={_stats?.TotalRevenue:N0}, Orders={_stats?.TotalOrders}, Quarries={_quarries.Count}");
+            Console.WriteLine($"  - Trends: {_trendsData?.DailyData?.Count ?? 0} days");
+            Console.WriteLine($"  - Products: {_productData?.Products?.Count ?? 0} products");
+            Console.WriteLine($"  - Daily: {_dailySummaries?.Count ?? 0} summaries");
+
+            if (_stats == null)
+            {
+                Console.WriteLine("[ManagerAnalytics] WARNING: _stats is NULL after loading!");
+                Snackbar.Add("No data returned from analytics service", Severity.Warning);
+            }
+            else if (_stats.TotalOrders == 0)
+            {
+                Console.WriteLine("[ManagerAnalytics] INFO: No sales orders found for this period");
+                Snackbar.Add("No sales data found for the selected date range", Severity.Info);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ManagerAnalytics] ERROR loading dashboard data: {ex.Message}");
+            Console.WriteLine($"[ManagerAnalytics] Stack trace: {ex.StackTrace}");
+            if (ex.InnerException != null)
+            {
+                Console.WriteLine($"[ManagerAnalytics] Inner exception: {ex.InnerException.Message}");
+            }
+            Snackbar.Add($"Error loading analytics data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+}

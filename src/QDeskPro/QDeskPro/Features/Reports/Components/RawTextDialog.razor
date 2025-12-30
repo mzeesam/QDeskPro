@@ -1,0 +1,72 @@
+@*
+    Raw Text Dialog - Simple fallback for copying report text
+    Displays report text in a textarea that users can manually select and copy
+*@
+@using MudBlazor
+@using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Rounded.Description" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">@Title</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Info" Dense="true">
+                Select all text below (Ctrl+A or tap and hold), then copy (Ctrl+C) to share via WhatsApp or other apps.
+            </MudAlert>
+
+            <MudTextField @bind-Value="ReportText"
+                          Label="Report Text"
+                          Variant="Variant.Outlined"
+                          Lines="20"
+                          ReadOnly="true"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@Icons.Material.Rounded.ContentCopy"
+                          OnAdornmentClick="SelectAll"
+                          Style="font-family: monospace; font-size: 0.9rem;" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="SelectAll" StartIcon="@Icons.Material.Rounded.SelectAll" Color="Color.Primary">
+            Select All
+        </MudButton>
+        <MudButton OnClick="Close" Variant="Variant.Filled" Color="Color.Primary">
+            Close
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public string ReportText { get; set; } = "";
+    [Parameter] public string Title { get; set; } = "Report Text";
+
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+
+    private void Close() => MudDialog?.Close();
+
+    private async Task SelectAll()
+    {
+        try
+        {
+            // Select all text in the textarea using JavaScript
+            await JS.InvokeVoidAsync("eval", @"
+                const textarea = document.querySelector('textarea[readonly]');
+                if (textarea) {
+                    textarea.select();
+                    textarea.setSelectionRange(0, textarea.value.length);
+                    textarea.focus();
+                }
+            ");
+        }
+        catch
+        {
+            // Fallback - just focus the field
+        }
+    }
+}

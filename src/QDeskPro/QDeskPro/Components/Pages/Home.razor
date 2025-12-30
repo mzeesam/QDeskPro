@@ -4,28 +4,110 @@
 <PageTitle>QDeskPro - Quarry Management System</PageTitle>
 
 @* Hero Section *@
-<div class="hero-section">
-    <div class="hero-background">
-        <div class="hero-pattern"></div>
-    </div>
-    <div class="hero-content">
-        <MudStack AlignItems="AlignItems.Center" Spacing="4">
-            <div class="hero-icon-container">
-                <MudIcon Icon="@Icons.Material.Rounded.Terrain" Size="Size.Large" Class="hero-icon" />
+<AuthorizeView>
+    <Authorized>
+        @* Compact Hero for Authenticated Users *@
+        <div class="hero-section hero-compact">
+            <div class="hero-background">
+                <div class="hero-pattern"></div>
             </div>
-            <MudText Typo="Typo.h2" Class="hero-title text-center">
-                Welcome to <span class="text-gradient">QDeskPro</span>
-            </MudText>
-            <MudText Typo="Typo.h6" Class="hero-subtitle text-center">
-                Modern Quarry Management System
-            </MudText>
-            <MudText Typo="Typo.body1" Class="hero-description text-center">
-                Streamline your quarry operations with our comprehensive sales management,
-                expense tracking, and real-time analytics platform.
-            </MudText>
+            <div class="hero-content">
+                <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                    <div class="hero-icon-container">
+                        <MudIcon Icon="@Icons.Material.Rounded.Terrain" Size="Size.Medium" Class="hero-icon" />
+                    </div>
+                    <MudText Typo="Typo.h4" Class="hero-title text-center">
+                        Welcome to <span class="text-gradient">QDeskPro</span>
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="hero-subtitle text-center">
+                        Modern Quarry Management System
+                    </MudText>
 
-            <AuthorizeView>
-                <NotAuthorized>
+                    <MudStack Row="true" Spacing="3" Class="mt-2">
+                        @if (context.User.IsInRole("Clerk"))
+                        {
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       Size="Size.Medium"
+                                       Href="clerk/dashboard"
+                                       StartIcon="@Icons.Material.Rounded.Dashboard"
+                                       Class="hero-btn-primary">
+                                Go to Dashboard
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Primary"
+                                       Size="Size.Medium"
+                                       Href="clerk/sales/new"
+                                       StartIcon="@Icons.Material.Rounded.AddShoppingCart"
+                                       Class="hero-btn-secondary">
+                                New Sale
+                            </MudButton>
+                        }
+                        else if (context.User.IsInRole("Manager"))
+                        {
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       Size="Size.Medium"
+                                       Href="manager/dashboard"
+                                       StartIcon="@Icons.Material.Rounded.Today"
+                                       Class="hero-btn-primary">
+                                Today
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Primary"
+                                       Size="Size.Medium"
+                                       Href="manager/analytics"
+                                       StartIcon="@Icons.Material.Rounded.Analytics"
+                                       Class="hero-btn-secondary">
+                                View Analytics
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Primary"
+                                       Size="Size.Medium"
+                                       Href="manager/reports"
+                                       StartIcon="@Icons.Material.Rounded.Assessment"
+                                       Class="hero-btn-secondary">
+                                Reports
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       Size="Size.Medium"
+                                       Href="admin/managers"
+                                       StartIcon="@Icons.Material.Rounded.AdminPanelSettings"
+                                       Class="hero-btn-primary">
+                                Admin Panel
+                            </MudButton>
+                        }
+                    </MudStack>
+                </MudStack>
+            </div>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        @* Full Hero for Unauthenticated Users *@
+        <div class="hero-section">
+            <div class="hero-background">
+                <div class="hero-pattern"></div>
+            </div>
+            <div class="hero-content">
+                <MudStack AlignItems="AlignItems.Center" Spacing="4">
+                    <div class="hero-icon-container">
+                        <MudIcon Icon="@Icons.Material.Rounded.Terrain" Size="Size.Large" Class="hero-icon" />
+                    </div>
+                    <MudText Typo="Typo.h2" Class="hero-title text-center">
+                        Welcome to <span class="text-gradient">QDeskPro</span>
+                    </MudText>
+                    <MudText Typo="Typo.h6" Class="hero-subtitle text-center">
+                        Modern Quarry Management System
+                    </MudText>
+                    <MudText Typo="Typo.body1" Class="hero-description text-center">
+                        Streamline your quarry operations with our comprehensive sales management,
+                        expense tracking, and real-time analytics platform.
+                    </MudText>
+
                     <MudStack Row="true" Spacing="3" Class="mt-4">
                         <MudButton Variant="Variant.Filled"
                                    Color="Color.Primary"
@@ -44,64 +126,11 @@
                             Create Account
                         </MudButton>
                     </MudStack>
-                </NotAuthorized>
-                <Authorized>
-                    <MudStack Row="true" Spacing="3" Class="mt-4">
-                        @if (context.User.IsInRole("Clerk"))
-                        {
-                            <MudButton Variant="Variant.Filled"
-                                       Color="Color.Primary"
-                                       Size="Size.Large"
-                                       Href="clerk/dashboard"
-                                       StartIcon="@Icons.Material.Rounded.Dashboard"
-                                       Class="hero-btn-primary">
-                                Go to Dashboard
-                            </MudButton>
-                            <MudButton Variant="Variant.Outlined"
-                                       Color="Color.Primary"
-                                       Size="Size.Large"
-                                       Href="clerk/sales/new"
-                                       StartIcon="@Icons.Material.Rounded.AddShoppingCart"
-                                       Class="hero-btn-secondary">
-                                New Sale
-                            </MudButton>
-                        }
-                        else if (context.User.IsInRole("Manager"))
-                        {
-                            <MudButton Variant="Variant.Filled"
-                                       Color="Color.Primary"
-                                       Size="Size.Large"
-                                       Href="dashboard"
-                                       StartIcon="@Icons.Material.Rounded.Analytics"
-                                       Class="hero-btn-primary">
-                                View Analytics
-                            </MudButton>
-                            <MudButton Variant="Variant.Outlined"
-                                       Color="Color.Primary"
-                                       Size="Size.Large"
-                                       Href="reports"
-                                       StartIcon="@Icons.Material.Rounded.Assessment"
-                                       Class="hero-btn-secondary">
-                                Reports
-                            </MudButton>
-                        }
-                        else
-                        {
-                            <MudButton Variant="Variant.Filled"
-                                       Color="Color.Primary"
-                                       Size="Size.Large"
-                                       Href="admin/managers"
-                                       StartIcon="@Icons.Material.Rounded.AdminPanelSettings"
-                                       Class="hero-btn-primary">
-                                Admin Panel
-                            </MudButton>
-                        }
-                    </MudStack>
-                </Authorized>
-            </AuthorizeView>
-        </MudStack>
-    </div>
-</div>
+                </MudStack>
+            </div>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
 
 @* Features Section *@
 <MudContainer MaxWidth="MaxWidth.Large" Class="py-12">
@@ -250,6 +279,38 @@
         padding: 60px 24px;
         margin: -24px -24px 0 -24px;
         overflow: hidden;
+    }
+
+    /* Compact Hero for Authenticated Users */
+    .hero-section.hero-compact {
+        min-height: auto;
+        padding: 32px 24px;
+    }
+
+    .hero-compact .hero-icon-container {
+        width: 56px;
+        height: 56px;
+        border-radius: 16px;
+        margin-bottom: 8px;
+        animation: none;
+    }
+
+    .hero-compact .hero-icon {
+        font-size: 1.75rem !important;
+    }
+
+    .hero-compact .hero-title {
+        font-size: 1.5rem !important;
+    }
+
+    .hero-compact .hero-subtitle {
+        margin-bottom: 0;
+    }
+
+    .hero-compact .hero-btn-primary,
+    .hero-compact .hero-btn-secondary {
+        padding: 8px 20px !important;
+        border-radius: 10px !important;
     }
 
     .hero-background {
@@ -467,8 +528,16 @@
             padding: 40px 16px;
         }
 
+        .hero-section.hero-compact {
+            padding: 24px 16px;
+        }
+
         .hero-title {
             font-size: 1.75rem !important;
+        }
+
+        .hero-compact .hero-title {
+            font-size: 1.25rem !important;
         }
 
         .hero-icon-container {
@@ -477,8 +546,18 @@
             border-radius: 18px;
         }
 
+        .hero-compact .hero-icon-container {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+        }
+
         .hero-icon {
             font-size: 2rem !important;
+        }
+
+        .hero-compact .hero-icon {
+            font-size: 1.5rem !important;
         }
 
         .stats-section {
@@ -493,6 +572,10 @@
     @@media (max-width: 600px) {
         .hero-section {
             margin: -24px -12px 0 -12px;
+        }
+
+        .hero-section.hero-compact {
+            padding: 20px 12px;
         }
 
         .stats-section {

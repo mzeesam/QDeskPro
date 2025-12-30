@@ -71,6 +71,7 @@ public class SaleCalculationService
     /// <summary>
     /// Calculate all amounts for a sale in one call
     /// </summary>
+    /// <param name="includeLandRate">If false, land rate fee will be set to 0</param>
     public SaleCalculationResult CalculateAll(
         double quantity,
         double pricePerUnit,
@@ -78,12 +79,18 @@ public class SaleCalculationService
         string productName,
         double? loadersFeeRate,
         double? landRateFee,
-        double? rejectsFee)
+        double? rejectsFee,
+        bool includeLandRate = true)
     {
         var grossAmount = CalculateGrossAmount(quantity, pricePerUnit);
         var commission = CalculateCommission(quantity, commissionPerUnit);
         var loadersFee = CalculateLoadersFee(quantity, loadersFeeRate);
-        var landRate = CalculateLandRateFee(quantity, productName, landRateFee, rejectsFee);
+
+        // Only calculate land rate if includeLandRate is true
+        var landRate = includeLandRate
+            ? CalculateLandRateFee(quantity, productName, landRateFee, rejectsFee)
+            : 0;
+
         var netAmount = CalculateNetAmount(grossAmount, commission, loadersFee, landRate);
 
         return new SaleCalculationResult

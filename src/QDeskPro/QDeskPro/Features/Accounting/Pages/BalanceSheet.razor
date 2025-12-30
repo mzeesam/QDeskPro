@@ -1,0 +1,363 @@
+@page "/manager/accounting/balance-sheet"
+@page "/admin/accounting/balance-sheet"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Domain.Enums
+@using QDeskPro.Features.Accounting.Services
+@using QDeskPro.Features.Accounting.Models
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject IFinancialReportService ReportService
+@inject IFinancialReportExportService ExportService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Balance Sheet - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4 mb-8">
+    <MudStack Spacing="4">
+        @* Header *@
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <div>
+                <MudBreadcrumbs Items="_breadcrumbs" Class="pa-0" />
+                <MudText Typo="Typo.h4" Class="fw-bold mt-2">
+                    <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Class="mr-2" Style="vertical-align: middle;" />
+                    Balance Sheet
+                </MudText>
+                <MudText Typo="Typo.body2" Class="text-muted">
+                    Statement of financial position showing assets, liabilities, and equity
+                </MudText>
+            </div>
+            @if (_report != null)
+            {
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.PictureAsPdf" OnClick="ExportToPdf" Disabled="_exporting">
+                        Export PDF
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Success"
+                              StartIcon="@Icons.Material.Filled.TableChart" OnClick="ExportToExcel" Disabled="_exporting">
+                        Export Excel
+                    </MudButton>
+                </MudStack>
+            }
+        </MudStack>
+
+        @* Filters *@
+        <MudPaper Elevation="0" Class="pa-4 rounded-lg" Style="background: var(--mud-palette-background-gray);">
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudSelect T="string" @bind-Value="_selectedQuarryId" Label="Quarry"
+                              Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" Dense="true"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Terrain">
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudDatePicker @bind-Date="_asOfDate" Label="As of Date"
+                                  Variant="Variant.Outlined" MaxDate="DateTime.Today" Dense="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                              OnClick="GenerateReport" Disabled="_loading || string.IsNullOrEmpty(_selectedQuarryId)"
+                              StartIcon="@Icons.Material.Filled.PlayArrow" Style="height: 40px;">
+                        @if (_loading)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Generate Report
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @* Report Content *@
+        @if (_report != null)
+        {
+            @* Balance Check *@
+            <MudAlert Severity="@(_report.IsBalanced ? Severity.Success : Severity.Error)"
+                     Icon="@(_report.IsBalanced ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)">
+                @if (_report.IsBalanced)
+                {
+                    <strong>Balance Sheet is Balanced</strong>
+                    <span> - Assets = Liabilities + Equity</span>
+                }
+                else
+                {
+                    <strong>Balance Sheet is NOT Balanced</strong>
+                    <span> - Difference: KES @(Math.Abs(_report.TotalAssets - (_report.TotalLiabilities + _report.TotalEquity)).ToString("N2"))</span>
+                }
+            </MudAlert>
+
+            @* Summary Cards *@
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="2" Style="border-left: 4px solid var(--mud-palette-primary);">
+                        <MudText Typo="Typo.body2" Class="text-muted">Total Assets</MudText>
+                        <MudText Typo="Typo.h5" Class="fw-bold" Color="Color.Primary">
+                            KES @_report.TotalAssets.ToString("N0")
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="2" Style="border-left: 4px solid var(--mud-palette-warning);">
+                        <MudText Typo="Typo.body2" Class="text-muted">Total Liabilities</MudText>
+                        <MudText Typo="Typo.h5" Class="fw-bold" Color="Color.Warning">
+                            KES @_report.TotalLiabilities.ToString("N0")
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-4 rounded-lg" Elevation="2" Style="border-left: 4px solid var(--mud-palette-success);">
+                        <MudText Typo="Typo.body2" Class="text-muted">Total Equity</MudText>
+                        <MudText Typo="Typo.h5" Class="fw-bold" Color="Color.Success">
+                            KES @_report.TotalEquity.ToString("N0")
+                        </MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* Balance Sheet Statement *@
+            <MudGrid>
+                @* ASSETS Column *@
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4 rounded-lg h-100" Elevation="2">
+                        <MudText Typo="Typo.h6" Class="mb-3" Color="Color.Primary">ASSETS</MudText>
+
+                        <MudText Typo="Typo.subtitle2" Class="fw-bold mt-3">Current Assets</MudText>
+                        <MudSimpleTable Dense="true" Hover="true" Style="font-family: monospace;">
+                            <tbody>
+                                @foreach (var item in _report.CurrentAssets)
+                                {
+                                    <tr>
+                                        <td>@item.Description</td>
+                                        <td style="text-align: right;">@item.Amount.ToString("N2")</td>
+                                    </tr>
+                                }
+                                <tr style="font-weight: bold; border-top: 2px solid;">
+                                    <td>Total Current Assets</td>
+                                    <td style="text-align: right;">@_report.TotalCurrentAssets.ToString("N2")</td>
+                                </tr>
+                            </tbody>
+                        </MudSimpleTable>
+
+                        @if (_report.NonCurrentAssets.Any())
+                        {
+                            <MudText Typo="Typo.subtitle2" Class="fw-bold mt-4">Non-Current Assets</MudText>
+                            <MudSimpleTable Dense="true" Hover="true" Style="font-family: monospace;">
+                                <tbody>
+                                    @foreach (var item in _report.NonCurrentAssets)
+                                    {
+                                        <tr>
+                                            <td>@item.Description</td>
+                                            <td style="text-align: right;">@item.Amount.ToString("N2")</td>
+                                        </tr>
+                                    }
+                                    <tr style="font-weight: bold; border-top: 2px solid;">
+                                        <td>Total Non-Current Assets</td>
+                                        <td style="text-align: right;">@_report.TotalNonCurrentAssets.ToString("N2")</td>
+                                    </tr>
+                                </tbody>
+                            </MudSimpleTable>
+                        }
+
+                        <MudDivider Class="my-3" />
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.h6" Class="fw-bold">TOTAL ASSETS</MudText>
+                            <MudText Typo="Typo.h6" Class="fw-bold" Color="Color.Primary">
+                                KES @_report.TotalAssets.ToString("N2")
+                            </MudText>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
+                @* LIABILITIES & EQUITY Column *@
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4 rounded-lg h-100" Elevation="2">
+                        <MudText Typo="Typo.h6" Class="mb-3" Color="Color.Warning">LIABILITIES</MudText>
+
+                        <MudText Typo="Typo.subtitle2" Class="fw-bold mt-3">Current Liabilities</MudText>
+                        <MudSimpleTable Dense="true" Hover="true" Style="font-family: monospace;">
+                            <tbody>
+                                @foreach (var item in _report.CurrentLiabilities)
+                                {
+                                    <tr>
+                                        <td>@item.Description</td>
+                                        <td style="text-align: right;">@item.Amount.ToString("N2")</td>
+                                    </tr>
+                                }
+                                <tr style="font-weight: bold; border-top: 2px solid;">
+                                    <td>Total Current Liabilities</td>
+                                    <td style="text-align: right;">@_report.TotalCurrentLiabilities.ToString("N2")</td>
+                                </tr>
+                            </tbody>
+                        </MudSimpleTable>
+
+                        <MudDivider Class="my-3" />
+                        <MudText Typo="Typo.h6" Class="mb-3" Color="Color.Success">EQUITY</MudText>
+
+                        <MudSimpleTable Dense="true" Hover="true" Style="font-family: monospace;">
+                            <tbody>
+                                @foreach (var item in _report.EquityItems)
+                                {
+                                    <tr>
+                                        <td>@item.Description</td>
+                                        <td style="text-align: right;">@item.Amount.ToString("N2")</td>
+                                    </tr>
+                                }
+                                <tr>
+                                    <td>Current Period Earnings</td>
+                                    <td style="text-align: right;">@_report.CurrentPeriodProfitLoss.ToString("N2")</td>
+                                </tr>
+                                <tr style="font-weight: bold; border-top: 2px solid;">
+                                    <td>Total Equity</td>
+                                    <td style="text-align: right;">@_report.TotalEquity.ToString("N2")</td>
+                                </tr>
+                            </tbody>
+                        </MudSimpleTable>
+
+                        <MudDivider Class="my-3" />
+                        <MudStack Row="true" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.h6" Class="fw-bold">TOTAL LIABILITIES + EQUITY</MudText>
+                            <MudText Typo="Typo.h6" Class="fw-bold" Color="Color.Success">
+                                KES @((_report.TotalLiabilities + _report.TotalEquity).ToString("N2"))
+                            </MudText>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.caption" Class="text-muted text-center">
+                Report generated on @_report.GeneratedAt.ToString("MMMM dd, yyyy HH:mm") | @_report.QuarryName
+            </MudText>
+        }
+        else if (!_loading)
+        {
+            <MudPaper Class="pa-8 text-center rounded-lg" Elevation="0" Style="background: var(--mud-palette-background-gray);">
+                <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Style="font-size: 64px;" Color="Color.Info" />
+                <MudText Typo="Typo.h6" Class="mt-4">Select a quarry and date to generate the Balance Sheet</MudText>
+                <MudText Typo="Typo.body2" Class="text-muted">
+                    The balance sheet shows your financial position at a specific point in time
+                </MudText>
+            </MudPaper>
+        }
+    </MudStack>
+</MudContainer>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthStateTask { get; set; }
+    [SupplyParameterFromQuery] public string? QuarryId { get; set; }
+
+    private List<BreadcrumbItem> _breadcrumbs = new()
+    {
+        new BreadcrumbItem("Accounting", "/manager/accounting", false, Icons.Material.Filled.AccountBalance),
+        new BreadcrumbItem("Balance Sheet", null, true)
+    };
+
+    private List<Quarry> _quarries = new();
+    private string? _selectedQuarryId;
+    private DateTime? _asOfDate = DateTime.Today;
+    private string? _userId;
+    private string? _userRole;
+    private bool _loading;
+    private bool _exporting;
+    private BalanceSheetReport? _report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserInfo();
+        await LoadQuarries();
+        if (!string.IsNullOrEmpty(QuarryId)) _selectedQuarryId = QuarryId;
+    }
+
+    private async Task LoadUserInfo()
+    {
+        if (AuthStateTask != null)
+        {
+            var authState = await AuthStateTask;
+            _userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            _userRole = authState.User.FindFirst(ClaimTypes.Role)?.Value;
+        }
+    }
+
+    private async Task LoadQuarries()
+    {
+        try
+        {
+            if (_userRole == "Administrator")
+            {
+                _quarries = await DbContext.Quarries.Where(q => q.IsActive).OrderBy(q => q.QuarryName).ToListAsync();
+            }
+            else
+            {
+                var owned = await DbContext.Quarries.Where(q => q.ManagerId == _userId && q.IsActive).ToListAsync();
+                var assignedIds = await DbContext.UserQuarries.Where(uq => uq.UserId == _userId).Select(uq => uq.QuarryId).ToListAsync();
+                var assigned = await DbContext.Quarries.Where(q => assignedIds.Contains(q.Id) && q.IsActive).ToListAsync();
+                _quarries = owned.Union(assigned).Distinct().OrderBy(q => q.QuarryName).ToList();
+            }
+            if (_quarries.Count == 1 && string.IsNullOrEmpty(_selectedQuarryId)) _selectedQuarryId = _quarries[0].Id;
+        }
+        catch (Exception ex) { Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task GenerateReport()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId) || !_asOfDate.HasValue)
+        {
+            Snackbar.Add("Please select a quarry and date", Severity.Warning);
+            return;
+        }
+        _loading = true;
+        _report = null;
+        try
+        {
+            _report = await ReportService.GenerateBalanceSheetAsync(_selectedQuarryId, _asOfDate.Value);
+            Snackbar.Add("Balance Sheet generated successfully", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+        finally { _loading = false; }
+    }
+
+    private async Task ExportToPdf()
+    {
+        if (_report == null) return;
+        _exporting = true;
+        try
+        {
+            var bytes = ExportService.ExportBalanceSheetToPdf(_report);
+            var fileName = $"BalanceSheet_{_report.QuarryName}_{_report.AsOfDate:yyyyMMdd}.pdf";
+            await DownloadFile(bytes, fileName, "application/pdf");
+            Snackbar.Add("PDF exported successfully", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+        finally { _exporting = false; }
+    }
+
+    private async Task ExportToExcel()
+    {
+        if (_report == null) return;
+        _exporting = true;
+        try
+        {
+            var bytes = ExportService.ExportBalanceSheetToExcel(_report);
+            var fileName = $"BalanceSheet_{_report.QuarryName}_{_report.AsOfDate:yyyyMMdd}.xlsx";
+            await DownloadFile(bytes, fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Snackbar.Add("Excel exported successfully", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+        finally { _exporting = false; }
+    }
+
+    private async Task DownloadFile(byte[] bytes, string fileName, string contentType)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFile", fileName, contentType, base64);
+    }
+}

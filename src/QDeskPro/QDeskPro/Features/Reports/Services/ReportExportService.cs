@@ -504,9 +504,8 @@ public class ReportExportService
 
                         c.Item().PaddingTop(8).Text($"KES {report.Banked:N0}")
                             .Bold()
-                            .FontSize(28)
-                            .FontColor(PrimaryDark)
-                            .LetterSpacing(-0.5f);
+                            .FontSize(24)
+                            .FontColor(PrimaryDark);
 
                         // Banking rate progress indicator
                         c.Item().PaddingTop(8).Column(progressCol =>

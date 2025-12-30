@@ -109,13 +109,25 @@ public class AnalyticsService
         {
             if (quarry.LoadersFee.HasValue)
             {
-                loadersFee = sales.Sum(s => s.Quantity * quarry.LoadersFee.Value);
+                // Don't apply loaders fee for beam or hardcore products
+                loadersFee = sales
+                    .Where(s =>
+                    {
+                        var productName = s.Product?.ProductName ?? "";
+                        return !productName.Contains("beam", StringComparison.OrdinalIgnoreCase) &&
+                               !productName.Contains("hardcore", StringComparison.OrdinalIgnoreCase);
+                    })
+                    .Sum(s => s.Quantity * quarry.LoadersFee.Value);
             }
 
             if (quarry.LandRateFee.HasValue && quarry.LandRateFee.Value > 0)
             {
                 foreach (var sale in sales)
                 {
+                    // Skip land rate if the sale has it excluded
+                    if (!sale.IncludeLandRate)
+                        continue;
+
                     var product = sale.Product;
                     if (product?.ProductName?.ToLower().Contains("reject") == true && quarry.RejectsFee.HasValue)
                     {
@@ -134,31 +146,53 @@ public class AnalyticsService
         // Calculate unpaid orders
         var unpaidOrders = sales.Where(s => s.PaymentStatus != "Paid").Sum(s => s.GrossSaleAmount);
 
-        // Get Opening Balance - cumulative for date ranges
-        // Opening balance for each day = previous day's closing balance (cash-in-hand)
-        // For multi-day ranges, sum all opening balances across the range
+        // Get Cash In Hand (B/F) - the closing balance from the day BEFORE the last date in the range
+        // For a Dec 1-10 report, this would be Dec 9's closing balance (since balances carry over daily)
         double openingBalance = 0;
         if (!string.IsNullOrEmpty(quarryId))
         {
-            // For each day in the range, opening balance = previous day's closing
-            // So we need DailyNotes from (fromDate - 1) to (toDate - 1)
-            var openingBalanceStartStamp = fromDate.AddDays(-1).ToString("yyyyMMdd");
-            var openingBalanceEndStamp = toDate.AddDays(-1).ToString("yyyyMMdd");
+            // Cash In Hand (B/F) = closing balance from day before toDate (e.g., Dec 9 for Dec 1-10 report)
+            var previousDayStamp = toDate.AddDays(-1).ToString("yyyyMMdd");
 
-            var dailyNotes = await context.DailyNotes
-                .Where(n => string.Compare(n.DateStamp, openingBalanceStartStamp) >= 0)
-                .Where(n => string.Compare(n.DateStamp, openingBalanceEndStamp) <= 0)
+            var previousDayNote = await context.DailyNotes
+                .Where(n => n.DateStamp == previousDayStamp)
                 .Where(n => n.QId == quarryId)
                 .Where(n => n.IsActive)
-                .ToListAsync();
+                .FirstOrDefaultAsync();
 
-            // Sum all closing balances (these become opening balances for subsequent days)
-            openingBalance = dailyNotes.Sum(n => n.ClosingBalance);
+            openingBalance = previousDayNote?.ClosingBalance ?? 0;
         }
 
-        // Net Income formula: (TotalSales - UnpaidOrders - TotalExpenses) + OpeningBalance
-        // This matches the clerk report formula for consistency
-        var netIncome = (totalRevenue - unpaidOrders - totalExpenses) + openingBalance;
+        // Get Collections (payments received during period for sales made before period)
+        var collectionsQuery = context.Sales
+            .Where(s => s.IsActive)
+            .Where(s => s.PaymentStatus == "Paid")
+            .Where(s => s.PaymentReceivedDate >= fromDate && s.PaymentReceivedDate <= toDate)
+            .Where(s => s.SaleDate < fromDate); // Sale was made before period
+
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            collectionsQuery = collectionsQuery.Where(s => s.QId == quarryId);
+        }
+
+        // Use actual database columns instead of computed property for EF Core translation
+        var totalCollections = await collectionsQuery.SumAsync(s => s.Quantity * s.PricePerUnit);
+
+        // Get Prepayments (customer deposits received during period)
+        var prepaymentsQuery = context.Prepayments
+            .Where(p => p.IsActive)
+            .Where(p => p.PrepaymentDate >= fromDate && p.PrepaymentDate <= toDate);
+
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            prepaymentsQuery = prepaymentsQuery.Where(p => p.QId == quarryId);
+        }
+
+        var totalPrepayments = await prepaymentsQuery.SumAsync(p => p.TotalAmountPaid);
+
+        // Net Income formula: (Earnings + Opening Balance + Collections + Prepayments) - Unpaid Orders
+        // Where Earnings = TotalSales - TotalExpenses
+        var netIncome = (totalRevenue - totalExpenses + openingBalance + totalCollections + totalPrepayments) - unpaidOrders;
         var profitMargin = totalRevenue > 0 ? (netIncome / totalRevenue) * 100 : 0;
 
         var totalFuelConsumed = fuelUsages.Sum(f => f.MachinesLoaded + f.WheelLoadersLoaded);
@@ -175,6 +209,15 @@ public class AnalyticsService
         var avgCostPerPiece = totalQuantity > 0 ? totalExpenses / totalQuantity : 0;
         var avgRevenuePerPiece = totalQuantity > 0 ? totalRevenue / totalQuantity : 0;
         var litersPerPiece = totalQuantity > 0 ? totalFuelConsumed / totalQuantity : 0;
+
+        // Calculate enhanced KPI metrics
+        var fuelEfficiency = totalFuelConsumed > 0 ? totalQuantity / totalFuelConsumed : 0;  // Pieces per Liter
+        var profitPerPiece = totalQuantity > 0 ? netIncome / totalQuantity : 0;
+        var collectionRate = totalRevenue > 0 ? ((totalRevenue - unpaidOrders) / totalRevenue) * 100 : 0;
+        var avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+        var commissionRate = totalRevenue > 0 ? (commission / totalRevenue) * 100 : 0;
+        var grossMargin = totalRevenue > 0 ? ((totalRevenue - totalExpenses) / totalRevenue) * 100 : 0;
+        var avgQuantityPerOrder = totalOrders > 0 ? totalQuantity / totalOrders : 0;
 
         var stats = new AnalyticsDashboardStats
         {
@@ -200,6 +243,14 @@ public class AnalyticsService
             AvgCostPerPiece = avgCostPerPiece,
             AvgRevenuePerPiece = avgRevenuePerPiece,
             LitersPerPiece = litersPerPiece,
+            // Enhanced KPIs
+            FuelEfficiency = fuelEfficiency,
+            ProfitPerPiece = profitPerPiece,
+            CollectionRate = collectionRate,
+            AvgOrderValue = avgOrderValue,
+            CommissionRate = commissionRate,
+            GrossMargin = grossMargin,
+            AvgQuantityPerOrder = avgQuantityPerOrder,
             DateRangeDays = days
         };
 
@@ -278,13 +329,25 @@ public class AnalyticsService
             {
                 if (quarry.LoadersFee.HasValue)
                 {
-                    loadersFee = daySales.Sum(s => s.Quantity * quarry.LoadersFee.Value);
+                    // Don't apply loaders fee for beam or hardcore products
+                    loadersFee = daySales
+                        .Where(s =>
+                        {
+                            var productName = s.Product?.ProductName ?? "";
+                            return !productName.Contains("beam", StringComparison.OrdinalIgnoreCase) &&
+                                   !productName.Contains("hardcore", StringComparison.OrdinalIgnoreCase);
+                        })
+                        .Sum(s => s.Quantity * quarry.LoadersFee.Value);
                 }
 
                 if (quarry.LandRateFee.HasValue && quarry.LandRateFee.Value > 0)
                 {
                     foreach (var sale in daySales)
                     {
+                        // Skip land rate if the sale has it excluded
+                        if (!sale.IncludeLandRate)
+                            continue;
+
                         var product = sale.Product;
                         if (product?.ProductName?.ToLower().Contains("reject") == true && quarry.RejectsFee.HasValue)
                         {
@@ -439,13 +502,25 @@ public class AnalyticsService
             {
                 if (quarry.LoadersFee.HasValue)
                 {
-                    loadersFee = daySales.Sum(s => s.Quantity * quarry.LoadersFee.Value);
+                    // Don't apply loaders fee for beam or hardcore products
+                    loadersFee = daySales
+                        .Where(s =>
+                        {
+                            var productName = s.Product?.ProductName ?? "";
+                            return !productName.Contains("beam", StringComparison.OrdinalIgnoreCase) &&
+                                   !productName.Contains("hardcore", StringComparison.OrdinalIgnoreCase);
+                        })
+                        .Sum(s => s.Quantity * quarry.LoadersFee.Value);
                 }
 
                 if (quarry.LandRateFee.HasValue && quarry.LandRateFee.Value > 0)
                 {
                     foreach (var sale in daySales)
                     {
+                        // Skip land rate if the sale has it excluded
+                        if (!sale.IncludeLandRate)
+                            continue;
+
                         var product = sale.Product;
                         if (product?.ProductName?.ToLower().Contains("reject") == true && quarry.RejectsFee.HasValue)
                         {
@@ -500,12 +575,12 @@ public class AnalyticsDashboardStats
     public double LoadersFee { get; set; }
     public double LandRateFee { get; set; }
 
-    // Opening balance and unpaid orders (for consistent Net Income calculation)
+    // Cash In Hand (B/F) and unpaid orders (for consistent Net Income calculation)
     public double OpeningBalance { get; set; }
     public double UnpaidOrders { get; set; }
 
     // Calculated metrics
-    // Net Income = (TotalRevenue - UnpaidOrders - TotalExpenses) + OpeningBalance
+    // Net Income = (Earnings + Cash In Hand) - Unpaid Orders
     public double NetIncome { get; set; }
     public double ProfitMargin { get; set; }
 
@@ -520,6 +595,15 @@ public class AnalyticsDashboardStats
     public double AvgCostPerPiece { get; set; }
     public double AvgRevenuePerPiece { get; set; }
     public double LitersPerPiece { get; set; }
+
+    // Enhanced KPI metrics
+    public double FuelEfficiency { get; set; }      // Pieces per Liter (Total Pieces / Total Fuel)
+    public double ProfitPerPiece { get; set; }      // Net Income / Total Quantity
+    public double CollectionRate { get; set; }      // (Revenue - Unpaid) / Revenue * 100
+    public double AvgOrderValue { get; set; }       // Total Revenue / Total Orders
+    public double CommissionRate { get; set; }      // Commission / Revenue * 100
+    public double GrossMargin { get; set; }         // (Revenue - Total Expenses) / Revenue * 100
+    public double AvgQuantityPerOrder { get; set; } // Total Quantity / Total Orders
 
     // Date range info
     public int DateRangeDays { get; set; }

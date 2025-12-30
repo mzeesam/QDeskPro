@@ -1,0 +1,1071 @@
+@page "/manager/data"
+@page "/admin/data"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.MasterData.Services
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject MasterDataService MasterDataService
+@inject DataManagementService DataManagementService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Data Management - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4 mb-8">
+    <MudStack Spacing="4">
+        @* Header *@
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <div>
+                <MudText Typo="Typo.h4" Class="fw-bold">
+                    <MudIcon Icon="@Icons.Material.Filled.Storage" Class="mr-2" Style="vertical-align: middle;" />
+                    Data Management
+                </MudText>
+                <MudText Typo="Typo.body2" Class="text-muted mt-1">
+                    Export, import, or clear quarry operational data
+                </MudText>
+            </div>
+        </MudStack>
+
+        @* Quarry Selector *@
+        <MudPaper Class="pa-4" Elevation="0">
+            <MudGrid>
+                <MudItem xs="12" sm="8" md="6">
+                    <MudSelect T="string"
+                              @bind-Value="SelectedQuarryId"
+                              Label="Select Quarry"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Terrain">
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @if (string.IsNullOrEmpty(_selectedQuarryId))
+        {
+            <MudAlert Severity="Severity.Info">
+                Please select a quarry to manage its data.
+            </MudAlert>
+        }
+        else
+        {
+            @* Data Summary *@
+            <MudPaper Class="pa-4" Elevation="0">
+                <MudText Typo="Typo.h6" Class="mb-3">Current Data Summary</MudText>
+                @if (_loading)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                }
+                else if (_dataCounts != null)
+                {
+                    <MudGrid>
+                        <MudItem xs="6" sm="3">
+                            <div class="data-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Color="Color.Primary" Size="Size.Large" />
+                                <MudText Typo="Typo.h5" Class="mt-2">@_dataCounts.SalesCount</MudText>
+                                <MudText Typo="Typo.caption" Class="text-muted">Sales</MudText>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <div class="data-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.Receipt" Color="Color.Warning" Size="Size.Large" />
+                                <MudText Typo="Typo.h5" Class="mt-2">@_dataCounts.ExpensesCount</MudText>
+                                <MudText Typo="Typo.caption" Class="text-muted">Expenses</MudText>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <div class="data-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Success" Size="Size.Large" />
+                                <MudText Typo="Typo.h5" Class="mt-2">@_dataCounts.BankingCount</MudText>
+                                <MudText Typo="Typo.caption" Class="text-muted">Banking</MudText>
+                            </div>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <div class="data-stat-card">
+                                <MudIcon Icon="@Icons.Material.Filled.LocalGasStation" Color="Color.Error" Size="Size.Large" />
+                                <MudText Typo="Typo.h5" Class="mt-2">@_dataCounts.FuelUsageCount</MudText>
+                                <MudText Typo="Typo.caption" Class="text-muted">Fuel Usage</MudText>
+                            </div>
+                        </MudItem>
+                    </MudGrid>
+                }
+            </MudPaper>
+
+            @* Action Cards - Excel Import/Export *@
+            <MudText Typo="Typo.h6" Class="mt-2 mb-1">
+                <MudIcon Icon="@Icons.Material.Filled.TableChart" Size="Size.Small" Class="mr-2" Style="vertical-align: middle;" />
+                Excel Import & Export
+            </MudText>
+            <MudGrid>
+                @* Export Data Card *@
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="pa-5 action-card" Elevation="0">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="3">
+                            <div class="action-icon export-icon">
+                                <MudIcon Icon="@Icons.Material.Filled.Download" Size="Size.Large" />
+                            </div>
+                            <MudText Typo="Typo.h6">Export Data</MudText>
+                            <MudText Typo="Typo.body2" Align="Align.Center" Class="text-muted">
+                                Download all quarry data as an Excel file. Includes a ReferenceData sheet with valid lookup values.
+                            </MudText>
+                            <MudButton Variant="Variant.Filled"
+                                      Color="Color.Success"
+                                      StartIcon="@Icons.Material.Filled.FileDownload"
+                                      OnClick="ExportDataAsync"
+                                      Disabled="@(_exporting || _dataCounts?.TotalCount == 0)"
+                                      FullWidth="true">
+                                @if (_exporting)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                }
+                                Export to Excel
+                            </MudButton>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
+                @* Import Data Card *@
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="pa-5 action-card" Elevation="0">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="3">
+                            <div class="action-icon import-icon">
+                                <MudIcon Icon="@Icons.Material.Filled.Upload" Size="Size.Large" />
+                            </div>
+                            <MudText Typo="Typo.h6">Import Data</MudText>
+                            <MudText Typo="Typo.body2" Align="Align.Center" Class="text-muted">
+                                Upload an Excel file. Data is validated before import - all errors must be fixed first.
+                            </MudText>
+                            <MudFileUpload T="IBrowserFile"
+                                          Accept=".xlsx,.xls"
+                                          FilesChanged="OnFileSelectedAsync"
+                                          MaximumFileCount="1">
+                                <ActivatorContent>
+                                    <MudButton Variant="Variant.Filled"
+                                              Color="Color.Primary"
+                                              StartIcon="@Icons.Material.Filled.FileUpload"
+                                              Disabled="_validating || _importing"
+                                              FullWidth="true">
+                                        @if (_validating)
+                                        {
+                                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                            <span>Validating...</span>
+                                        }
+                                        else if (_importing)
+                                        {
+                                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                            <span>Importing...</span>
+                                        }
+                                        else
+                                        {
+                                            <span>Select File to Import</span>
+                                        }
+                                    </MudButton>
+                                </ActivatorContent>
+                            </MudFileUpload>
+                            <MudButton Variant="Variant.Outlined"
+                                      Color="Color.Primary"
+                                      StartIcon="@Icons.Material.Filled.Description"
+                                      OnClick="DownloadTemplateAsync"
+                                      Disabled="_downloadingTemplate"
+                                      FullWidth="true"
+                                      Class="mt-2">
+                                @if (_downloadingTemplate)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                }
+                                Download Template
+                            </MudButton>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
+                @* Clear Data Card *@
+                <MudItem xs="12" md="4">
+                    <MudPaper Class="pa-5 action-card clear-card" Elevation="0">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="3">
+                            <div class="action-icon clear-icon">
+                                <MudIcon Icon="@Icons.Material.Filled.DeleteSweep" Size="Size.Large" />
+                            </div>
+                            <MudText Typo="Typo.h6">Clear Data</MudText>
+                            <MudText Typo="Typo.body2" Align="Align.Center" Class="text-muted">
+                                Remove all sales, expenses, banking, and fuel records. Requires password confirmation.
+                            </MudText>
+                            <MudButton Variant="Variant.Filled"
+                                      Color="Color.Error"
+                                      StartIcon="@Icons.Material.Filled.Warning"
+                                      OnClick="ShowClearConfirmationAsync"
+                                      Disabled="@(_clearing || _dataCounts?.TotalCount == 0)"
+                                      FullWidth="true">
+                                @if (_clearing)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                }
+                                Clear All Data
+                            </MudButton>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* Database Backup & Restore Section *@
+            <MudText Typo="Typo.h6" Class="mt-4 mb-1">
+                <MudIcon Icon="@Icons.Material.Filled.Backup" Size="Size.Small" Class="mr-2" Style="vertical-align: middle;" />
+                Database Backup & Restore
+            </MudText>
+            <MudGrid>
+                @* SQL Backup Card *@
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-5 action-card" Elevation="0">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="3">
+                            <div class="action-icon backup-icon">
+                                <MudIcon Icon="@Icons.Material.Filled.CloudDownload" Size="Size.Large" />
+                            </div>
+                            <MudText Typo="Typo.h6">Download SQL Backup</MudText>
+                            <MudText Typo="Typo.body2" Align="Align.Center" Class="text-muted">
+                                Download a complete SQL backup of all quarry data including master data (layers, brokers, prices).
+                                This backup can be restored to recover data.
+                            </MudText>
+                            <MudButton Variant="Variant.Filled"
+                                      Color="Color.Dark"
+                                      StartIcon="@Icons.Material.Filled.Download"
+                                      OnClick="DownloadSqlBackupAsync"
+                                      Disabled="@(_backingUp || _dataCounts?.TotalCount == 0)"
+                                      FullWidth="true">
+                                @if (_backingUp)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                }
+                                Download SQL Backup
+                            </MudButton>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+
+                @* SQL Restore Card *@
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-5 action-card" Elevation="0">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="3">
+                            <div class="action-icon restore-icon">
+                                <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Large" />
+                            </div>
+                            <MudText Typo="Typo.h6">Restore from Backup</MudText>
+                            <MudText Typo="Typo.body2" Align="Align.Center" Class="text-muted">
+                                Restore data from a SQL backup file. The restore process intelligently skips duplicate records
+                                to avoid data conflicts.
+                            </MudText>
+                            <MudFileUpload T="IBrowserFile"
+                                          Accept=".sql"
+                                          FilesChanged="OnSqlFileSelectedAsync"
+                                          MaximumFileCount="1">
+                                <ActivatorContent>
+                                    <MudButton Variant="Variant.Filled"
+                                              Color="Color.Info"
+                                              StartIcon="@Icons.Material.Filled.Restore"
+                                              Disabled="_restoring"
+                                              FullWidth="true">
+                                        @if (_restoring)
+                                        {
+                                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                            <span>Restoring...</span>
+                                        }
+                                        else
+                                        {
+                                            <span>Select SQL Backup to Restore</span>
+                                        }
+                                    </MudButton>
+                                </ActivatorContent>
+                            </MudFileUpload>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @* Restore Results *@
+            @if (_restoreSummary != null)
+            {
+                <MudPaper Class="pa-4" Elevation="0">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" Style="vertical-align: middle;" />
+                            Restore Completed
+                        </MudText>
+                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ClearRestoreSummary">
+                            <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" />
+                        </MudButton>
+                    </MudStack>
+
+                    @* Summary Cards *@
+                    <MudGrid Class="mb-3">
+                        <MudItem xs="6" sm="4" md="3">
+                            <MudPaper Class="pa-2 text-center" Elevation="0" Style="background: #E8F5E9;">
+                                <MudText Typo="Typo.h6" Color="Color.Success">@_restoreSummary.TotalRestored</MudText>
+                                <MudText Typo="Typo.caption">Restored</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="6" sm="4" md="3">
+                            <MudPaper Class="pa-2 text-center" Elevation="0" Style="background: #FFF3E0;">
+                                <MudText Typo="Typo.h6" Color="Color.Warning">@_restoreSummary.TotalSkipped</MudText>
+                                <MudText Typo="Typo.caption">Skipped (Duplicates)</MudText>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+
+                    @* Detailed Breakdown *@
+                    <MudExpansionPanels Elevation="0">
+                        <MudExpansionPanel Text="View Detailed Breakdown">
+                            <MudSimpleTable Dense="true" Hover="true">
+                                <thead>
+                                    <tr>
+                                        <th>Data Type</th>
+                                        <th style="text-align: right;">Restored</th>
+                                        <th style="text-align: right;">Skipped</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Layers</td>
+                                        <td style="text-align: right;">@_restoreSummary.LayersRestored</td>
+                                        <td style="text-align: right;">@_restoreSummary.LayersSkipped</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Brokers</td>
+                                        <td style="text-align: right;">@_restoreSummary.BrokersRestored</td>
+                                        <td style="text-align: right;">@_restoreSummary.BrokersSkipped</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Product Prices</td>
+                                        <td style="text-align: right;">@_restoreSummary.ProductPricesRestored</td>
+                                        <td style="text-align: right;">@_restoreSummary.ProductPricesSkipped</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Sales</td>
+                                        <td style="text-align: right;">@_restoreSummary.SalesRestored</td>
+                                        <td style="text-align: right;">@_restoreSummary.SalesSkipped</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Expenses</td>
+                                        <td style="text-align: right;">@_restoreSummary.ExpensesRestored</td>
+                                        <td style="text-align: right;">@_restoreSummary.ExpensesSkipped</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Banking</td>
+                                        <td style="text-align: right;">@_restoreSummary.BankingRestored</td>
+                                        <td style="text-align: right;">@_restoreSummary.BankingSkipped</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Fuel Usage</td>
+                                        <td style="text-align: right;">@_restoreSummary.FuelUsageRestored</td>
+                                        <td style="text-align: right;">@_restoreSummary.FuelUsageSkipped</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Daily Notes</td>
+                                        <td style="text-align: right;">@_restoreSummary.DailyNotesRestored</td>
+                                        <td style="text-align: right;">@_restoreSummary.DailyNotesSkipped</td>
+                                    </tr>
+                                </tbody>
+                            </MudSimpleTable>
+
+                            @if (_restoreSummary.Warnings.Any())
+                            {
+                                <MudAlert Severity="Severity.Warning" Class="mt-3">
+                                    <MudText Typo="Typo.body2" Class="font-weight-semibold mb-2">Warnings:</MudText>
+                                    <ul style="margin: 0; padding-left: 20px;">
+                                        @foreach (var warning in _restoreSummary.Warnings)
+                                        {
+                                            <li>@warning</li>
+                                        }
+                                    </ul>
+                                </MudAlert>
+                            }
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                </MudPaper>
+            }
+
+            @* Validation Results *@
+            @if (_validationResult != null)
+            {
+                <MudPaper Class="pa-4" Elevation="0">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                        <MudText Typo="Typo.h6">
+                            @if (_validationResult.IsValid)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" Style="vertical-align: middle;" />
+                                <span>Validation Passed</span>
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" Class="mr-2" Style="vertical-align: middle;" />
+                                <span>Validation Failed</span>
+                            }
+                        </MudText>
+                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ClearValidation">
+                            <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" />
+                        </MudButton>
+                    </MudStack>
+
+                    @* Row Counts Preview *@
+                    <MudGrid Class="mb-4">
+                        <MudItem xs="6" sm="3">
+                            <MudChip T="string" Color="Color.Primary" Size="Size.Small" Variant="Variant.Outlined">
+                                Sales: @_validationResult.SalesRowCount rows
+                            </MudChip>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudChip T="string" Color="Color.Warning" Size="Size.Small" Variant="Variant.Outlined">
+                                Expenses: @_validationResult.ExpensesRowCount rows
+                            </MudChip>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small" Variant="Variant.Outlined">
+                                Banking: @_validationResult.BankingRowCount rows
+                            </MudChip>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudChip T="string" Color="Color.Error" Size="Size.Small" Variant="Variant.Outlined">
+                                Fuel: @_validationResult.FuelUsageRowCount rows
+                            </MudChip>
+                        </MudItem>
+                    </MudGrid>
+
+                    @if (_validationResult.IsValid)
+                    {
+                        <MudAlert Severity="Severity.Success" Class="mb-3">
+                            All @_validationResult.TotalRowCount rows passed validation. Ready to import.
+                        </MudAlert>
+                        <MudButton Variant="Variant.Filled"
+                                  Color="Color.Success"
+                                  StartIcon="@Icons.Material.Filled.Upload"
+                                  OnClick="ProceedWithImportAsync"
+                                  Disabled="_importing">
+                            @if (_importing)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            }
+                            Proceed with Import (@_validationResult.TotalRowCount records)
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Error" Class="mb-3">
+                            Found @_validationResult.Errors.Count error(s). Fix all issues and re-upload the file.
+                        </MudAlert>
+
+                        @* Group errors by sheet *@
+                        @foreach (var sheetGroup in _validationResult.Errors.GroupBy(e => e.Sheet))
+                        {
+                            <MudExpansionPanels Class="mb-2" Elevation="0">
+                                <MudExpansionPanel>
+                                    <TitleContent>
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                            <MudIcon Icon="@Icons.Material.Filled.TableChart" Size="Size.Small" />
+                                            <MudText Typo="Typo.subtitle2">@sheetGroup.Key Sheet</MudText>
+                                            <MudChip T="string" Color="Color.Error" Size="Size.Small">@sheetGroup.Count() errors</MudChip>
+                                        </MudStack>
+                                    </TitleContent>
+                                    <ChildContent>
+                                        <MudSimpleTable Dense="true" Hover="true" Style="max-height: 300px; overflow-y: auto;">
+                                            <thead>
+                                                <tr>
+                                                    <th style="width: 80px;">Row</th>
+                                                    <th>Error</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var error in sheetGroup.Take(50))
+                                                {
+                                                    <tr>
+                                                        <td>@(error.RowNumber > 0 ? error.RowNumber.ToString() : "-")</td>
+                                                        <td>@error.Message</td>
+                                                    </tr>
+                                                }
+                                                @if (sheetGroup.Count() > 50)
+                                                {
+                                                    <tr>
+                                                        <td colspan="2" class="text-muted">
+                                                            ...and @(sheetGroup.Count() - 50) more errors in this sheet
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </MudSimpleTable>
+                                    </ChildContent>
+                                </MudExpansionPanel>
+                            </MudExpansionPanels>
+                        }
+                    }
+                </MudPaper>
+            }
+
+            @* Import Results *@
+            @if (_importSummary != null && _validationResult == null)
+            {
+                <MudPaper Class="pa-4" Elevation="0">
+                    <MudText Typo="Typo.h6" Class="mb-3">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" Style="vertical-align: middle;" />
+                        Import Completed
+                    </MudText>
+                    <MudGrid>
+                        <MudItem xs="6" sm="3">
+                            <MudChip T="string" Color="Color.Primary" Size="Size.Small">Sales: @_importSummary.SalesImported</MudChip>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudChip T="string" Color="Color.Warning" Size="Size.Small">Expenses: @_importSummary.ExpensesImported</MudChip>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small">Banking: @_importSummary.BankingImported</MudChip>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudChip T="string" Color="Color.Error" Size="Size.Small">Fuel: @_importSummary.FuelUsageImported</MudChip>
+                        </MudItem>
+                    </MudGrid>
+                    <MudText Typo="Typo.body2" Class="mt-3 text-muted">
+                        Total: @_importSummary.TotalImported records imported successfully
+                    </MudText>
+                </MudPaper>
+            }
+        }
+    </MudStack>
+</MudContainer>
+
+@* Clear Data Confirmation Dialog *@
+<MudDialog @bind-Visible="_clearDialogVisible" Options="_clearDialogOptions">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Error" />
+            <MudText Typo="Typo.h6">Confirm Data Deletion</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Error" Icon="@Icons.Material.Filled.DeleteForever">
+                <MudText Typo="Typo.body1" Class="font-weight-semibold">This action cannot be undone!</MudText>
+                <MudText Typo="Typo.body2">
+                    You are about to delete all operational data for this quarry:
+                </MudText>
+            </MudAlert>
+
+            <MudPaper Class="pa-3" Elevation="0" Style="background: #FFEBEE;">
+                <MudStack Spacing="1">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error" />
+                        <MudText Typo="Typo.body2">@_dataCounts?.SalesCount Sales records</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error" />
+                        <MudText Typo="Typo.body2">@_dataCounts?.ExpensesCount Expense records</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error" />
+                        <MudText Typo="Typo.body2">@_dataCounts?.BankingCount Banking records</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error" />
+                        <MudText Typo="Typo.body2">@_dataCounts?.FuelUsageCount Fuel usage records</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+
+            <MudTextField @bind-Value="_confirmPassword"
+                         Label="Enter your password to confirm"
+                         Variant="Variant.Outlined"
+                         InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                         Adornment="Adornment.End"
+                         AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                         OnAdornmentClick="() => _showPassword = !_showPassword"
+                         Required="true"
+                         RequiredError="Password is required"
+                         HelperText="Your account password is required for this action" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseClearDialog" Variant="Variant.Outlined">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                  Color="Color.Error"
+                  Disabled="@(string.IsNullOrWhiteSpace(_confirmPassword) || _clearing)"
+                  OnClick="ClearDataAsync">
+            @if (_clearing)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Delete All Data
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    .data-stat-card {
+        text-align: center;
+        padding: 16px;
+        border-radius: 12px;
+        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .action-card {
+        border-radius: 16px;
+        background: linear-gradient(180deg, white 0%, #f8fafc 100%);
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        transition: all 0.3s ease;
+        height: 100%;
+    }
+
+    .action-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+    }
+
+    .action-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+    }
+
+    .export-icon {
+        background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+        box-shadow: 0 6px 24px rgba(76, 175, 80, 0.3);
+    }
+
+    .import-icon {
+        background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%);
+        box-shadow: 0 6px 24px rgba(25, 118, 210, 0.3);
+    }
+
+    .clear-icon {
+        background: linear-gradient(135deg, #F44336 0%, #D32F2F 100%);
+        box-shadow: 0 6px 24px rgba(244, 67, 54, 0.3);
+    }
+
+    .clear-card {
+        border: 1px dashed rgba(244, 67, 54, 0.3);
+    }
+
+    .backup-icon {
+        background: linear-gradient(135deg, #424242 0%, #212121 100%);
+        box-shadow: 0 6px 24px rgba(66, 66, 66, 0.3);
+    }
+
+    .restore-icon {
+        background: linear-gradient(135deg, #0288D1 0%, #01579B 100%);
+        box-shadow: 0 6px 24px rgba(2, 136, 209, 0.3);
+    }
+</style>
+
+@code {
+    private List<Quarry> _quarries = new();
+    private string? _selectedQuarryId;
+    private string? _userId;
+    private string _userRole = string.Empty;
+    private bool _loading = false;
+    private bool _exporting = false;
+    private bool _validating = false;
+    private bool _importing = false;
+    private bool _clearing = false;
+    private bool _downloadingTemplate = false;
+    private bool _clearDialogVisible = false;
+    private bool _showPassword = false;
+    private string _confirmPassword = string.Empty;
+
+    private DataCounts? _dataCounts;
+    private ImportValidationResult? _validationResult;
+    private DataImportSummary? _importSummary;
+    private byte[]? _pendingFileBytes;
+
+    // SQL Backup/Restore
+    private bool _backingUp = false;
+    private bool _restoring = false;
+    private SqlRestoreSummary? _restoreSummary;
+
+    private readonly DialogOptions _clearDialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseButton = true,
+        CloseOnEscapeKey = true
+    };
+
+    // Property with setter to trigger data load when quarry changes
+    private string? SelectedQuarryId
+    {
+        get => _selectedQuarryId;
+        set
+        {
+            if (_selectedQuarryId != value)
+            {
+                _selectedQuarryId = value;
+                ClearValidation();
+                _importSummary = null;
+                InvokeAsync(async () =>
+                {
+                    if (!string.IsNullOrEmpty(_selectedQuarryId))
+                    {
+                        await LoadDataCountsAsync();
+                    }
+                });
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+
+        await LoadQuarriesAsync();
+    }
+
+    private async Task LoadQuarriesAsync()
+    {
+        try
+        {
+            if (_userRole == "Administrator")
+            {
+                _quarries = await MasterDataService.GetAllQuarriesAsync();
+            }
+            else if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
+            {
+                // Use GetAccessibleQuarriesForManagerAsync to include both owned and assigned quarries
+                // This allows Secondary Managers to see quarries they're assigned to
+                _quarries = await MasterDataService.GetAccessibleQuarriesForManagerAsync(_userId);
+            }
+
+            // Auto-select first quarry
+            if (_quarries.Any() && string.IsNullOrEmpty(_selectedQuarryId))
+            {
+                _selectedQuarryId = _quarries.First().Id;
+                await LoadDataCountsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OnQuarryChangedAsync(string? quarryId)
+    {
+        _selectedQuarryId = quarryId;
+        ClearValidation();
+        _importSummary = null;
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            await LoadDataCountsAsync();
+        }
+    }
+
+    private async Task LoadDataCountsAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId)) return;
+
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _dataCounts = await DataManagementService.GetQuarryDataCountsAsync(_selectedQuarryId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data counts: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportDataAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId)) return;
+
+        _exporting = true;
+        StateHasChanged();
+
+        try
+        {
+            var fileBytes = await DataManagementService.ExportQuarryDataAsync(_selectedQuarryId);
+            var quarry = _quarries.FirstOrDefault(q => q.Id == _selectedQuarryId);
+            var fileName = $"QDeskPro_Data_{quarry?.QuarryName ?? "Export"}_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
+
+            var base64 = Convert.ToBase64String(fileBytes);
+            await JS.InvokeVoidAsync("downloadFile", fileName,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", base64);
+
+            Snackbar.Add("Data exported successfully. Check the ReferenceData sheet for valid lookup values.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _exporting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnFileSelectedAsync(IBrowserFile file)
+    {
+        if (file == null || string.IsNullOrEmpty(_selectedQuarryId))
+            return;
+
+        _validating = true;
+        _validationResult = null;
+        _importSummary = null;
+        _pendingFileBytes = null;
+        StateHasChanged();
+
+        try
+        {
+            // Read file bytes (max 10MB)
+            using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            _pendingFileBytes = ms.ToArray();
+
+            // Validate the file first
+            _validationResult = await DataManagementService.ValidateImportFileAsync(_selectedQuarryId, _pendingFileBytes);
+
+            if (_validationResult.IsValid)
+            {
+                Snackbar.Add($"Validation passed. {_validationResult.TotalRowCount} rows ready to import.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add($"Validation failed with {_validationResult.Errors.Count} error(s). Please review and fix.", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error reading file: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _validating = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ProceedWithImportAsync()
+    {
+        if (_pendingFileBytes == null || string.IsNullOrEmpty(_selectedQuarryId) || string.IsNullOrEmpty(_userId))
+            return;
+
+        _importing = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await DataManagementService.ImportQuarryDataAsync(_selectedQuarryId, _pendingFileBytes, _userId);
+
+            if (result.Success)
+            {
+                _importSummary = result.Summary;
+                _validationResult = null;
+                _pendingFileBytes = null;
+                Snackbar.Add(result.Message, Severity.Success);
+                await LoadDataCountsAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error importing data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _importing = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearValidation()
+    {
+        _validationResult = null;
+        _pendingFileBytes = null;
+        StateHasChanged();
+    }
+
+    private void ShowClearConfirmationAsync()
+    {
+        _confirmPassword = string.Empty;
+        _showPassword = false;
+        _clearDialogVisible = true;
+    }
+
+    private void CloseClearDialog()
+    {
+        _clearDialogVisible = false;
+        _confirmPassword = string.Empty;
+    }
+
+    private async Task ClearDataAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId) || string.IsNullOrEmpty(_userId))
+            return;
+
+        if (string.IsNullOrWhiteSpace(_confirmPassword))
+        {
+            Snackbar.Add("Password is required", Severity.Warning);
+            return;
+        }
+
+        _clearing = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await DataManagementService.ClearQuarryDataAsync(
+                _selectedQuarryId, _userId, _confirmPassword);
+
+            if (result.Success)
+            {
+                Snackbar.Add($"Data cleared successfully. {result.Summary?.TotalCleared} records removed.", Severity.Success);
+                CloseClearDialog();
+                await LoadDataCountsAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error clearing data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _clearing = false;
+            _confirmPassword = string.Empty;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadTemplateAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId)) return;
+
+        _downloadingTemplate = true;
+        StateHasChanged();
+
+        try
+        {
+            var fileBytes = await DataManagementService.GenerateImportTemplateAsync(_selectedQuarryId);
+            var quarry = _quarries.FirstOrDefault(q => q.Id == _selectedQuarryId);
+            var fileName = $"QDeskPro_ImportTemplate_{quarry?.QuarryName ?? "Template"}.xlsx";
+
+            var base64 = Convert.ToBase64String(fileBytes);
+            await JS.InvokeVoidAsync("downloadFile", fileName,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", base64);
+
+            Snackbar.Add("Template downloaded. Fill in your data and upload to import.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error downloading template: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _downloadingTemplate = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadSqlBackupAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId)) return;
+
+        _backingUp = true;
+        StateHasChanged();
+
+        try
+        {
+            var fileBytes = await DataManagementService.GenerateSqlBackupAsync(_selectedQuarryId);
+            var quarry = _quarries.FirstOrDefault(q => q.Id == _selectedQuarryId);
+            var fileName = $"QDeskPro_Backup_{quarry?.QuarryName ?? "Backup"}_{DateTime.Now:yyyyMMdd_HHmm}.sql";
+
+            var base64 = Convert.ToBase64String(fileBytes);
+            await JS.InvokeVoidAsync("downloadFile", fileName, "application/sql", base64);
+
+            Snackbar.Add("SQL backup downloaded successfully.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating backup: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _backingUp = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnSqlFileSelectedAsync(IBrowserFile file)
+    {
+        if (file == null || string.IsNullOrEmpty(_selectedQuarryId) || string.IsNullOrEmpty(_userId))
+            return;
+
+        _restoring = true;
+        _restoreSummary = null;
+        StateHasChanged();
+
+        try
+        {
+            // Read file bytes (max 50MB for SQL files)
+            using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var fileBytes = ms.ToArray();
+
+            var result = await DataManagementService.RestoreFromSqlBackupAsync(_selectedQuarryId, fileBytes, _userId);
+
+            if (result.Success)
+            {
+                _restoreSummary = result.Summary;
+                Snackbar.Add(result.Message, Severity.Success);
+                await LoadDataCountsAsync();
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error restoring from backup: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _restoring = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearRestoreSummary()
+    {
+        _restoreSummary = null;
+        StateHasChanged();
+    }
+}

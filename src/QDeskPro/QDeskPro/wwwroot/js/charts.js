@@ -550,6 +550,201 @@ window.downloadFile = function(fileName, mimeType, base64Content) {
     document.body.removeChild(link);
 };
 
+// ROI Analysis Charts
+window.QDeskROICharts = {
+    // Recovery gauge (doughnut chart showing investment recovery progress)
+    createRecoveryGauge: function(canvasId, recoveryPercent) {
+        // Clamp percentage between 0 and 100
+        const percent = Math.min(100, Math.max(0, recoveryPercent));
+
+        // Determine color based on recovery percentage
+        let gaugeColor = '#F44336'; // Red for < 50%
+        if (percent >= 100) gaugeColor = '#4CAF50'; // Green - recovered
+        else if (percent >= 50) gaugeColor = '#FF9800'; // Orange
+
+        return getOrCreateChart(canvasId, {
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: [percent, 100 - percent],
+                    backgroundColor: [gaugeColor, '#E0E0E0'],
+                    borderWidth: 0,
+                    circumference: 180,
+                    rotation: 270,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '75%',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: false }
+                }
+            }
+        });
+    },
+
+    // Cumulative profit vs investment line chart
+    createCumulativeProfitChart: function(canvasId, labels, profitData, investmentLine) {
+        return getOrCreateChart(canvasId, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Investment',
+                        data: investmentLine,
+                        borderColor: '#F44336',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        fill: false,
+                        pointRadius: 0,
+                        tension: 0,
+                        order: 1
+                    },
+                    {
+                        label: 'Cumulative Profit',
+                        data: profitData,
+                        backgroundColor: 'rgba(76, 175, 80, 0.15)',
+                        borderColor: '#4CAF50',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#4CAF50',
+                        pointHoverRadius: 6,
+                        order: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 15,
+                            font: { size: 12 }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                        padding: 12,
+                        titleFont: { size: 13 },
+                        bodyFont: { size: 12 },
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': KES ' + context.raw.toLocaleString();
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {
+                            breakEvenLine: {
+                                type: 'line',
+                                yMin: investmentLine[0],
+                                yMax: investmentLine[0],
+                                borderColor: '#F44336',
+                                borderWidth: 2,
+                                borderDash: [5, 5]
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        grid: { color: 'rgba(0,0,0,0.05)' },
+                        ticks: {
+                            callback: function(value) {
+                                if (Math.abs(value) >= 1000000) return 'KES ' + (value / 1000000).toFixed(1) + 'M';
+                                if (Math.abs(value) >= 1000) return 'KES ' + (value / 1000).toFixed(0) + 'K';
+                                return 'KES ' + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    },
+
+    // Monthly ROI trend chart
+    createROITrendChart: function(canvasId, labels, roiData) {
+        return getOrCreateChart(canvasId, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'ROI %',
+                    data: roiData,
+                    backgroundColor: 'rgba(156, 39, 176, 0.1)',
+                    borderColor: '#9C27B0',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#9C27B0',
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                        padding: 12,
+                        callbacks: {
+                            label: function(context) {
+                                return 'ROI: ' + context.raw.toFixed(1) + '%';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(0,0,0,0.05)' },
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    },
+
+    // Destroy ROI charts
+    destroyAll: function() {
+        ['recoveryGauge', 'cumulativeProfitChart', 'roiTrendChart'].forEach(id => {
+            if (chartRegistry[id]) {
+                chartRegistry[id].destroy();
+                delete chartRegistry[id];
+            }
+        });
+    }
+};
+
 // Utility to destroy charts when navigating away
 if (typeof Blazor !== 'undefined') {
     Blazor.addEventListener('enhancedload', function() {
@@ -559,6 +754,9 @@ if (typeof Blazor !== 'undefined') {
         }
         if (window.QDeskReportCharts) {
             window.QDeskReportCharts.destroyAll();
+        }
+        if (window.QDeskROICharts) {
+            window.QDeskROICharts.destroyAll();
         }
     });
 }

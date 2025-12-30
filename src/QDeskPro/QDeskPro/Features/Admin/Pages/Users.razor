@@ -32,12 +32,11 @@
             <MudGrid>
                 <MudItem xs="12" sm="8">
                     <MudSelect T="string"
-                              @bind-Value="_selectedQuarryId"
+                              @bind-Value="SelectedQuarryId"
                               Label="Select Quarry"
                               Variant="Variant.Outlined"
                               Adornment="Adornment.Start"
-                              AdornmentIcon="@Icons.Material.Filled.Terrain"
-                              OnValueChanged="OnQuarryChangedAsync">
+                              AdornmentIcon="@Icons.Material.Filled.Terrain">
                         @foreach (var quarry in _quarries)
                         {
                             <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
@@ -45,14 +44,39 @@
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="4" Class="d-flex align-end">
-                    <MudButton Variant="Variant.Filled"
-                              Color="Color.Primary"
-                              StartIcon="@Icons.Material.Filled.Add"
-                              OnClick="OpenAddDialog"
-                              FullWidth="true"
-                              Disabled="@IsAddDisabled">
-                        New User
-                    </MudButton>
+                    @if (_userRole == "Manager" && _isManagerOwner)
+                    {
+                        <MudMenu Label="New User"
+                                Variant="Variant.Filled"
+                                Color="Color.Primary"
+                                StartIcon="@Icons.Material.Filled.Add"
+                                FullWidth="true"
+                                Disabled="@(string.IsNullOrEmpty(_selectedQuarryId))">
+                            <MudMenuItem OnClick="OpenAddClerkDialog">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
+                                    <MudText>New Clerk</MudText>
+                                </MudStack>
+                            </MudMenuItem>
+                            <MudMenuItem OnClick="OpenAddManagerDialog">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudIcon Icon="@Icons.Material.Filled.SupervisorAccount" Size="Size.Small" />
+                                    <MudText>New Secondary Manager</MudText>
+                                </MudStack>
+                            </MudMenuItem>
+                        </MudMenu>
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Filled"
+                                  Color="Color.Primary"
+                                  StartIcon="@Icons.Material.Filled.Add"
+                                  OnClick="OpenAddClerkDialog"
+                                  FullWidth="true"
+                                  Disabled="@IsAddDisabled">
+                            New User
+                        </MudButton>
+                    }
                 </MudItem>
             </MudGrid>
         </MudPaper>
@@ -104,8 +128,22 @@
                     <MudTd DataLabel="Role">
                         @{
                             var role = _userRoles.ContainsKey(context.Id) ? _userRoles[context.Id] : "Unknown";
+                            var isManagerOwner = _managerOwnerFlags.ContainsKey(context.Id) && _managerOwnerFlags[context.Id];
                         }
-                        <MudChip T="string" Size="Size.Small" Color="@GetRoleColor(role)" Variant="Variant.Text">@role</MudChip>
+                        <MudStack Row="true" Spacing="1">
+                            <MudChip T="string" Size="Size.Small" Color="@GetRoleColor(role)" Variant="Variant.Text">@role</MudChip>
+                            @if (role == "Manager")
+                            {
+                                @if (isManagerOwner)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text" Icon="@Icons.Material.Filled.Star">Owner</MudChip>
+                                }
+                                else if (!string.IsNullOrEmpty(context.CreatedByManagerId))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Text" Icon="@Icons.Material.Filled.SupervisorAccount">Secondary</MudChip>
+                                }
+                            }
+                        </MudStack>
                     </MudTd>
                     <MudTd DataLabel="Quarries">
                         @{
@@ -194,7 +232,18 @@
 <MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
     <TitleContent>
         <MudText Typo="Typo.h6">
-            @(_isEditing ? "Edit User" : "New User")
+            @if (_isEditing)
+            {
+                <span>Edit User</span>
+            }
+            else if (_isCreatingManager)
+            {
+                <span>New Secondary Manager</span>
+            }
+            else
+            {
+                <span>New Clerk</span>
+            }
         </MudText>
     </TitleContent>
     <DialogContent>
@@ -225,9 +274,28 @@
 
                 @if (!_isEditing)
                 {
-                    <MudAlert Severity="Severity.Info" Dense="true">
-                        User will be assigned to <strong>@(_quarries.FirstOrDefault(q => q.Id == _selectedQuarryId)?.QuarryName)</strong> as their primary quarry.
-                    </MudAlert>
+                    @if (_isCreatingManager)
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true">
+                            <strong>Secondary Manager</strong> will be able to:
+                            <ul>
+                                <li>View analytics and reports for quarries they're assigned to</li>
+                                <li>Manage clerks for their assigned quarries</li>
+                                <li>Modify quarry settings for assigned quarries</li>
+                            </ul>
+                            They <strong>cannot</strong> create other managers or new quarries.
+                        </MudAlert>
+
+                        <MudAlert Severity="Severity.Warning" Dense="true">
+                            Remember to assign this manager to specific quarries after creation.
+                        </MudAlert>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true">
+                            User will be assigned to <strong>@(_quarries.FirstOrDefault(q => q.Id == _selectedQuarryId)?.QuarryName)</strong> as their primary quarry.
+                        </MudAlert>
+                    }
                 }
             </MudStack>
         </MudForm>
@@ -299,82 +367,222 @@
     </DialogActions>
 </MudDialog>
 
-@* Quarry Assignments Dialog *@
-<MudDialog @bind-Visible="_assignmentsDialogVisible" Options="_dialogOptions">
+@* Enhanced Quarry Assignments Dialog *@
+<MudDialog @bind-Visible="_assignmentsDialogVisible" Options="_enhancedDialogOptions">
     <TitleContent>
-        <MudText Typo="Typo.h6">
-            Manage Quarry Assignments for @_selectedUser?.FullName
-        </MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="w-100">
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.h6">Manage Quarry Assignments</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @_selectedUser?.FullName (@_selectedUser?.Email)
+                </MudText>
+            </MudStack>
+            @if (_userAssignedQuarries.Any())
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.Assignment">
+                    @_userAssignedQuarries.Count Assigned
+                </MudChip>
+            }
+        </MudStack>
     </TitleContent>
     <DialogContent>
         <MudStack Spacing="3">
-            <MudAlert Severity="Severity.Info" Dense="true">
-                Assign this user to your quarries. You can only assign users to quarries you own.
+            <MudAlert Severity="Severity.Info" Dense="true" Icon="@Icons.Material.Filled.Info">
+                Assign this user to quarries you own. The primary quarry is used as their default when they log in.
             </MudAlert>
 
             @if (_managerOwnedQuarries.Any())
             {
-                <MudList T="string">
-                    @foreach (var quarry in _managerOwnedQuarries)
-                    {
-                        var isAssigned = _userAssignedQuarries.Any(q => q.Id == quarry.Id);
-                        var isPrimary = _selectedUser?.QuarryId == quarry.Id;
-
-                        <MudListItem T="string">
-                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                                <MudStack>
-                                    <MudText Typo="Typo.body1">@quarry.QuarryName</MudText>
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@quarry.Location</MudText>
+                @* Two-Column Layout: Available vs Assigned *@
+                <MudGrid Spacing="2">
+                    @* Available Quarries Column *@
+                    <MudItem xs="12" md="6">
+                        <MudPaper Elevation="0" Class="pa-3" Style="background: #f5f5f5; border-radius: 8px;">
+                            <MudStack Spacing="2">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">
+                                        <MudIcon Icon="@Icons.Material.Filled.Terrain" Size="Size.Small" Class="mr-1" />
+                                        Available Quarries
+                                    </MudText>
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                                        @_managerOwnedQuarries.Count(q => !_userAssignedQuarries.Any(uq => uq.Id == q.Id))
+                                    </MudChip>
                                 </MudStack>
-                                <MudStack Row="true" Spacing="2">
-                                    @if (isPrimary)
-                                    {
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">Primary</MudChip>
+                                <MudDivider />
+                                <MudStack Spacing="1" Style="max-height: 400px; overflow-y: auto;">
+                                    @{
+                                        var availableQuarries = _managerOwnedQuarries.Where(q => !_userAssignedQuarries.Any(uq => uq.Id == q.Id)).ToList();
                                     }
-                                    @if (isAssigned)
+                                    @if (availableQuarries.Any())
                                     {
-                                        <MudButton Size="Size.Small"
-                                                  Variant="Variant.Text"
-                                                  Color="Color.Error"
-                                                  OnClick="@(() => UnassignQuarryAsync(quarry.Id))">
-                                            Unassign
-                                        </MudButton>
-                                        @if (!isPrimary)
+                                        @foreach (var quarry in availableQuarries)
                                         {
-                                            <MudButton Size="Size.Small"
-                                                      Variant="Variant.Text"
-                                                      Color="Color.Primary"
-                                                      OnClick="@(() => SetPrimaryQuarryAsync(quarry.Id))">
-                                                Set Primary
-                                            </MudButton>
+                                            <MudPaper Elevation="1" Class="pa-2" Style="border-left: 3px solid #2196F3;">
+                                                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                                    <MudStack Spacing="0">
+                                                        <MudText Typo="Typo.body2" Class="font-weight-medium">@quarry.QuarryName</MudText>
+                                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@quarry.Location</MudText>
+                                                    </MudStack>
+                                                    <MudIconButton Size="Size.Small"
+                                                                  Icon="@Icons.Material.Filled.ChevronRight"
+                                                                  Color="Color.Primary"
+                                                                  Title="Assign to user"
+                                                                  OnClick="@(() => AssignQuarryAsync(quarry.Id, false))" />
+                                                </MudStack>
+                                            </MudPaper>
                                         }
                                     }
                                     else
                                     {
-                                        <MudButton Size="Size.Small"
-                                                  Variant="Variant.Filled"
-                                                  Color="Color.Primary"
-                                                  OnClick="@(() => AssignQuarryAsync(quarry.Id, false))">
-                                            Assign
-                                        </MudButton>
+                                        <MudText Align="Align.Center" Typo="Typo.body2" Color="Color.Secondary" Class="pa-4">
+                                            All quarries assigned
+                                        </MudText>
                                     }
                                 </MudStack>
                             </MudStack>
-                        </MudListItem>
-                        <MudDivider />
-                    }
-                </MudList>
+                        </MudPaper>
+                    </MudItem>
+
+                    @* Assigned Quarries Column *@
+                    <MudItem xs="12" md="6">
+                        <MudPaper Elevation="0" Class="pa-3" Style="background: #e8f5e9; border-radius: 8px;">
+                            <MudStack Spacing="2">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Success">
+                                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Class="mr-1" />
+                                        Assigned Quarries
+                                    </MudText>
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">
+                                        @_userAssignedQuarries.Count
+                                    </MudChip>
+                                </MudStack>
+                                <MudDivider />
+                                <MudStack Spacing="1" Style="max-height: 400px; overflow-y: auto;">
+                                    @if (_userAssignedQuarries.Any())
+                                    {
+                                        @foreach (var quarry in _userAssignedQuarries.OrderByDescending(q => _selectedUser?.QuarryId == q.Id))
+                                        {
+                                            var isPrimary = _selectedUser?.QuarryId == quarry.Id;
+                                            var borderColor = isPrimary ? "#4CAF50" : "#66BB6A";
+
+                                            <MudPaper Elevation="2" Class="pa-2" Style="@($"border-left: 3px solid {borderColor}; background: white;")">
+                                                <MudStack Spacing="1">
+                                                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                                        <MudStack Spacing="0">
+                                                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                                                <MudText Typo="Typo.body2" Class="font-weight-medium">@quarry.QuarryName</MudText>
+                                                                @if (isPrimary)
+                                                                {
+                                                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.Star" Variant="Variant.Text">
+                                                                        Primary
+                                                                    </MudChip>
+                                                                }
+                                                            </MudStack>
+                                                            <MudText Typo="Typo.caption" Color="Color.Secondary">@quarry.Location</MudText>
+                                                        </MudStack>
+                                                        <MudStack Row="true" Spacing="0">
+                                                            @if (!isPrimary)
+                                                            {
+                                                                <MudIconButton Size="Size.Small"
+                                                                              Icon="@Icons.Material.Filled.Star"
+                                                                              Color="Color.Success"
+                                                                              Title="Set as primary"
+                                                                              OnClick="@(() => SetPrimaryQuarryAsync(quarry.Id))" />
+                                                            }
+                                                            <MudIconButton Size="Size.Small"
+                                                                          Icon="@Icons.Material.Filled.RemoveCircle"
+                                                                          Color="Color.Error"
+                                                                          Title="Unassign"
+                                                                          OnClick="@(() => UnassignQuarryAsync(quarry.Id))" />
+                                                        </MudStack>
+                                                    </MudStack>
+                                                </MudStack>
+                                            </MudPaper>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <MudText Align="Align.Center" Typo="Typo.body2" Color="Color.Secondary" Class="pa-4">
+                                            No quarries assigned yet
+                                        </MudText>
+                                    }
+                                </MudStack>
+                            </MudStack>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+
+                @* Quick Transfer Section *@
+                @if (_userAssignedQuarries.Any() && _managerOwnedQuarries.Any(q => !_userAssignedQuarries.Any(uq => uq.Id == q.Id)))
+                {
+                    <MudPaper Elevation="0" Class="pa-3" Style="background: #fff3e0; border-radius: 8px; border: 1px solid #ff9800;">
+                        <MudStack Spacing="2">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudIcon Icon="@Icons.Material.Filled.SwapHoriz" Color="Color.Warning" Size="Size.Small" />
+                                <MudText Typo="Typo.subtitle2" Color="Color.Warning">Quick Transfer</MudText>
+                            </MudStack>
+                            <MudText Typo="Typo.caption">
+                                Reassign this user from one quarry to another in a single action
+                            </MudText>
+                            <MudGrid Spacing="2">
+                                <MudItem xs="12" sm="5">
+                                    <MudSelect T="string"
+                                              @bind-Value="_transferFromQuarryId"
+                                              Label="From Quarry"
+                                              Variant="Variant.Outlined"
+                                              Dense="true"
+                                              Clearable="true">
+                                        @foreach (var quarry in _userAssignedQuarries)
+                                        {
+                                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="12" sm="2" Class="d-flex align-center justify-center">
+                                    <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Color="Color.Warning" />
+                                </MudItem>
+                                <MudItem xs="12" sm="5">
+                                    <MudSelect T="string"
+                                              @bind-Value="_transferToQuarryId"
+                                              Label="To Quarry"
+                                              Variant="Variant.Outlined"
+                                              Dense="true"
+                                              Clearable="true">
+                                        @foreach (var quarry in _managerOwnedQuarries.Where(q => !_userAssignedQuarries.Any(uq => uq.Id == q.Id)))
+                                        {
+                                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                            </MudGrid>
+                            <MudButton Variant="Variant.Filled"
+                                      Color="Color.Warning"
+                                      StartIcon="@Icons.Material.Filled.SwapHoriz"
+                                      Disabled="@(string.IsNullOrEmpty(_transferFromQuarryId) || string.IsNullOrEmpty(_transferToQuarryId))"
+                                      OnClick="TransferQuarryAsync"
+                                      FullWidth="true">
+                                Transfer Assignment
+                            </MudButton>
+                        </MudStack>
+                    </MudPaper>
+                }
             }
             else
             {
-                <MudText Align="Align.Center" Class="pa-4">
-                    You don't own any quarries yet.
-                </MudText>
+                <MudPaper Elevation="0" Class="pa-6" Style="background: #f5f5f5; text-align: center;">
+                    <MudIcon Icon="@Icons.Material.Filled.Terrain" Size="Size.Large" Color="Color.Secondary" Class="mb-2" />
+                    <MudText Typo="Typo.body1" Color="Color.Secondary">
+                        You don't own any quarries yet.
+                    </MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Create a quarry first to assign users to it.
+                    </MudText>
+                </MudPaper>
             }
         </MudStack>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="CloseAssignmentsDialog">Close</MudButton>
+        <MudButton OnClick="CloseAssignmentsDialog" Variant="Variant.Text">Close</MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -385,6 +593,7 @@
     private List<Quarry> _userAssignedQuarries = new();
     private Dictionary<string, string> _userRoles = new();
     private Dictionary<string, int> _userQuarryCounts = new();
+    private Dictionary<string, bool> _managerOwnerFlags = new();
     private ApplicationUser _editModel = new();
     private ApplicationUser? _selectedUser;
     private string? _selectedQuarryId;
@@ -393,10 +602,12 @@
     private bool _passwordDialogVisible = false;
     private bool _assignmentsDialogVisible = false;
     private bool _isEditing = false;
+    private bool _isCreatingManager = false;
     private bool _formValid = false;
     private bool _saving = false;
     private bool _canEditCurrentQuarry = false;
     private bool _isPasswordReset = false;
+    private bool _isManagerOwner = false;
     private string? _userId;
     private string _userRole = string.Empty;
     private string _temporaryPassword = string.Empty;
@@ -412,12 +623,23 @@
         CloseButton = true
     };
 
+    private readonly DialogOptions _enhancedDialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Large,
+        FullWidth = true,
+        CloseButton = true
+    };
+
     private readonly DialogOptions _passwordDialogOptions = new()
     {
         MaxWidth = MaxWidth.Small,
         FullWidth = true,
         CloseButton = false
     };
+
+    // Transfer state
+    private string? _transferFromQuarryId;
+    private string? _transferToQuarryId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -426,6 +648,12 @@
 
         _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+
+        // Check if current user is a Manager Owner
+        if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
+        {
+            _isManagerOwner = await UserService.IsManagerOwnerAsync(_userId);
+        }
 
         await LoadQuarriesAsync();
     }
@@ -456,12 +684,23 @@
         }
     }
 
-    private async Task OnQuarryChangedAsync(string? quarryId)
+    // Property with setter to trigger data load when quarry changes
+    private string? SelectedQuarryId
     {
-        _selectedQuarryId = quarryId;
-        if (!string.IsNullOrEmpty(quarryId))
+        get => _selectedQuarryId;
+        set
         {
-            await LoadUsersAsync();
+            if (_selectedQuarryId != value)
+            {
+                _selectedQuarryId = value;
+                InvokeAsync(async () =>
+                {
+                    if (!string.IsNullOrEmpty(_selectedQuarryId))
+                    {
+                        await LoadUsersAsync();
+                    }
+                });
+            }
         }
     }
 
@@ -486,17 +725,28 @@
 
             _users = await UserService.GetUsersByQuarryAsync(_selectedQuarryId);
 
-            // Load roles and quarry counts for each user
+            // Load roles, quarry counts, and manager owner flags for each user
             _userRoles.Clear();
             _userQuarryCounts.Clear();
+            _managerOwnerFlags.Clear();
 
             foreach (var usr in _users)
             {
                 var role = await UserService.GetUserRoleAsync(usr);
-                _userRoles[usr.Id] = role;
+                _userRoles[usr.Id] = role ?? "Unknown";
 
                 var quarries = await UserService.GetUserQuarriesAsync(usr.Id);
                 _userQuarryCounts[usr.Id] = quarries.Count;
+
+                // Check if this user is a Manager Owner
+                if (role == "Manager")
+                {
+                    _managerOwnerFlags[usr.Id] = await UserService.IsManagerOwnerAsync(usr.Id);
+                }
+                else
+                {
+                    _managerOwnerFlags[usr.Id] = false;
+                }
             }
         }
         catch (Exception ex)
@@ -510,10 +760,19 @@
         }
     }
 
-    private void OpenAddDialog()
+    private void OpenAddClerkDialog()
     {
         _editModel = new ApplicationUser();
         _isEditing = false;
+        _isCreatingManager = false;
+        _dialogVisible = true;
+    }
+
+    private void OpenAddManagerDialog()
+    {
+        _editModel = new ApplicationUser();
+        _isEditing = false;
+        _isCreatingManager = true;
         _dialogVisible = true;
     }
 
@@ -535,11 +794,15 @@
         _dialogVisible = false;
         _editModel = new();
         _isEditing = false;
+        _isCreatingManager = false;
     }
 
     private async Task SaveUserAsync()
     {
-        if (!_formValid || string.IsNullOrEmpty(_selectedQuarryId)) return;
+        if (!_formValid) return;
+
+        // For manager creation, we don't need a selected quarry
+        if (!_isCreatingManager && string.IsNullOrEmpty(_selectedQuarryId)) return;
 
         _saving = true;
         StateHasChanged();
@@ -560,6 +823,35 @@
                     Snackbar.Add(result.Message, Severity.Error);
                 }
             }
+            else if (_isCreatingManager)
+            {
+                // Create Secondary Manager
+                var result = await UserService.CreateManagerAsync(
+                    _editModel.FullName!,
+                    _editModel.Email!,
+                    _editModel.Position,
+                    _userId!,
+                    _userId); // Pass current user ID as createdByManagerId
+
+                if (result.Success)
+                {
+                    _createdUserEmail = _editModel.Email!;
+                    _temporaryPassword = result.TempPassword!;
+                    _isPasswordReset = false;
+
+                    CloseDialog();
+                    await LoadUsersAsync();
+
+                    // Show password dialog
+                    _passwordDialogVisible = true;
+
+                    Snackbar.Add("Secondary Manager created successfully. Don't forget to assign them to quarries!", Severity.Success);
+                }
+                else
+                {
+                    Snackbar.Add(result.Message, Severity.Error);
+                }
+            }
             else
             {
                 // Create Clerk
@@ -567,7 +859,7 @@
                     _editModel.FullName!,
                     _editModel.Email!,
                     _editModel.Position,
-                    _selectedQuarryId,
+                    _selectedQuarryId!,
                     _userId!);
 
                 if (result.Success)
@@ -741,6 +1033,46 @@
         }
     }
 
+    private async Task TransferQuarryAsync()
+    {
+        if (_selectedUser == null || string.IsNullOrEmpty(_transferFromQuarryId) || string.IsNullOrEmpty(_transferToQuarryId))
+            return;
+
+        try
+        {
+            // Unassign from old quarry
+            var unassignResult = await UserService.RemoveUserFromQuarryAsync(_selectedUser.Id, _transferFromQuarryId, _userId!);
+            if (!unassignResult.Success)
+            {
+                Snackbar.Add($"Failed to unassign: {unassignResult.Message}", Severity.Error);
+                return;
+            }
+
+            // Assign to new quarry
+            var assignResult = await UserService.AssignUserToQuarryAsync(_selectedUser.Id, _transferToQuarryId, false, _userId!);
+            if (assignResult.Success)
+            {
+                Snackbar.Add($"Successfully transferred assignment", Severity.Success);
+
+                // Refresh data
+                _userAssignedQuarries = await UserService.GetUserQuarriesAsync(_selectedUser.Id);
+                await LoadUsersAsync();
+
+                // Clear transfer state
+                _transferFromQuarryId = null;
+                _transferToQuarryId = null;
+            }
+            else
+            {
+                Snackbar.Add($"Failed to assign: {assignResult.Message}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error during transfer: {ex.Message}", Severity.Error);
+        }
+    }
+
     private void CloseAssignmentsDialog()
     {
         _assignmentsDialogVisible = false;
@@ -761,8 +1093,15 @@
     {
         try
         {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _temporaryPassword);
-            Snackbar.Add("Password copied to clipboard", Severity.Success);
+            var success = await JS.InvokeAsync<bool>("shareText", "Temporary Password", _temporaryPassword);
+            if (success)
+            {
+                Snackbar.Add("Password copied to clipboard", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("Failed to copy password. Please copy it manually.", Severity.Warning);
+            }
         }
         catch
         {

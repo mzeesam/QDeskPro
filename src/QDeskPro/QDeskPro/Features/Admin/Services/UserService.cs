@@ -56,11 +56,29 @@ public class UserService
     {
         try
         {
-            var userIds = await _context.UserQuarries
+            // Get the quarry to find the Manager Owner
+            var quarry = await _context.Quarries
+                .FirstOrDefaultAsync(q => q.Id == quarryId);
+
+            // Get users assigned via UserQuarries (Clerks and Secondary Managers)
+            var assignedUserIds = await _context.UserQuarries
                 .Where(uq => uq.QuarryId == quarryId && uq.IsActive)
                 .Select(uq => uq.UserId)
                 .ToListAsync();
 
+            // Build the list of user IDs to include
+            var userIds = new List<string>(assignedUserIds.Where(id => !string.IsNullOrEmpty(id)).Select(id => id!));
+
+            // Add the Manager Owner if they exist and aren't already in the list
+            if (quarry != null && !string.IsNullOrEmpty(quarry.ManagerId))
+            {
+                if (!userIds.Contains(quarry.ManagerId))
+                {
+                    userIds.Add(quarry.ManagerId);
+                }
+            }
+
+            // Get all users
             var users = await _context.Users
                 .Where(u => userIds.Contains(u.Id) && u.IsActive)
                 .OrderBy(u => u.FullName)
@@ -112,12 +130,13 @@ public class UserService
         }
     }
 
-    // Create Manager (Administrator only)
+    // Create Manager (Administrator or Manager Owner only)
     public async Task<(bool Success, string Message, ApplicationUser? User, string? TempPassword)> CreateManagerAsync(
         string fullName,
         string email,
         string? position,
-        string createdBy)
+        string createdBy,
+        string? createdByManagerId = null)
     {
         try
         {
@@ -144,7 +163,8 @@ public class UserService
                 FullName = fullName,
                 Position = position,
                 IsActive = true,
-                EmailConfirmed = true // Auto-confirm for internal users
+                EmailConfirmed = true, // Auto-confirm for internal users
+                CreatedByManagerId = createdByManagerId // Set creator (null for Manager Owners created by Admin)
             };
 
             var result = await _userManager.CreateAsync(user, tempPassword);
@@ -163,7 +183,8 @@ public class UserService
                 // Don't fail the whole operation, just log it
             }
 
-            _logger.LogInformation("Manager account created: {Email} by {CreatedBy}", email, createdBy);
+            var managerType = createdByManagerId == null ? "Manager Owner" : "Secondary Manager";
+            _logger.LogInformation("{ManagerType} account created: {Email} by {CreatedBy}", managerType, email, createdBy);
 
             return (true, "Manager account created successfully", user, tempPassword);
         }
@@ -517,18 +538,43 @@ public class UserService
     }
 
     // Helper: Generate temporary password
-    // Format: {Name(withoutspaces)}{currentyear}
-    // Example: "John Doe" -> "JohnDoe2025"
+    // Format: {FirstName}.{LastName}@{currentyear}
+    // Example: "John Doe" -> "John.Doe@2025"
+    // Meets requirements: uppercase, lowercase, digit, non-alphanumeric, 12+ chars
     private string GenerateTemporaryPassword(string fullName)
     {
-        // Remove all spaces from the name
-        var nameWithoutSpaces = fullName.Replace(" ", "");
+        // Split name into parts
+        var nameParts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        string formattedName;
+        if (nameParts.Length >= 2)
+        {
+            // Join first and last name with a dot
+            formattedName = $"{nameParts[0]}.{nameParts[^1]}";
+        }
+        else if (nameParts.Length == 1)
+        {
+            // Single name - duplicate it
+            formattedName = $"{nameParts[0]}.User";
+        }
+        else
+        {
+            formattedName = "New.User";
+        }
 
         // Get current year
         var currentYear = DateTime.Now.Year;
 
-        // Combine name and year
-        return $"{nameWithoutSpaces}{currentYear}";
+        // Combine with @ symbol (non-alphanumeric) and year
+        var password = $"{formattedName}@{currentYear}";
+
+        // Ensure minimum length of 12 characters
+        if (password.Length < 12)
+        {
+            password = $"{formattedName}@{currentYear}!";
+        }
+
+        return password;
     }
 
     // Get user's quarry context (for Clerk pages)
@@ -618,14 +664,21 @@ public class UserService
         var targetRoles = await _userManager.GetRolesAsync(targetUser);
         var targetRole = targetRoles.FirstOrDefault();
 
-        // Administrator can manage Managers
+        // Administrator can manage all Managers
         if (managerRole == "Administrator" && targetRole == "Manager")
             return true;
+
+        // Manager Owner can manage Secondary Managers they created
+        if (managerRole == "Manager" && targetRole == "Manager")
+        {
+            // Check if targetUser was created by this manager (Manager Owner managing Secondary Manager)
+            return targetUser.CreatedByManagerId == managerId;
+        }
 
         // Manager can manage Clerks assigned to their quarries
         if (managerRole == "Manager" && targetRole == "Clerk")
         {
-            // Check if clerk is assigned to any of manager's quarries
+            // Check if clerk is assigned to any of manager's quarries (owned or assigned)
             var managerQuarryIds = await _context.Quarries
                 .Where(q => q.ManagerId == managerId && q.IsActive)
                 .Select(q => q.Id)
@@ -640,6 +693,97 @@ public class UserService
         }
 
         return false;
+    }
+
+    // Check if user is a Manager Owner (created by Admin, not by another manager)
+    public async Task<bool> IsManagerOwnerAsync(string userId)
+    {
+        try
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null) return false;
+
+            var roles = await _userManager.GetRolesAsync(user);
+
+            // User must have Manager role AND CreatedByManagerId must be null
+            return roles.Contains("Manager") && user.CreatedByManagerId == null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking if user {UserId} is a Manager Owner", userId);
+            return false;
+        }
+    }
+
+    // Get Secondary Managers created by a Manager Owner
+    public async Task<List<ApplicationUser>> GetSecondaryManagersAsync(string managerOwnerId)
+    {
+        try
+        {
+            return await _context.Users
+                .Where(u => u.CreatedByManagerId == managerOwnerId && u.IsActive)
+                .OrderBy(u => u.FullName)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving Secondary Managers for Manager Owner {ManagerOwnerId}", managerOwnerId);
+            return new List<ApplicationUser>();
+        }
+    }
+
+    // Get quarries owned by a Manager (for Manager Owners)
+    public async Task<List<Quarry>> GetOwnedQuarriesAsync(string managerId)
+    {
+        try
+        {
+            return await _context.Quarries
+                .Where(q => q.ManagerId == managerId && q.IsActive)
+                .OrderBy(q => q.QuarryName)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving owned quarries for Manager {ManagerId}", managerId);
+            return new List<Quarry>();
+        }
+    }
+
+    // Get all accessible quarries for a manager (owned + assigned)
+    public async Task<List<Quarry>> GetAccessibleQuarriesAsync(string managerId)
+    {
+        try
+        {
+            // Get quarries owned by this manager
+            var ownedQuarries = await _context.Quarries
+                .Where(q => q.ManagerId == managerId && q.IsActive)
+                .ToListAsync();
+
+            // Get quarries assigned to this manager (for Secondary Managers)
+            var assignedQuarryIds = await _context.UserQuarries
+                .Where(uq => uq.UserId == managerId && uq.IsActive)
+                .Select(uq => uq.QuarryId)
+                .ToListAsync();
+
+            var assignedQuarries = await _context.Quarries
+                .Where(q => assignedQuarryIds.Contains(q.Id) && q.IsActive)
+                .ToListAsync();
+
+            // Combine and remove duplicates
+            var allQuarries = ownedQuarries
+                .Concat(assignedQuarries)
+                .GroupBy(q => q.Id)
+                .Select(g => g.First())
+                .OrderBy(q => q.QuarryName)
+                .ToList();
+
+            return allQuarries;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving accessible quarries for Manager {ManagerId}", managerId);
+            return new List<Quarry>();
+        }
     }
 }
 

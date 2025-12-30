@@ -120,3 +120,8 @@ logs/
 # Data Protection keys (auto-generated, sensitive)
 keys/
 **/keys/
+nul
+src/QDeskPro/QDeskPro/nul
+
+# Build output (root folder only)
+/QDeskPro/

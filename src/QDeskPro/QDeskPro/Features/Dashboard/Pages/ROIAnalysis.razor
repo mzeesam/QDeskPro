@@ -1,0 +1,1070 @@
+@page "/manager/roi-analysis"
+@page "/admin/roi-analysis"
+@using QDeskPro.Features.Dashboard.Services
+@using QDeskPro.Features.Reports.Services
+@using QDeskPro.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject ROIAnalysisService ROIAnalysisService
+@inject ManagerReportService ReportService
+@inject AppDbContext DbContext
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode InteractiveServer
+
+<PageTitle>ROI Analysis - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4 mb-8">
+    <MudStack Spacing="4">
+        @* Header with gradient accent *@
+        <div class="roi-header">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <div>
+                    <MudText Typo="Typo.h4" Class="fw-bold roi-title">
+                        <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Class="mr-2" />
+                        ROI Analysis
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted mt-1">
+                        Investment recovery, profitability & break-even analysis
+                    </MudText>
+                </div>
+                <MudButton Variant="Variant.Filled"
+                          Color="Color.Primary"
+                          StartIcon="@Icons.Material.Filled.Refresh"
+                          OnClick="@(async () => await LoadROIDataAsync())"
+                          Disabled="_loading"
+                          Class="refresh-btn">
+                    Refresh
+                </MudButton>
+            </MudStack>
+        </div>
+
+        @* Filters Card *@
+        <MudPaper Elevation="0" Class="filter-card pa-4 rounded-lg">
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string"
+                              @bind-Value="_selectedQuarryId"
+                              Label="Quarry"
+                              Variant="Variant.Outlined"
+                              AnchorOrigin="Origin.BottomCenter"
+                              Dense="true"
+                              Disabled="_loading">
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudDatePicker @bind-Date="_fromDate"
+                                  Label="From Date"
+                                  Variant="Variant.Outlined"
+                                  MaxDate="DateTime.Today"
+                                  Dense="true"
+                                  Disabled="_loading" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudDatePicker @bind-Date="_toDate"
+                                  Label="To Date"
+                                  Variant="Variant.Outlined"
+                                  MinDate="_fromDate"
+                                  MaxDate="DateTime.Today"
+                                  Dense="true"
+                                  Disabled="_loading" />
+                </MudItem>
+                <MudItem xs="12" sm="2">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              FullWidth="true"
+                              OnClick="@(async () => await LoadROIDataAsync())"
+                              Disabled="_loading"
+                              Class="mt-1">
+                        Apply
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+        }
+        else if (_roiData == null || !_roiData.HasInvestmentData)
+        {
+            @* No Investment Data Warning *@
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="my-4">
+                <MudText Typo="Typo.h6">No Investment Data Configured</MudText>
+                <MudText Typo="Typo.body2" Class="mt-2">
+                    To view ROI analysis, please configure capital investment data for this quarry:
+                </MudText>
+                <MudList T="string" Dense="true" Class="mt-2">
+                    <MudListItem Icon="@Icons.Material.Filled.AttachMoney">Initial Capital Investment</MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.CalendarToday">Operations Start Date</MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.Settings">Estimated Monthly Fixed Costs (for break-even)</MudListItem>
+                </MudList>
+                <MudButton Variant="Variant.Filled"
+                          Color="Color.Primary"
+                          Class="mt-3"
+                          Href="/manager/quarries">
+                    Configure Quarry Settings
+                </MudButton>
+            </MudAlert>
+        }
+        else
+        {
+            @* Investment Overview Section *@
+            <MudPaper Elevation="0" Class="investment-overview pa-4 rounded-lg">
+                <MudText Typo="Typo.h6" Class="section-title mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Class="mr-2" />
+                    Investment Overview
+                </MudText>
+                <MudGrid>
+                    <MudItem xs="6" sm="3">
+                        <div class="overview-stat">
+                            <MudText Typo="Typo.caption" Class="stat-label">Initial Investment</MudText>
+                            <MudText Typo="Typo.h5" Class="stat-value">KES @_roiData.TotalInvestment.ToString("N0")</MudText>
+                        </div>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <div class="overview-stat">
+                            <MudText Typo="Typo.caption" Class="stat-label">Operating Since</MudText>
+                            <MudText Typo="Typo.h5" Class="stat-value">@_roiData.OperatingMonths months</MudText>
+                            <MudText Typo="Typo.caption" Class="stat-sub">@_roiData.OperationsStartDate.ToString("MMM yyyy")</MudText>
+                        </div>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <div class="overview-stat">
+                            <MudText Typo="Typo.caption" Class="stat-label">Recovery Progress</MudText>
+                            <MudText Typo="Typo.h5" Class="stat-value" Style="@GetRecoveryColor(_roiData.InvestmentRecoveryPercent)">
+                                @_roiData.InvestmentRecoveryPercent.ToString("N1")%
+                            </MudText>
+                            <MudLinearProgress Value="@Math.Min(100, _roiData.InvestmentRecoveryPercent)"
+                                              Color="@GetRecoveryProgressColor(_roiData.InvestmentRecoveryPercent)"
+                                              Class="mt-2" />
+                        </div>
+                    </MudItem>
+                    <MudItem xs="6" sm="3">
+                        <div class="overview-stat">
+                            <MudText Typo="Typo.caption" Class="stat-label">Estimated Recovery</MudText>
+                            @if (_roiData.InvestmentRecoveryPercent >= 100)
+                            {
+                                <MudText Typo="Typo.h5" Class="stat-value" Color="Color.Success">
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Class="mr-1" />
+                                    Recovered!
+                                </MudText>
+                            }
+                            else if (_roiData.EstimatedRecoveryDate.HasValue)
+                            {
+                                <MudText Typo="Typo.h5" Class="stat-value">@_roiData.EstimatedRecoveryDate.Value.ToString("MMM yyyy")</MudText>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.h5" Class="stat-value" Color="Color.Warning">Calculating...</MudText>
+                            }
+                        </div>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            @* Core ROI Metrics *@
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="metric-card metric-card-roi">
+                        <div class="metric-icon-container">
+                            <MudIcon Icon="@Icons.Material.Filled.Percent" Size="Size.Large" />
+                        </div>
+                        <div class="metric-content">
+                            <MudText Typo="Typo.caption" Class="metric-label">Basic ROI</MudText>
+                            <MudText Typo="Typo.h5" Class="metric-value" Color="@(_roiData.BasicROI >= 0 ? Color.Success : Color.Error)">
+                                @_roiData.BasicROI.ToString("N1")%
+                            </MudText>
+                            <MudText Typo="Typo.caption" Class="metric-subtext">
+                                Total return on investment
+                            </MudText>
+                        </div>
+                    </div>
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="metric-card metric-card-annual">
+                        <div class="metric-icon-container">
+                            <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Size="Size.Large" />
+                        </div>
+                        <div class="metric-content">
+                            <MudText Typo="Typo.caption" Class="metric-label">Annualized ROI</MudText>
+                            <MudText Typo="Typo.h5" Class="metric-value" Color="@(_roiData.AnnualizedROI >= 0 ? Color.Success : Color.Error)">
+                                @_roiData.AnnualizedROI.ToString("N1")%/yr
+                            </MudText>
+                            <MudText Typo="Typo.caption" Class="metric-subtext">
+                                Yearly equivalent
+                            </MudText>
+                        </div>
+                    </div>
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="metric-card metric-card-profit">
+                        <div class="metric-icon-container">
+                            <MudIcon Icon="@Icons.Material.Filled.Savings" Size="Size.Large" />
+                        </div>
+                        <div class="metric-content">
+                            <MudText Typo="Typo.caption" Class="metric-label">Cumulative Profit</MudText>
+                            <MudText Typo="Typo.h5" Class="metric-value" Color="@(_roiData.CumulativeNetProfit >= 0 ? Color.Success : Color.Error)">
+                                KES @FormatLargeNumber(_roiData.CumulativeNetProfit)
+                            </MudText>
+                            <MudText Typo="Typo.caption" Class="metric-subtext">
+                                Since operations start
+                            </MudText>
+                        </div>
+                    </div>
+                </MudItem>
+
+                <MudItem xs="12" sm="6" md="3">
+                    <div class="metric-card metric-card-payback">
+                        <div class="metric-icon-container">
+                            <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Large" />
+                        </div>
+                        <div class="metric-content">
+                            <MudText Typo="Typo.caption" Class="metric-label">Payback Period</MudText>
+                            <MudText Typo="Typo.h5" Class="metric-value">
+                                @if (_roiData.PaybackPeriodMonths < 999)
+                                {
+                                    @($"{_roiData.PaybackPeriodMonths:N0} months")
+                                }
+                                else
+                                {
+                                    <span style="color: #ff9800;">N/A</span>
+                                }
+                            </MudText>
+                            <MudText Typo="Typo.caption" Class="metric-subtext">
+                                Time to recover investment
+                            </MudText>
+                        </div>
+                    </div>
+                </MudItem>
+            </MudGrid>
+
+            @* Charts Row *@
+            <MudGrid>
+                @* Recovery Gauge and Cumulative Profit Chart *@
+                <MudItem xs="12" md="4">
+                    <MudCard Elevation="0" Class="chart-card pa-4 rounded-lg" Style="height: 100%;">
+                        <MudCardContent>
+                            <MudText Typo="Typo.h6" Class="chart-title mb-4">Investment Recovery</MudText>
+                            <div class="gauge-container">
+                                <canvas id="recoveryGauge"></canvas>
+                                <div class="gauge-center-text">
+                                    <MudText Typo="Typo.h4" Class="fw-bold" Style="@GetRecoveryColor(_roiData.InvestmentRecoveryPercent)">
+                                        @_roiData.InvestmentRecoveryPercent.ToString("N0")%
+                                    </MudText>
+                                    <MudText Typo="Typo.caption">Recovered</MudText>
+                                </div>
+                            </div>
+                            <MudDivider Class="my-3" />
+                            <div class="remaining-stat">
+                                <MudText Typo="Typo.body2">Remaining to Recover</MudText>
+                                <MudText Typo="Typo.h6" Color="@(_roiData.RemainingToRecover > 0 ? Color.Warning : Color.Success)">
+                                    KES @_roiData.RemainingToRecover.ToString("N0")
+                                </MudText>
+                            </div>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+
+                <MudItem xs="12" md="8">
+                    <MudCard Elevation="0" Class="chart-card pa-4 rounded-lg">
+                        <MudCardContent>
+                            <div class="chart-header mb-4">
+                                <MudText Typo="Typo.h6" Class="chart-title">Cumulative Profit vs Investment</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                                    @_roiData.OperatingMonths months
+                                </MudChip>
+                            </div>
+                            <div style="height: 300px;">
+                                <canvas id="cumulativeProfitChart"></canvas>
+                            </div>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+
+            @* Profitability Analysis *@
+            <MudPaper Elevation="0" Class="profitability-section pa-4 rounded-lg">
+                <MudText Typo="Typo.h6" Class="section-title mb-4">
+                    <MudIcon Icon="@Icons.Material.Filled.Analytics" Class="mr-2" />
+                    Profitability Analysis (Selected Period)
+                </MudText>
+                <MudGrid>
+                    <MudItem xs="6" sm="4" md="2">
+                        <div class="profit-stat">
+                            <MudText Typo="Typo.caption" Class="stat-label">Gross Margin</MudText>
+                            <MudText Typo="Typo.h6" Class="stat-value" Color="@(_roiData.GrossProfitMargin >= 0 ? Color.Success : Color.Error)">
+                                @_roiData.GrossProfitMargin.ToString("N1")%
+                            </MudText>
+                        </div>
+                    </MudItem>
+                    <MudItem xs="6" sm="4" md="2">
+                        <div class="profit-stat">
+                            <MudText Typo="Typo.caption" Class="stat-label">Net Margin</MudText>
+                            <MudText Typo="Typo.h6" Class="stat-value" Color="@(_roiData.NetProfitMargin >= 0 ? Color.Success : Color.Error)">
+                                @_roiData.NetProfitMargin.ToString("N1")%
+                            </MudText>
+                            @if (_roiData.TargetProfitMargin.HasValue)
+                            {
+                                <MudChip T="string" Size="Size.Small"
+                                        Color="@(_roiData.IsAboveTarget ? Color.Success : Color.Warning)"
+                                        Variant="Variant.Outlined" Class="mt-1">
+                                    Target: @_roiData.TargetProfitMargin.Value.ToString("N0")%
+                                </MudChip>
+                            }
+                        </div>
+                    </MudItem>
+                    <MudItem xs="6" sm="4" md="2">
+                        <div class="profit-stat">
+                            <MudText Typo="Typo.caption" Class="stat-label">Revenue/Piece</MudText>
+                            <MudText Typo="Typo.h6" Class="stat-value">KES @_roiData.RevenuePerPiece.ToString("N0")</MudText>
+                        </div>
+                    </MudItem>
+                    <MudItem xs="6" sm="4" md="2">
+                        <div class="profit-stat">
+                            <MudText Typo="Typo.caption" Class="stat-label">Cost/Piece</MudText>
+                            <MudText Typo="Typo.h6" Class="stat-value" Color="Color.Error">KES @_roiData.CostPerPiece.ToString("N0")</MudText>
+                        </div>
+                    </MudItem>
+                    <MudItem xs="6" sm="4" md="2">
+                        <div class="profit-stat">
+                            <MudText Typo="Typo.caption" Class="stat-label">Profit/Piece</MudText>
+                            <MudText Typo="Typo.h6" Class="stat-value" Color="@(_roiData.ProfitPerPiece >= 0 ? Color.Success : Color.Error)">
+                                KES @_roiData.ProfitPerPiece.ToString("N0")
+                            </MudText>
+                        </div>
+                    </MudItem>
+                    <MudItem xs="6" sm="4" md="2">
+                        <div class="profit-stat">
+                            <MudText Typo="Typo.caption" Class="stat-label">Period Net Profit</MudText>
+                            <MudText Typo="Typo.h6" Class="stat-value" Color="@(_roiData.NetProfit >= 0 ? Color.Success : Color.Error)">
+                                KES @FormatLargeNumber(_roiData.NetProfit)
+                            </MudText>
+                        </div>
+                    </MudItem>
+                </MudGrid>
+            </MudPaper>
+
+            @* Break-Even Analysis *@
+            @if (_roiData.BreakEven.FixedCosts > 0)
+            {
+                <MudPaper Elevation="0" Class="breakeven-section pa-4 rounded-lg">
+                    <MudText Typo="Typo.h6" Class="section-title mb-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Balance" Class="mr-2" />
+                        Break-Even Analysis
+                    </MudText>
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <MudStack Spacing="2">
+                                <div class="breakeven-row">
+                                    <MudText Typo="Typo.body2">Monthly Fixed Costs</MudText>
+                                    <MudText Typo="Typo.body1" Class="fw-bold">KES @_roiData.BreakEven.FixedCosts.ToString("N0")</MudText>
+                                </div>
+                                <div class="breakeven-row">
+                                    <MudText Typo="Typo.body2">Variable Cost/Unit</MudText>
+                                    <MudText Typo="Typo.body1" Class="fw-bold">KES @_roiData.BreakEven.VariableCostPerUnit.ToString("N0")</MudText>
+                                </div>
+                                <div class="breakeven-row">
+                                    <MudText Typo="Typo.body2">Avg Price/Unit</MudText>
+                                    <MudText Typo="Typo.body1" Class="fw-bold">KES @_roiData.BreakEven.AveragePricePerUnit.ToString("N0")</MudText>
+                                </div>
+                                <div class="breakeven-row highlight">
+                                    <MudText Typo="Typo.body2">Contribution Margin</MudText>
+                                    <MudText Typo="Typo.body1" Class="fw-bold" Color="Color.Primary">
+                                        KES @_roiData.BreakEven.ContributionMargin.ToString("N0")
+                                    </MudText>
+                                </div>
+                            </MudStack>
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudStack Spacing="2">
+                                <div class="breakeven-row highlight">
+                                    <MudText Typo="Typo.body2">Break-Even Point</MudText>
+                                    <MudText Typo="Typo.body1" Class="fw-bold" Color="Color.Warning">
+                                        @_roiData.BreakEven.BreakEvenPieces.ToString("N0") pcs/month
+                                    </MudText>
+                                </div>
+                                <div class="breakeven-row">
+                                    <MudText Typo="Typo.body2">Break-Even Revenue</MudText>
+                                    <MudText Typo="Typo.body1" Class="fw-bold">KES @_roiData.BreakEven.BreakEvenRevenue.ToString("N0")/month</MudText>
+                                </div>
+                                <div class="breakeven-row">
+                                    <MudText Typo="Typo.body2">Current Monthly Avg</MudText>
+                                    <MudText Typo="Typo.body1" Class="fw-bold">@_roiData.BreakEven.CurrentMonthlyPieces.ToString("N0") pcs/month</MudText>
+                                </div>
+                                <div class="breakeven-row highlight">
+                                    <MudText Typo="Typo.body2">Margin of Safety</MudText>
+                                    <MudText Typo="Typo.body1" Class="fw-bold" Color="@(_roiData.BreakEven.IsAboveBreakEven ? Color.Success : Color.Error)">
+                                        @_roiData.BreakEven.MarginOfSafetyPercent.ToString("N1")%
+                                        @if (_roiData.BreakEven.IsAboveBreakEven)
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Class="ml-1" />
+                                        }
+                                        else
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Class="ml-1" />
+                                        }
+                                    </MudText>
+                                </div>
+                            </MudStack>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+
+            @* Efficiency Metrics *@
+            <div class="efficiency-metrics-row">
+                <div class="efficiency-card efficiency-gradient-1">
+                    <MudIcon Icon="@Icons.Material.Filled.LocalGasStation" Size="Size.Medium" Class="efficiency-icon" />
+                    <div class="efficiency-content">
+                        <span class="efficiency-value">@_roiData.FuelEfficiency.ToString("N1")</span>
+                        <span class="efficiency-label">Pieces/Liter</span>
+                    </div>
+                </div>
+
+                <div class="efficiency-card efficiency-gradient-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Speed" Size="Size.Medium" Class="efficiency-icon" />
+                    <div class="efficiency-content">
+                        <span class="efficiency-value">@_roiData.CapacityUtilization.ToString("N0")%</span>
+                        <span class="efficiency-label">Capacity Usage</span>
+                    </div>
+                </div>
+
+                <div class="efficiency-card efficiency-gradient-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Handshake" Size="Size.Medium" Class="efficiency-icon" />
+                    <div class="efficiency-content">
+                        <span class="efficiency-value">@_roiData.CommissionRatio.ToString("N1")%</span>
+                        <span class="efficiency-label">Commission Ratio</span>
+                    </div>
+                </div>
+
+                <div class="efficiency-card efficiency-gradient-4">
+                    <MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Medium" Class="efficiency-icon" />
+                    <div class="efficiency-content">
+                        <span class="efficiency-value">@_roiData.CollectionEfficiency.ToString("N0")%</span>
+                        <span class="efficiency-label">Collection Rate</span>
+                    </div>
+                </div>
+            </div>
+
+            @* Monthly Performance Table *@
+            <MudCard Elevation="0" Class="chart-card pa-4 rounded-lg">
+                <MudCardContent>
+                    <div class="chart-header mb-4">
+                        <MudText Typo="Typo.h6" Class="chart-title">Monthly Performance</MudText>
+                        <MudText Typo="Typo.caption" Class="text-muted">Cumulative profit tracking</MudText>
+                    </div>
+                    @if (_roiData.MonthlyHistory.Any())
+                    {
+                        <MudTable Items="@_roiData.MonthlyHistory"
+                                 T="MonthlyProfitData"
+                                 Dense="true"
+                                 Hover="true"
+                                 Breakpoint="Breakpoint.Sm"
+                                 Height="400px"
+                                 FixedHeader="true"
+                                 Class="monthly-table">
+                            <HeaderContent>
+                                <MudTh>Month</MudTh>
+                                <MudTh Style="text-align: right">Quantity</MudTh>
+                                <MudTh Style="text-align: right">Revenue</MudTh>
+                                <MudTh Style="text-align: right">Expenses</MudTh>
+                                <MudTh Style="text-align: right">Net Profit</MudTh>
+                                <MudTh Style="text-align: right">Cumulative</MudTh>
+                                <MudTh Style="text-align: right">ROI %</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Month">@context.MonthName</MudTd>
+                                <MudTd DataLabel="Quantity" Style="text-align: right">@context.Quantity.ToString("N0")</MudTd>
+                                <MudTd DataLabel="Revenue" Style="text-align: right">@context.Revenue.ToString("N0")</MudTd>
+                                <MudTd DataLabel="Expenses" Style="text-align: right">@context.Expenses.ToString("N0")</MudTd>
+                                <MudTd DataLabel="Net Profit" Style="text-align: right">
+                                    <MudText Color="@(context.NetProfit >= 0 ? Color.Success : Color.Error)">
+                                        @context.NetProfit.ToString("N0")
+                                    </MudText>
+                                </MudTd>
+                                <MudTd DataLabel="Cumulative" Style="text-align: right">
+                                    <MudText Color="@(context.CumulativeProfit >= 0 ? Color.Success : Color.Error)" Class="fw-bold">
+                                        @context.CumulativeProfit.ToString("N0")
+                                    </MudText>
+                                </MudTd>
+                                <MudTd DataLabel="ROI %" Style="text-align: right">
+                                    <MudChip T="string" Size="Size.Small"
+                                            Color="@(context.ROI >= 100 ? Color.Success : context.ROI >= 50 ? Color.Warning : Color.Default)"
+                                            Variant="Variant.Filled">
+                                        @context.ROI.ToString("N1")%
+                                    </MudChip>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                    else
+                    {
+                        <MudText Align="Align.Center" Class="pa-8" Color="Color.Default">
+                            No monthly data available
+                        </MudText>
+                    }
+                </MudCardContent>
+            </MudCard>
+
+            @* Export Buttons *@
+            <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2" Class="mt-2">
+                <MudButton Variant="Variant.Outlined"
+                          Color="Color.Primary"
+                          StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                          OnClick="ExportToPdfAsync"
+                          Disabled="_exporting">
+                    @if (_exporting && _exportType == "pdf")
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Export PDF
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                          Color="Color.Success"
+                          StartIcon="@Icons.Material.Filled.TableChart"
+                          OnClick="ExportToExcelAsync"
+                          Disabled="_exporting">
+                    @if (_exporting && _exportType == "excel")
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Export Excel
+                </MudButton>
+            </MudStack>
+        }
+    </MudStack>
+</MudContainer>
+
+<style>
+    /* ROI Header */
+    .roi-header {
+        background: linear-gradient(135deg, rgba(76, 175, 80, 0.08) 0%, rgba(0, 188, 212, 0.05) 100%);
+        padding: 24px;
+        border-radius: 16px;
+        border-left: 4px solid #4CAF50;
+        margin-bottom: 8px;
+    }
+
+    .roi-title {
+        background: linear-gradient(135deg, #2E7D32, #00838F);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        display: flex;
+        align-items: center;
+    }
+
+    .roi-title .mud-icon-root {
+        -webkit-text-fill-color: #2E7D32;
+    }
+
+    .refresh-btn {
+        border-radius: 12px !important;
+        box-shadow: 0 4px 14px rgba(76, 175, 80, 0.35) !important;
+    }
+
+    /* Filter Card */
+    .filter-card {
+        background: white;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    }
+
+    /* Section Titles */
+    .section-title {
+        font-weight: 700;
+        color: #1E293B;
+        display: flex;
+        align-items: center;
+    }
+
+    /* Investment Overview */
+    .investment-overview {
+        background: linear-gradient(135deg, #E8F5E9 0%, #E0F7FA 100%);
+        border: 1px solid rgba(76, 175, 80, 0.2);
+    }
+
+    .overview-stat {
+        text-align: center;
+        padding: 16px;
+    }
+
+    .stat-label {
+        color: #64748B;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+        font-weight: 800 !important;
+        color: #1E293B;
+    }
+
+    .stat-sub {
+        color: #94A3B8;
+    }
+
+    /* Metric Cards */
+    .metric-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+        padding: 24px;
+        border-radius: 16px;
+        background: white;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .metric-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    .metric-card-roi { border-top: 4px solid #4CAF50; }
+    .metric-card-roi .metric-icon-container { background: linear-gradient(135deg, #4CAF50, #388E3C); }
+
+    .metric-card-annual { border-top: 4px solid #2196F3; }
+    .metric-card-annual .metric-icon-container { background: linear-gradient(135deg, #2196F3, #1976D2); }
+
+    .metric-card-profit { border-top: 4px solid #9C27B0; }
+    .metric-card-profit .metric-icon-container { background: linear-gradient(135deg, #9C27B0, #7B1FA2); }
+
+    .metric-card-payback { border-top: 4px solid #FF9800; }
+    .metric-card-payback .metric-icon-container { background: linear-gradient(135deg, #FF9800, #F57C00); }
+
+    .metric-icon-container {
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .metric-icon-container .mud-icon-root {
+        color: white !important;
+    }
+
+    .metric-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .metric-label {
+        color: #64748B;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-size: 0.7rem !important;
+    }
+
+    .metric-value {
+        font-weight: 800 !important;
+        margin: 4px 0;
+        line-height: 1.2;
+    }
+
+    .metric-subtext {
+        color: #94A3B8;
+        font-weight: 500;
+    }
+
+    /* Chart Cards */
+    .chart-card {
+        background: white;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    }
+
+    .chart-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .chart-title {
+        font-weight: 700;
+        color: #1E293B;
+    }
+
+    /* Gauge Container */
+    .gauge-container {
+        position: relative;
+        width: 100%;
+        height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .gauge-center-text {
+        position: absolute;
+        text-align: center;
+        bottom: 40px;
+    }
+
+    .remaining-stat {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+    }
+
+    /* Profitability Section */
+    .profitability-section {
+        background: white;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .profit-stat {
+        text-align: center;
+        padding: 12px;
+        background: #F8FAFC;
+        border-radius: 12px;
+    }
+
+    /* Break-Even Section */
+    .breakeven-section {
+        background: linear-gradient(135deg, #FFF8E1 0%, #FFFDE7 100%);
+        border: 1px solid rgba(255, 152, 0, 0.2);
+    }
+
+    .breakeven-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        border-radius: 8px;
+    }
+
+    .breakeven-row.highlight {
+        background: rgba(255, 255, 255, 0.7);
+    }
+
+    /* Efficiency Metrics Row */
+    .efficiency-metrics-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin: 16px 0;
+    }
+
+    @@media (max-width: 960px) {
+        .efficiency-metrics-row {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @@media (max-width: 600px) {
+        .efficiency-metrics-row {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .efficiency-card {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 20px;
+        border-radius: 16px;
+        color: white;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+    }
+
+    .efficiency-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+    }
+
+    .efficiency-gradient-1 { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .efficiency-gradient-2 { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+    .efficiency-gradient-3 { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+    .efficiency-gradient-4 { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
+
+    .efficiency-icon {
+        opacity: 0.9;
+    }
+
+    .efficiency-content {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .efficiency-value {
+        font-weight: 700;
+        font-size: 1.5rem;
+        line-height: 1.2;
+    }
+
+    .efficiency-label {
+        font-size: 0.75rem;
+        opacity: 0.9;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    /* Monthly Table */
+    .monthly-table .mud-table-head th {
+        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        letter-spacing: 0.5px;
+        color: #64748B;
+    }
+
+    /* Animation */
+    @@keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .metric-card, .efficiency-card, .chart-card {
+        animation: fadeInUp 0.5s ease-out forwards;
+    }
+</style>
+
+@code {
+    private List<Quarry> _quarries = new();
+    private string? _selectedQuarryId;
+    private DateTime? _fromDate;
+    private DateTime? _toDate = DateTime.Today;
+    private string _userId = string.Empty;
+    private string _userRole = string.Empty;
+    private bool _loading = true;
+    private bool _exporting = false;
+    private string _exportType = string.Empty;
+
+    private ROIAnalysisData? _roiData;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            _userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+            _userRole = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? string.Empty;
+
+            // Load quarries based on user role
+            if (_userRole == "Administrator")
+            {
+                _quarries = await DbContext.Quarries
+                    .Where(q => q.IsActive)
+                    .OrderBy(q => q.QuarryName)
+                    .ToListAsync();
+            }
+            else if (_userRole == "Manager")
+            {
+                _quarries = await DbContext.Quarries
+                    .Where(q => q.IsActive && q.ManagerId == _userId)
+                    .OrderBy(q => q.QuarryName)
+                    .ToListAsync();
+            }
+
+            if (_quarries.Any())
+            {
+                _selectedQuarryId = _quarries.First().Id;
+            }
+
+            await LoadROIDataAsync();
+        }
+    }
+
+    private async Task LoadROIDataAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId))
+        {
+            _loading = false;
+            return;
+        }
+
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _roiData = await ROIAnalysisService.GetROIAnalysisAsync(
+                _selectedQuarryId,
+                _fromDate,
+                _toDate
+            );
+
+            // Set default from date to operations start if not set
+            if (_roiData?.HasInvestmentData == true && !_fromDate.HasValue)
+            {
+                _fromDate = _roiData.OperationsStartDate;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading ROI data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender && _roiData?.HasInvestmentData == true)
+        {
+            await RenderChartsAsync();
+        }
+    }
+
+    private async Task RenderChartsAsync()
+    {
+        try
+        {
+            // Render recovery gauge
+            await JS.InvokeVoidAsync("QDeskROICharts.createRecoveryGauge",
+                "recoveryGauge",
+                Math.Min(100, _roiData!.InvestmentRecoveryPercent));
+
+            // Render cumulative profit chart
+            if (_roiData.MonthlyHistory.Any())
+            {
+                var labels = _roiData.MonthlyHistory.Select(m => m.MonthName).ToArray();
+                var profitData = _roiData.MonthlyHistory.Select(m => m.CumulativeProfit).ToArray();
+                var investmentLine = _roiData.MonthlyHistory.Select(_ => _roiData.TotalInvestment).ToArray();
+
+                await JS.InvokeVoidAsync("QDeskROICharts.createCumulativeProfitChart",
+                    "cumulativeProfitChart",
+                    labels,
+                    profitData,
+                    investmentLine);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Chart rendering error: {ex.Message}");
+        }
+    }
+
+    private string GetRecoveryColor(double percent)
+    {
+        if (percent >= 100) return "color: #4CAF50;";
+        if (percent >= 50) return "color: #FF9800;";
+        return "color: #F44336;";
+    }
+
+    private Color GetRecoveryProgressColor(double percent)
+    {
+        if (percent >= 100) return Color.Success;
+        if (percent >= 50) return Color.Warning;
+        return Color.Error;
+    }
+
+    private string FormatLargeNumber(double value)
+    {
+        if (Math.Abs(value) >= 1_000_000)
+            return $"{value / 1_000_000:N2}M";
+        if (Math.Abs(value) >= 1_000)
+            return $"{value / 1_000:N1}K";
+        return value.ToString("N0");
+    }
+
+    private async Task ExportToPdfAsync()
+    {
+        if (_roiData == null || !_roiData.HasInvestmentData) return;
+
+        _exporting = true;
+        _exportType = "pdf";
+        StateHasChanged();
+
+        try
+        {
+            var quarryName = _quarries.FirstOrDefault(q => q.Id == _selectedQuarryId)?.QuarryName ?? "Unknown";
+            var fromDate = _fromDate ?? _roiData.OperationsStartDate;
+            var toDate = _toDate ?? DateTime.Today;
+
+            var pdfBytes = await ReportService.ExportROIAnalysisToPdfAsync(
+                _roiData,
+                quarryName,
+                fromDate,
+                toDate
+            );
+
+            var fileName = $"ROI_Analysis_{quarryName.Replace(" ", "_")}_{fromDate:yyyyMMdd}_{toDate:yyyyMMdd}.pdf";
+            var base64 = Convert.ToBase64String(pdfBytes);
+            await JS.InvokeVoidAsync("downloadFile", fileName, "application/pdf", base64);
+
+            Snackbar.Add("PDF exported successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Export failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _exporting = false;
+            _exportType = string.Empty;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportToExcelAsync()
+    {
+        if (_roiData == null || !_roiData.HasInvestmentData) return;
+
+        _exporting = true;
+        _exportType = "excel";
+        StateHasChanged();
+
+        try
+        {
+            var quarryName = _quarries.FirstOrDefault(q => q.Id == _selectedQuarryId)?.QuarryName ?? "Unknown";
+            var fromDate = _fromDate ?? _roiData.OperationsStartDate;
+            var toDate = _toDate ?? DateTime.Today;
+
+            var excelBytes = await ReportService.ExportROIAnalysisToExcelAsync(
+                _roiData,
+                quarryName,
+                fromDate,
+                toDate
+            );
+
+            var fileName = $"ROI_Analysis_{quarryName.Replace(" ", "_")}_{fromDate:yyyyMMdd}_{toDate:yyyyMMdd}.xlsx";
+            var base64 = Convert.ToBase64String(excelBytes);
+            await JS.InvokeVoidAsync("downloadFile", fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", base64);
+
+            Snackbar.Add("Excel exported successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Export failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _exporting = false;
+            _exportType = string.Empty;
+            StateHasChanged();
+        }
+    }
+}

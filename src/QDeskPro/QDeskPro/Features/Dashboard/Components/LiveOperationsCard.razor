@@ -1,0 +1,250 @@
+@using QDeskPro.Features.Dashboard.Models
+@* Mobile card view for single quarry live operations *@
+
+<MudCard Class="@($"live-ops-card {GetCardClass()}")">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <div class="d-flex justify-space-between align-center">
+                <div>
+                    <MudText Typo="Typo.h6">@Quarry.QuarryName</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@Quarry.Location</MudText>
+                </div>
+                <QuarryQuickLinks QuarryId="@Quarry.QuarryId" QuarryName="@Quarry.QuarryName" />
+            </div>
+        </CardHeaderContent>
+    </MudCardHeader>
+
+    <MudCardContent>
+        @if (!Quarry.HasActivity)
+        {
+            <div class="no-activity-message">
+                <MudIcon Icon="@Icons.Material.Filled.Inventory" Size="Size.Large" Color="Color.Default" />
+                <MudText Typo="Typo.h6" Color="Color.Secondary">No activity yet today</MudText>
+                @if (Quarry.LastActivityTime.HasValue)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Last active: @GetFriendlyLastActiveTime()
+                    </MudText>
+                }
+            </div>
+        }
+        else
+        {
+            @* Priority Metrics *@
+            <div class="priority-metrics-section">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Key Metrics</MudText>
+
+                <div class="metric-item">
+                    <div class="metric-label-row">
+                        <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Size="Size.Small" Color="Color.Primary" />
+                        <span>Total Sales</span>
+                    </div>
+                    <QuarryMetricCell
+                        Value="@Quarry.TotalSales"
+                        FormatType="currency"
+                        ColorStatus="@Quarry.SalesPerformanceLevel"
+                        IsPriority="true" />
+                </div>
+
+                <div class="metric-item">
+                    <div class="metric-label-row">
+                        <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Size="Size.Small" Color="Color.Primary" />
+                        <span>Sales Count</span>
+                    </div>
+                    <QuarryMetricCell
+                        IntValue="@Quarry.SalesCount"
+                        FormatType="count"
+                        Subtext="@($"{Quarry.TotalQuantity:N0} pieces")"
+                        ColorStatus="@(Quarry.SalesCount > 0 ? "good" : "neutral")"
+                        IsPriority="true" />
+                </div>
+
+                <div class="metric-item">
+                    <div class="metric-label-row">
+                        <MudIcon Icon="@Icons.Material.Filled.AccountBalanceWallet" Size="Size.Small" Color="Color.Primary" />
+                        <span>Est. Cash in Hand</span>
+                    </div>
+                    <QuarryMetricCell
+                        Value="@Quarry.EstimatedCashInHand"
+                        FormatType="currency"
+                        ColorStatus="@(Quarry.EstimatedCashInHand >= 0 ? "good" : "alert")"
+                        IsPriority="true" />
+                </div>
+            </div>
+
+            <MudDivider Class="my-3" />
+
+            @* Secondary Metrics *@
+            <div class="secondary-metrics-section">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Operations</MudText>
+
+                @if (Quarry.UnpaidCount > 0)
+                {
+                    <div class="metric-item">
+                        <div class="metric-label-row">
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Color="Color.Warning" />
+                            <span>Unpaid Orders</span>
+                        </div>
+                        <QuarryMetricCell
+                            Value="@Quarry.UnpaidAmount"
+                            FormatType="currency"
+                            Subtext="@($"{Quarry.UnpaidCount} orders")"
+                            ColorStatus="@Quarry.UnpaidStatus" />
+                    </div>
+                }
+
+                <div class="metric-item">
+                    <div class="metric-label-row">
+                        <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Small" />
+                        <span>Total Expenses</span>
+                    </div>
+                    <QuarryMetricCell
+                        Value="@Quarry.TotalExpenses"
+                        FormatType="currency"
+                        Subtext="@GetExpenseBreakdown()"
+                        ColorStatus="neutral" />
+                </div>
+
+                @if (Quarry.CollectionsCount > 0)
+                {
+                    <div class="metric-item">
+                        <div class="metric-label-row">
+                            <MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Small" Color="Color.Success" />
+                            <span>Collections</span>
+                        </div>
+                        <QuarryMetricCell
+                            Value="@Quarry.TotalCollections"
+                            FormatType="currency"
+                            Subtext="@($"{Quarry.CollectionsCount} payments")"
+                            ColorStatus="good" />
+                    </div>
+                }
+
+                @if (Quarry.PrepaymentsCount > 0)
+                {
+                    <div class="metric-item">
+                        <div class="metric-label-row">
+                            <MudIcon Icon="@Icons.Material.Filled.Savings" Size="Size.Small" Color="Color.Success" />
+                            <span>Prepayments</span>
+                        </div>
+                        <QuarryMetricCell
+                            Value="@Quarry.TotalPrepayments"
+                            FormatType="currency"
+                            Subtext="@($"{Quarry.PrepaymentsCount} deposits")"
+                            ColorStatus="good" />
+                    </div>
+                }
+
+                @if (Quarry.BankingCount > 0)
+                {
+                    <div class="metric-item">
+                        <div class="metric-label-row">
+                            <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Size="Size.Small" />
+                            <span>Banking</span>
+                        </div>
+                        <QuarryMetricCell
+                            Value="@Quarry.TotalBanked"
+                            FormatType="currency"
+                            Subtext="@($"{Quarry.BankingCount} transactions")"
+                            ColorStatus="neutral" />
+                    </div>
+                }
+
+                @if (Quarry.FuelConsumed > 0)
+                {
+                    <div class="metric-item">
+                        <div class="metric-label-row">
+                            <MudIcon Icon="@Icons.Material.Filled.LocalGasStation" Size="Size.Small" />
+                            <span>Fuel Consumed</span>
+                        </div>
+                        <QuarryMetricCell
+                            Value="@Quarry.FuelConsumed"
+                            FormatType="number"
+                            Subtext="liters"
+                            ColorStatus="neutral" />
+                    </div>
+                }
+            </div>
+
+            @if (Quarry.ActiveClerks.Any())
+            {
+                <MudDivider Class="my-3" />
+
+                <div class="active-clerks-section">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Active Clerks</MudText>
+                    <div class="clerks-chips">
+                        @foreach (var clerk in Quarry.ActiveClerks)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined" Text="@clerk" />
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (Quarry.LastActivityTime.HasValue)
+            {
+                <div class="last-activity-footer">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        <MudIcon Icon="@Icons.Material.Filled.Update" Size="Size.Small" />
+                        Last activity: @Quarry.LastActivityTime.Value.ToString("hh:mm tt")
+                    </MudText>
+                </div>
+            }
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter]
+    public QuarryLiveOperations Quarry { get; set; } = new();
+
+    private string GetCardClass()
+    {
+        if (!Quarry.HasActivity)
+            return "no-activity";
+
+        return Quarry.SalesPerformanceLevel switch
+        {
+            "excellent" => "performance-excellent",
+            "good" => "performance-good",
+            "needs-attention" => "performance-alert",
+            _ => ""
+        };
+    }
+
+    private string GetExpenseBreakdown()
+    {
+        var parts = new List<string>();
+
+        if (Quarry.CommissionExpenses > 0)
+            parts.Add($"Com: {Quarry.CommissionExpenses:N0}");
+
+        if (Quarry.LoadersFeeExpenses > 0)
+            parts.Add($"Ldr: {Quarry.LoadersFeeExpenses:N0}");
+
+        if (Quarry.LandRateExpenses > 0)
+            parts.Add($"LR: {Quarry.LandRateExpenses:N0}");
+
+        if (Quarry.ManualExpenses > 0)
+            parts.Add($"Man: {Quarry.ManualExpenses:N0}");
+
+        return string.Join(" | ", parts);
+    }
+
+    private string GetFriendlyLastActiveTime()
+    {
+        if (!Quarry.LastActivityTime.HasValue)
+            return "Unknown";
+
+        var diff = DateTime.Now - Quarry.LastActivityTime.Value;
+
+        if (diff.TotalMinutes < 1)
+            return "Just now";
+        else if (diff.TotalHours < 1)
+            return $"{(int)diff.TotalMinutes} min ago";
+        else if (diff.TotalDays < 1)
+            return Quarry.LastActivityTime.Value.ToString("hh:mm tt");
+        else
+            return Quarry.LastActivityTime.Value.ToString("MMM dd, hh:mm tt");
+    }
+}

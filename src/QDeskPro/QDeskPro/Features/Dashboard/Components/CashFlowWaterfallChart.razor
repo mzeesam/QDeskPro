@@ -1,0 +1,43 @@
+@using QDeskPro.Features.Dashboard.Services
+@inject IJSRuntime JS
+
+<div style="height: @Height">
+    <canvas id="@CanvasId"></canvas>
+</div>
+
+@code {
+    [Parameter] public string CanvasId { get; set; } = "cashFlowWaterfallChart";
+    [Parameter] public string Height { get; set; } = "400px";
+    [Parameter] public List<WaterfallStep> Steps { get; set; } = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || _dataChanged)
+        {
+            var labels = Steps.Select(s => s.Label).ToList();
+            var values = Steps.Select(s => s.Value).ToList();
+            var colors = Steps.Select(s => GetColor(s.Type)).ToList();
+
+            await JS.InvokeVoidAsync("QDeskDataAnalyticsCharts.createCashFlowWaterfallChart",
+                CanvasId, labels, values, colors);
+            _dataChanged = false;
+        }
+    }
+
+    private bool _dataChanged = true;
+
+    private string GetColor(WaterfallStepType type) => type switch
+    {
+        WaterfallStepType.Positive => "#4CAF50",
+        WaterfallStepType.Negative => "#F44336",
+        WaterfallStepType.Total => "#1976D2",
+        _ => "#9E9E9E"
+    };
+
+    public void UpdateData(List<WaterfallStep> steps)
+    {
+        Steps = steps;
+        _dataChanged = true;
+        StateHasChanged();
+    }
+}

@@ -34,12 +34,13 @@
             <MudForm @ref="_form" @bind-IsValid="_isValid">
                 <MudGrid>
                     <MudItem xs="12" sm="6">
-                        <MudDatePicker @bind-Date="_usageDate"
+                        <MudDatePicker @bind-Date="_fuelUsage.UsageDate"
                                        Label="Usage Date"
                                        Variant="Variant.Outlined"
                                        Required="true"
+                                       RequiredError="Please select a date"
                                        MaxDate="@DateTime.Today"
-                                       MinDate="@DateTime.Today.AddDays(-14)"
+                                       MinDate="@DateTime.Today.AddDays(-5)"
                                        DateFormat="dd/MM/yyyy" />
                     </MudItem>
 
@@ -256,14 +257,13 @@
 
     private Domain.Entities.FuelUsage _fuelUsage = new()
     {
-        UsageDate = DateTime.Now,
+        UsageDate = DateTime.Today,
         OldStock = 0,
         NewStock = 0,
         MachinesLoaded = 0,
         WheelLoadersLoaded = 0
     };
 
-    private DateTime? _usageDate = DateTime.Now;
     private List<Domain.Entities.FuelUsage> _usages = new();
 
     // Calculated fields
@@ -366,9 +366,6 @@
 
     private async Task SaveFuelUsage()
     {
-        // Sync usage date
-        _fuelUsage.UsageDate = _usageDate;
-
         // Validate balance is not negative
         if (_balance < 0)
         {
@@ -459,7 +456,6 @@
             MachinesLoaded = usage.MachinesLoaded,
             WheelLoadersLoaded = usage.WheelLoadersLoaded
         };
-        _usageDate = usage.UsageDate;
         CalculateFuelBalance();
         _isEditMode = true;
     }
@@ -473,13 +469,12 @@
     {
         _fuelUsage = new Domain.Entities.FuelUsage
         {
-            UsageDate = DateTime.Now,
+            UsageDate = DateTime.Today,
             OldStock = 0,
             NewStock = 0,
             MachinesLoaded = 0,
             WheelLoadersLoaded = 0
         };
-        _usageDate = DateTime.Now;
 
         // Try to set old stock from previous day
         await TrySetOldStockFromPreviousDay();

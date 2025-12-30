@@ -85,6 +85,22 @@ public class Sale : BaseEntity
     /// </summary>
     public string? PaymentReference { get; set; }
 
+    /// <summary>
+    /// Date when payment was actually received.
+    /// Null if still unpaid, equals SaleDate if paid immediately,
+    /// or a later date if payment was collected after the sale.
+    /// Used for tracking collections of previously unpaid orders.
+    /// </summary>
+    public DateTime? PaymentReceivedDate { get; set; }
+
+    // Fee Options
+
+    /// <summary>
+    /// Whether to include land rate fee for this sale.
+    /// Default is true. If false, land rate fee expense will not be created.
+    /// </summary>
+    public bool IncludeLandRate { get; set; } = true;
+
     // Clerk
 
     /// <summary>
@@ -96,6 +112,26 @@ public class Sale : BaseEntity
     /// Clerk name (denormalized for reporting)
     /// </summary>
     public string? ClerkName { get; set; }
+
+    // Prepayment Linkage
+
+    /// <summary>
+    /// Foreign key to Prepayment (nullable).
+    /// If set, this sale was fulfilled from a prepayment.
+    /// </summary>
+    public string? PrepaymentId { get; set; }
+
+    /// <summary>
+    /// Amount of prepayment used for this sale.
+    /// Can be less than GrossSaleAmount if customer paid additional balance.
+    /// </summary>
+    public double? PrepaymentApplied { get; set; }
+
+    /// <summary>
+    /// Flag indicating this sale was fulfilled from a prepayment.
+    /// Makes querying prepayment sales easier.
+    /// </summary>
+    public bool IsPrepaymentSale { get; set; }
 
     // Calculated property (read-only)
 
@@ -125,4 +161,9 @@ public class Sale : BaseEntity
     /// The clerk who recorded the sale
     /// </summary>
     public virtual ApplicationUser? Clerk { get; set; }
+
+    /// <summary>
+    /// The prepayment this sale was fulfilled from (if applicable)
+    /// </summary>
+    public virtual Prepayment? Prepayment { get; set; }
 }

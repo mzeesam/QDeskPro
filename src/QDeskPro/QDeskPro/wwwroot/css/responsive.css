@@ -163,10 +163,8 @@ tr.unpaid-row:hover {
         right: 24px;
     }
 
-    /* Sidebar-aware content padding */
-    .mud-layout {
-        padding-left: 256px; /* MudDrawer default width */
-    }
+    /* Removed hardcoded sidebar padding - let MudBlazor handle responsive drawer behavior */
+    /* This allows content to expand when drawer is collapsed */
 
     /* Three-column form layout */
     .form-row-desktop {

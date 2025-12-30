@@ -1,0 +1,34 @@
+@inject IJSRuntime JS
+
+<div style="height: @Height">
+    <canvas id="@CanvasId"></canvas>
+</div>
+
+@code {
+    [Parameter] public string CanvasId { get; set; } = "fuelEfficiencyChart";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public List<string> Labels { get; set; } = new();
+    [Parameter] public List<double> EfficiencyData { get; set; } = new();
+    [Parameter] public List<double> QuantityData { get; set; } = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || _dataChanged)
+        {
+            await JS.InvokeVoidAsync("QDeskDataAnalyticsCharts.createFuelEfficiencyChart",
+                CanvasId, Labels, EfficiencyData, QuantityData);
+            _dataChanged = false;
+        }
+    }
+
+    private bool _dataChanged = true;
+
+    public void UpdateData(List<string> labels, List<double> efficiency, List<double> quantity)
+    {
+        Labels = labels;
+        EfficiencyData = efficiency;
+        QuantityData = quantity;
+        _dataChanged = true;
+        StateHasChanged();
+    }
+}

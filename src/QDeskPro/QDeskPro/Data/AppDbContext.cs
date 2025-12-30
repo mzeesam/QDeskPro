@@ -21,6 +21,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<FuelUsage> FuelUsages { get; set; } = null!;
     public DbSet<DailyNote> DailyNotes { get; set; } = null!;
     public DbSet<UserQuarry> UserQuarries { get; set; } = null!;
+    public DbSet<Prepayment> Prepayments { get; set; } = null!;
 
     // AI-related DbSets
     public DbSet<AIConversation> AIConversations { get; set; } = null!;
@@ -28,6 +29,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
 
     // Authentication DbSets
     public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
+
+    // Accounting DbSets
+    public DbSet<LedgerAccount> LedgerAccounts { get; set; } = null!;
+    public DbSet<JournalEntry> JournalEntries { get; set; } = null!;
+    public DbSet<JournalEntryLine> JournalEntryLines { get; set; } = null!;
+    public DbSet<AccountingPeriod> AccountingPeriods { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -130,11 +137,46 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
                 .HasForeignKey(e => e.ApplicationUserId)
                 .OnDelete(DeleteBehavior.SetNull);
 
+            entity.HasOne(e => e.Prepayment)
+                .WithMany(p => p.FulfillmentSales)
+                .HasForeignKey(e => e.PrepaymentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             // Ignore computed property
             entity.Ignore(e => e.GrossSaleAmount);
 
             entity.HasIndex(e => e.DateStamp);
             entity.HasIndex(e => e.QId);
+            entity.HasIndex(e => e.ApplicationUserId);
+            entity.HasIndex(e => e.PrepaymentId);
+        });
+
+        // Prepayment configuration
+        builder.Entity<Prepayment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.VehicleRegistration).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.ClientName).HasMaxLength(200);
+            entity.Property(e => e.ClientPhone).HasMaxLength(20);
+            entity.Property(e => e.PaymentMode).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.PaymentReference).HasMaxLength(200);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.ApplicationUserId).IsRequired();
+            entity.Property(e => e.ClerkName).IsRequired().HasMaxLength(200);
+
+            entity.HasOne(e => e.IntendedProduct)
+                .WithMany()
+                .HasForeignKey(e => e.IntendedProductId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Ignore computed property
+            entity.Ignore(e => e.RemainingBalance);
+
+            entity.HasIndex(e => e.VehicleRegistration);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.QId);
+            entity.HasIndex(e => e.DateStamp);
+            entity.HasIndex(e => e.PrepaymentDate);
             entity.HasIndex(e => e.ApplicationUserId);
         });
 
@@ -262,6 +304,97 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             entity.HasIndex(e => e.UserId);
             entity.HasIndex(e => e.ExpiresAt);
             entity.HasIndex(e => new { e.UserId, e.IsRevoked, e.ExpiresAt });
+        });
+
+        // ApplicationUser - Manager hierarchy configuration
+        builder.Entity<ApplicationUser>(entity =>
+        {
+            // Self-referential relationship for Manager hierarchy
+            // A Manager Owner (null CreatedByManagerId) can create Secondary Managers
+            entity.HasOne(e => e.CreatedByManager)
+                .WithMany(m => m.CreatedUsers)
+                .HasForeignKey(e => e.CreatedByManagerId)
+                .OnDelete(DeleteBehavior.Restrict); // Prevent cascading deletes
+
+            entity.HasIndex(e => e.CreatedByManagerId);
+        });
+
+        // ===== ACCOUNTING ENTITIES =====
+
+        // LedgerAccount configuration
+        builder.Entity<LedgerAccount>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.AccountCode).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.AccountName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Description).HasMaxLength(500);
+
+            // Self-referential relationship for parent-child account hierarchy
+            entity.HasOne(e => e.ParentAccount)
+                .WithMany(e => e.ChildAccounts)
+                .HasForeignKey(e => e.ParentAccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Indexes for efficient querying
+            entity.HasIndex(e => e.AccountCode);
+            entity.HasIndex(e => e.QId);
+            entity.HasIndex(e => e.Category);
+            entity.HasIndex(e => new { e.QId, e.AccountCode }).IsUnique();
+        });
+
+        // JournalEntry configuration
+        builder.Entity<JournalEntry>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Reference).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Description).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.EntryType).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.SourceEntityType).HasMaxLength(50);
+            entity.Property(e => e.SourceEntityId).HasMaxLength(50);
+
+            // Ignore computed property
+            entity.Ignore(e => e.IsBalanced);
+
+            // Indexes for efficient querying
+            entity.HasIndex(e => e.Reference);
+            entity.HasIndex(e => e.EntryDate);
+            entity.HasIndex(e => e.QId);
+            entity.HasIndex(e => e.FiscalYear);
+            entity.HasIndex(e => new { e.FiscalYear, e.FiscalPeriod });
+            entity.HasIndex(e => new { e.SourceEntityType, e.SourceEntityId });
+        });
+
+        // JournalEntryLine configuration
+        builder.Entity<JournalEntryLine>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Memo).HasMaxLength(500);
+
+            entity.HasOne(e => e.JournalEntry)
+                .WithMany(j => j.Lines)
+                .HasForeignKey(e => e.JournalEntryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.LedgerAccount)
+                .WithMany(a => a.JournalEntryLines)
+                .HasForeignKey(e => e.LedgerAccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => e.JournalEntryId);
+            entity.HasIndex(e => e.LedgerAccountId);
+        });
+
+        // AccountingPeriod configuration
+        builder.Entity<AccountingPeriod>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PeriodName).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.PeriodType).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.ClosingNotes).HasMaxLength(1000);
+
+            entity.HasIndex(e => e.QId);
+            entity.HasIndex(e => e.FiscalYear);
+            entity.HasIndex(e => new { e.QId, e.FiscalYear, e.PeriodNumber }).IsUnique();
         });
     }
 

@@ -3,6 +3,7 @@ namespace QDeskPro.Features.Banking.Services;
 using Microsoft.EntityFrameworkCore;
 using QDeskPro.Data;
 using QDeskPro.Domain.Entities;
+using QDeskPro.Features.Reports.Services;
 
 /// <summary>
 /// Service for banking operations (CRUD)
@@ -10,10 +11,12 @@ using QDeskPro.Domain.Entities;
 public class BankingService
 {
     private readonly AppDbContext _context;
+    private readonly ReportService _reportService;
 
-    public BankingService(AppDbContext context)
+    public BankingService(AppDbContext context, ReportService reportService)
     {
         _context = context;
+        _reportService = reportService;
     }
 
     /// <summary>
@@ -31,14 +34,17 @@ public class BankingService
                 return (false, string.Join(", ", validationErrors), null);
             }
 
-            // Set audit fields and auto-generate Item as per specification
+            // Set audit fields
             banking.Id = Guid.NewGuid().ToString();
             banking.DateStamp = banking.BankingDate!.Value.ToString("yyyyMMdd");
             banking.QId = quarryId;
             banking.ApplicationUserId = userId;
 
-            // Auto-generate Item: "{BankingDate:dd MMM} Daily Banking"
-            banking.Item = $"{banking.BankingDate.Value:dd MMM} Daily Banking";
+            // Only auto-generate Item if user didn't provide a description
+            if (string.IsNullOrWhiteSpace(banking.Item))
+            {
+                banking.Item = $"{banking.BankingDate.Value:dd MMM} Daily Banking";
+            }
 
             // Generate short reference code from TxnReference (max 10 chars)
             if (!string.IsNullOrWhiteSpace(banking.TxnReference) && banking.TxnReference.Length > 10)
@@ -66,11 +72,11 @@ public class BankingService
     }
 
     /// <summary>
-    /// Get banking records for a clerk (last 14 days)
+    /// Get banking records for a clerk (last 5 days)
     /// </summary>
     public async Task<List<Banking>> GetBankingForClerkAsync(string userId)
     {
-        var cutoffDate = DateTime.Today.AddDays(-14);
+        var cutoffDate = DateTime.Today.AddDays(-5);
 
         return await _context.Bankings
             .Where(b => b.ApplicationUserId == userId)
@@ -107,8 +113,15 @@ public class BankingService
             existing.BalanceBF = banking.BalanceBF;
             existing.DateStamp = banking.BankingDate!.Value.ToString("yyyyMMdd");
 
-            // Re-generate Item and RefCode
-            existing.Item = $"{banking.BankingDate.Value:dd MMM} Daily Banking";
+            // Only auto-generate Item if user didn't provide a description, otherwise use user's input
+            if (!string.IsNullOrWhiteSpace(banking.Item))
+            {
+                existing.Item = banking.Item;
+            }
+            else if (string.IsNullOrWhiteSpace(existing.Item))
+            {
+                existing.Item = $"{banking.BankingDate.Value:dd MMM} Daily Banking";
+            }
             if (!string.IsNullOrWhiteSpace(banking.TxnReference) && banking.TxnReference.Length > 10)
             {
                 existing.RefCode = banking.TxnReference.Substring(0, 10);
@@ -122,6 +135,9 @@ public class BankingService
             existing.ModifiedBy = userId;
 
             await _context.SaveChangesAsync();
+
+            // Trigger cascade recalculation for all days from edited date to today
+            await RecalculateClosingBalancesFromDate(existing.BankingDate.Value, existing.QId, userId);
 
             return (true, "Banking record has been updated!");
         }
@@ -149,6 +165,9 @@ public class BankingService
             banking.ModifiedBy = userId;
 
             await _context.SaveChangesAsync();
+
+            // Trigger cascade recalculation for all days from deleted banking date to today
+            await RecalculateClosingBalancesFromDate(banking.BankingDate!.Value, banking.QId, userId);
 
             return (true, "Banking record deleted successfully");
         }
@@ -184,10 +203,10 @@ public class BankingService
         }
         else
         {
-            // Date validation: Max today, Min 14 days ago
-            if (banking.BankingDate < DateTime.Today.AddDays(-14))
+            // Date validation: Max today, Min 5 days ago
+            if (banking.BankingDate < DateTime.Today.AddDays(-5))
             {
-                errors.Add("Cannot backdate banking more than 14 days");
+                errors.Add("Cannot backdate banking more than 5 days");
             }
 
             if (banking.BankingDate > DateTime.Today)
@@ -197,5 +216,35 @@ public class BankingService
         }
 
         return errors;
+    }
+
+    /// <summary>
+    /// Recalculate closing balances for all days from startDate to today
+    /// This ensures the opening balance chain remains accurate after editing historical data
+    /// </summary>
+    private async Task RecalculateClosingBalancesFromDate(DateTime startDate, string quarryId, string userId)
+    {
+        var startStamp = startDate.ToString("yyyyMMdd");
+        var todayStamp = DateTime.Today.ToString("yyyyMMdd");
+
+        // Get all dates that need recalculation (from startDate to today)
+        var affectedDates = await _context.DailyNotes
+            .Where(n => string.Compare(n.DateStamp, startStamp) >= 0)
+            .Where(n => string.Compare(n.DateStamp, todayStamp) <= 0)
+            .Where(n => n.QId == quarryId)
+            .Where(n => n.IsActive)
+            .OrderBy(n => n.DateStamp)
+            .Select(n => n.DateStamp)
+            .ToListAsync();
+
+        // Recalculate each affected day's report (this auto-updates closing balance)
+        foreach (var dateStamp in affectedDates)
+        {
+            var date = DateTime.ParseExact(dateStamp, "yyyyMMdd",
+                System.Globalization.CultureInfo.InvariantCulture);
+
+            // Regenerate the report - this will recalculate and save the closing balance
+            await _reportService.GenerateClerkReportAsync(date, date, quarryId, userId);
+        }
     }
 }

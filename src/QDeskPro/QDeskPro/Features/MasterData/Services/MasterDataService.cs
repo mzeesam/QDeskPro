@@ -43,7 +43,7 @@ public class MasterDataService
     }
 
     /// <summary>
-    /// Get quarries owned by a Manager
+    /// Get quarries owned by a Manager (Manager Owner only)
     /// </summary>
     public async Task<List<Quarry>> GetQuarriesForManagerAsync(string managerId)
     {
@@ -58,6 +58,45 @@ public class MasterDataService
 
         _logger.LogDebug("Found {Count} quarries for ManagerId: {ManagerId}", quarries.Count, managerId);
         return quarries;
+    }
+
+    /// <summary>
+    /// Get all accessible quarries for a manager (owned + assigned)
+    /// This includes quarries owned by Manager Owners AND quarries assigned to Secondary Managers
+    /// </summary>
+    public async Task<List<Quarry>> GetAccessibleQuarriesForManagerAsync(string managerId)
+    {
+        _logger.LogDebug("Fetching accessible quarries (owned + assigned) for ManagerId: {ManagerId}", managerId);
+
+        // Get quarries owned by this manager (Manager Owner)
+        var ownedQuarries = await _context.Quarries
+            .Where(q => q.ManagerId == managerId && q.IsActive)
+            .Include(q => q.Manager)
+            .ToListAsync();
+
+        // Get quarries assigned to this manager (Secondary Manager or assigned Manager Owner)
+        var assignedQuarryIds = await _context.UserQuarries
+            .Where(uq => uq.UserId == managerId && uq.IsActive)
+            .Select(uq => uq.QuarryId)
+            .ToListAsync();
+
+        var assignedQuarries = await _context.Quarries
+            .Where(q => assignedQuarryIds.Contains(q.Id) && q.IsActive)
+            .Include(q => q.Manager)
+            .ToListAsync();
+
+        // Combine and remove duplicates
+        var allQuarries = ownedQuarries
+            .Concat(assignedQuarries)
+            .GroupBy(q => q.Id)
+            .Select(g => g.First())
+            .OrderBy(q => q.QuarryName)
+            .ToList();
+
+        _logger.LogDebug("Found {Count} accessible quarries for ManagerId: {ManagerId} ({OwnedCount} owned + {AssignedCount} assigned)",
+            allQuarries.Count, managerId, ownedQuarries.Count, assignedQuarries.Count);
+
+        return allQuarries;
     }
 
     /// <summary>
@@ -151,6 +190,13 @@ public class MasterDataService
             existing.EmailRecipients = quarry.EmailRecipients;
             existing.DailyReportEnabled = quarry.DailyReportEnabled;
             existing.DailyReportTime = quarry.DailyReportTime;
+            // Capital Investment & ROI fields
+            existing.InitialCapitalInvestment = quarry.InitialCapitalInvestment;
+            existing.OperationsStartDate = quarry.OperationsStartDate;
+            existing.EstimatedMonthlyFixedCosts = quarry.EstimatedMonthlyFixedCosts;
+            existing.TargetProfitMargin = quarry.TargetProfitMargin;
+            existing.DailyProductionCapacity = quarry.DailyProductionCapacity;
+            existing.FuelCostPerLiter = quarry.FuelCostPerLiter;
             existing.DateModified = DateTime.UtcNow;
             existing.ModifiedBy = userId;
 
@@ -227,6 +273,37 @@ public class MasterDataService
         if (quarry.RejectsFee.HasValue && quarry.RejectsFee < 0)
         {
             errors.Add("Rejects fee cannot be negative");
+        }
+
+        // Capital Investment & ROI field validation
+        if (quarry.InitialCapitalInvestment.HasValue && quarry.InitialCapitalInvestment < 0)
+        {
+            errors.Add("Initial capital investment cannot be negative");
+        }
+
+        if (quarry.OperationsStartDate.HasValue && quarry.OperationsStartDate > DateTime.Today)
+        {
+            errors.Add("Operations start date cannot be in the future");
+        }
+
+        if (quarry.EstimatedMonthlyFixedCosts.HasValue && quarry.EstimatedMonthlyFixedCosts < 0)
+        {
+            errors.Add("Estimated monthly fixed costs cannot be negative");
+        }
+
+        if (quarry.TargetProfitMargin.HasValue && (quarry.TargetProfitMargin < 0 || quarry.TargetProfitMargin > 100))
+        {
+            errors.Add("Target profit margin must be between 0 and 100");
+        }
+
+        if (quarry.DailyProductionCapacity.HasValue && quarry.DailyProductionCapacity <= 0)
+        {
+            errors.Add("Daily production capacity must be greater than zero");
+        }
+
+        if (quarry.FuelCostPerLiter.HasValue && quarry.FuelCostPerLiter <= 0)
+        {
+            errors.Add("Fuel cost per liter must be greater than zero");
         }
 
         return errors;

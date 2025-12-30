@@ -17,6 +17,15 @@
 <PageTitle>Edit Sale - QDeskPro</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Medium" Class="py-4">
+    @* Loading Overlay for Cascade Recalculation *@
+    @if (_processing)
+    {
+        <MudOverlay Visible="true" DarkBackground="true" ZIndex="9999">
+            <MudProgressCircular Indeterminate="true" Size="Size.Large" Color="Color.Primary" />
+            <MudText Class="mt-2" Style="color: white;">Saving and recalculating reports...</MudText>
+        </MudOverlay>
+    }
+
     <MudText Typo="Typo.h4" Class="font-weight-bold mb-4">
         <MudIcon Icon="@Icons.Material.Rounded.Edit" Class="mr-2" />
         Edit Sale
@@ -81,21 +90,25 @@
 
                     @* Sale Date *@
                     <MudItem xs="12" sm="6">
-                        <MudDatePicker @bind-Date="_saleDate"
+                        <MudDatePicker Date="_saleDate"
+                                       DateChanged="OnSaleDateChanged"
                                        Label="Sale Date"
                                        Variant="Variant.Outlined"
                                        Required="true"
+                                       RequiredError="Please select a date"
                                        MaxDate="@DateTime.Today"
-                                       MinDate="@DateTime.Today.AddDays(-14)"
+                                       MinDate="@DateTime.Today.AddDays(-5)"
                                        DateFormat="dd/MM/yyyy" />
                     </MudItem>
 
                     @* Sale Time *@
                     <MudItem xs="12" sm="6">
-                        <MudTimePicker @bind-Time="_saleTime"
+                        <MudTimePicker Time="_saleTime"
+                                       TimeChanged="OnSaleTimeChanged"
                                        Label="Sale Time"
                                        Variant="Variant.Outlined"
                                        Required="true"
+                                       RequiredError="Please select a time"
                                        TimeFormat="HH:mm" />
                     </MudItem>
 
@@ -165,7 +178,9 @@
 
                     @* Payment Status *@
                     <MudItem xs="12" sm="6">
-                        <MudSelect @bind-Value="_sale.PaymentStatus"
+                        <MudSelect T="string"
+                                   Value="_sale.PaymentStatus"
+                                   ValueChanged="OnPaymentStatusChanged"
                                    Label="Payment Status"
                                    Variant="Variant.Outlined"
                                    Required="true"
@@ -175,12 +190,54 @@
                         </MudSelect>
                     </MudItem>
 
+                    @* Payment Received Date - Only show when changing from NotPaid to Paid *@
+                    @if (_showPaymentReceivedDate && _sale.PaymentStatus == "Paid")
+                    {
+                        <MudItem xs="12" sm="6">
+                            <MudDatePicker @bind-Date="_paymentReceivedDate"
+                                           Label="Payment Received Date"
+                                           Variant="Variant.Outlined"
+                                           Required="true"
+                                           MaxDate="@DateTime.Today"
+                                           MinDate="@DateTime.Today.AddDays(-5)"
+                                           DateFormat="dd/MM/yyyy"
+                                           HelperText="Date when payment was collected" />
+                        </MudItem>
+                    }
+
                     @* Payment Reference *@
                     <MudItem xs="12">
                         <MudTextField @bind-Value="_sale.PaymentReference"
                                       Label="Payment Reference (Optional)"
                                       Variant="Variant.Outlined"
                                       Lines="2" />
+                    </MudItem>
+
+                    @* Land Rate Option - Always visible for transparency *@
+                    <MudItem xs="12">
+                        <MudPaper Class="pa-3" Elevation="0" Style="background-color: rgba(76, 175, 80, 0.05); border-radius: 8px;">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                <div>
+                                    <MudText Typo="Typo.body1" Class="font-weight-medium">Include Land Rate Fee</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @if (_landRateVisible)
+                                        {
+                                            <span>Toggle off to exclude land rate expense for this sale</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: orange;">Land rate fee not configured for this quarry</span>
+                                        }
+                                    </MudText>
+                                </div>
+                                <MudSwitch T="bool"
+                                           Value="_sale.IncludeLandRate"
+                                           ValueChanged="OnLandRateToggleChanged"
+                                           Color="Color.Success"
+                                           UnCheckedColor="Color.Default"
+                                           Disabled="@(!_landRateVisible)" />
+                            </MudStack>
+                        </MudPaper>
                     </MudItem>
                 </MudGrid>
             </MudPaper>
@@ -227,11 +284,18 @@
                         <MudText Color="Color.Secondary">Loaders Fee</MudText>
                         <MudText Color="Color.Secondary">- KES @_calculations.LoadersFee.ToString("N1")</MudText>
                     </div>
-                    @if (_landRateVisible && _calculations.LandRateFee > 0)
+                    @if (_landRateVisible && _sale.IncludeLandRate && _calculations.LandRateFee > 0)
                     {
                         <div class="d-flex justify-space-between">
                             <MudText Color="Color.Secondary">Land Rate Fee</MudText>
                             <MudText Color="Color.Secondary">- KES @_calculations.LandRateFee.ToString("N1")</MudText>
+                        </div>
+                    }
+                    else if (_landRateVisible && !_sale.IncludeLandRate)
+                    {
+                        <div class="d-flex justify-space-between">
+                            <MudText Color="Color.Secondary" Style="text-decoration: line-through;">Land Rate Fee</MudText>
+                            <MudText Color="Color.Secondary" Style="text-decoration: line-through;">Excluded</MudText>
                         </div>
                     }
                     <MudDivider Class="my-2" />
@@ -296,6 +360,9 @@
     private Sale? _sale;
     private DateTime? _saleDate;
     private TimeSpan? _saleTime;
+    private string _originalPaymentStatus = "";  // Track original status for collections logic
+    private bool _showPaymentReceivedDate = false;  // Show date picker when status changes to Paid
+    private DateTime? _paymentReceivedDate;  // Date when payment was received
 
     private List<Product> _products = new();
     private List<Layer> _layers = new();
@@ -368,6 +435,10 @@
                                 _saleDate = DateTime.Today;
                                 _saleTime = DateTime.Now.TimeOfDay;
                             }
+
+                            // Track original payment status for collections logic
+                            _originalPaymentStatus = _sale.PaymentStatus ?? "";
+                            _paymentReceivedDate = _sale.PaymentReceivedDate?.Date ?? DateTime.Today;
 
                             // Calculate initial summary
                             CalculateOrderSummary();
@@ -447,16 +518,84 @@
         var selectedProduct = _products.FirstOrDefault(p => p.Id == _sale.ProductId);
         var productName = selectedProduct?.ProductName ?? "";
 
-        // Calculate all amounts
+        // Calculate all amounts (respecting land rate inclusion flag)
+        // Don't apply loaders fee for beam or hardcore products
+        var loadersFee = (productName.Contains("beam", StringComparison.OrdinalIgnoreCase) ||
+                         productName.Contains("hardcore", StringComparison.OrdinalIgnoreCase))
+            ? null
+            : _quarry?.LoadersFee;
+
         _calculations = CalculationService.CalculateAll(
             _sale.Quantity,
             _sale.PricePerUnit,
             _sale.CommissionPerUnit,
             productName,
-            _quarry?.LoadersFee,
+            loadersFee,
             _quarry?.LandRateFee,
-            _quarry?.RejectsFee
+            _quarry?.RejectsFee,
+            _sale.IncludeLandRate
         );
+
+        StateHasChanged();
+    }
+
+    private void OnLandRateToggleChanged(bool value)
+    {
+        if (_sale == null) return;
+        _sale.IncludeLandRate = value;
+        CalculateOrderSummary();
+    }
+
+    private void OnSaleDateChanged(DateTime? date)
+    {
+        _saleDate = date;
+        SyncSaleDateTime();
+    }
+
+    private void OnSaleTimeChanged(TimeSpan? time)
+    {
+        _saleTime = time;
+        SyncSaleDateTime();
+    }
+
+    private void SyncSaleDateTime()
+    {
+        if (_sale == null) return;
+
+        if (_saleDate.HasValue && _saleTime.HasValue)
+        {
+            _sale.SaleDate = _saleDate.Value.Date.Add(_saleTime.Value);
+        }
+        else if (_saleDate.HasValue)
+        {
+            _sale.SaleDate = _saleDate.Value;
+        }
+        CalculateOrderSummary();
+    }
+
+    private void OnPaymentStatusChanged(string? newStatus)
+    {
+        if (_sale == null) return;
+
+        _sale.PaymentStatus = newStatus;
+
+        // Show payment received date picker when changing from NotPaid to Paid
+        // This is important for collections tracking - we need to know WHEN payment was received
+        if (newStatus == "Paid" && _originalPaymentStatus != "Paid")
+        {
+            _showPaymentReceivedDate = true;
+            _paymentReceivedDate = DateTime.Today;  // Default to today
+        }
+        else if (newStatus != "Paid")
+        {
+            _showPaymentReceivedDate = false;
+            _paymentReceivedDate = null;
+        }
+        else
+        {
+            // Already was Paid and still is Paid - don't show the picker
+            _showPaymentReceivedDate = false;
+        }
 
         StateHasChanged();
     }
@@ -473,6 +612,13 @@
         else if (_saleDate.HasValue)
         {
             _sale.SaleDate = _saleDate.Value;
+        }
+
+        // Set PaymentReceivedDate for collections tracking
+        // This tells the service when payment was actually received
+        if (_showPaymentReceivedDate && _paymentReceivedDate.HasValue)
+        {
+            _sale.PaymentReceivedDate = _paymentReceivedDate.Value;
         }
 
         // Show confirmation dialog

@@ -91,6 +91,32 @@
                         <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Success">
                             KES @_stats.TotalSales.ToString("N0")
                         </MudText>
+                        @if (_stats.TotalPrepayments > 0 || _stats.TotalCollections > 0 || _stats.TotalUnpaid > 0)
+                        {
+                            <MudStack Spacing="0" Class="mt-2">
+                                @if (_stats.TotalPrepayments > 0)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        <MudIcon Icon="@Icons.Material.Rounded.Savings" Size="Size.Small" Class="mr-1" />
+                                        Prepayments: KES @_stats.TotalPrepayments.ToString("N0")
+                                    </MudText>
+                                }
+                                @if (_stats.TotalCollections > 0)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        <MudIcon Icon="@Icons.Material.Rounded.AccountBalanceWallet" Size="Size.Small" Class="mr-1" />
+                                        Collections: KES @_stats.TotalCollections.ToString("N0")
+                                    </MudText>
+                                }
+                                @if (_stats.TotalUnpaid > 0)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Error">
+                                        <MudIcon Icon="@Icons.Material.Rounded.Warning" Size="Size.Small" Class="mr-1" />
+                                        Unpaid: KES @_stats.TotalUnpaid.ToString("N0")
+                                    </MudText>
+                                }
+                            </MudStack>
+                        }
                     </MudStack>
                 </MudPaper>
             </MudItem>

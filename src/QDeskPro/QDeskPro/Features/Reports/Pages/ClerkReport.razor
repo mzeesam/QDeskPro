@@ -15,6 +15,7 @@
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
 @inject AppDbContext DbContext
+@inject IDialogService DialogService
 
 <PageTitle>Sales Report - QDeskPro</PageTitle>
 
@@ -78,6 +79,9 @@
                         <ChildContent>
                             <MudMenuItem Icon="@Icons.Material.Rounded.TextFields" OnClick="ShareReportText">
                                 Share as Text (WhatsApp)
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Rounded.Description" OnClick="ShowRawText">
+                                Show Raw Text
                             </MudMenuItem>
                             <MudMenuItem Icon="@Icons.Material.Rounded.PictureAsPdf" OnClick="DownloadPdf">
                                 Download PDF
@@ -152,6 +156,30 @@
                         </MudText>
                     </div>
                 </MudItem>
+                @if (_report.TotalCollections > 0)
+                {
+                    <MudItem xs="12" sm="6" md="4">
+                        <div class="summary-item collections-highlight">
+                            <MudText Typo="Typo.body2" Style="color: #9C27B0;">Collections (Previous Unpaid)</MudText>
+                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="color: #9C27B0;">KES @_report.TotalCollections.ToString("N0")</MudText>
+                            <MudText Typo="Typo.caption" Style="opacity: 0.7; font-size: 0.65rem; color: #9C27B0;">
+                                @_report.CollectionItems.Count payment(s) received
+                            </MudText>
+                        </div>
+                    </MudItem>
+                }
+                @if (_report.TotalPrepayments > 0)
+                {
+                    <MudItem xs="12" sm="6" md="4">
+                        <div class="summary-item prepayments-highlight">
+                            <MudText Typo="Typo.body2" Style="color: #4CAF50;">Prepayments (Deposits)</MudText>
+                            <MudText Typo="Typo.h6" Class="font-weight-bold" Style="color: #4CAF50;">KES @_report.TotalPrepayments.ToString("N0")</MudText>
+                            <MudText Typo="Typo.caption" Style="opacity: 0.7; font-size: 0.65rem; color: #4CAF50;">
+                                @_report.PrepaymentItems.Count deposit(s) received
+                            </MudText>
+                        </div>
+                    </MudItem>
+                }
                 @if (_report.UnpaidOrders)
                 {
                     <MudItem xs="12" sm="6" md="4">
@@ -166,7 +194,7 @@
                         <MudText Typo="Typo.body2" Color="Color.Secondary">Net Income</MudText>
                         <MudText Typo="Typo.h6" Class="font-weight-medium">KES @_report.NetEarnings.ToString("N0")</MudText>
                         <MudText Typo="Typo.caption" Color="Color.Secondary" Style="opacity: 0.7; font-size: 0.7rem;">
-                            (Earnings + Opening Balance) - Unpaid Orders
+                            (Earnings + Opening Balance + Collections + Prepayments) - Unpaid
                         </MudText>
                     </div>
                 </MudItem>
@@ -337,6 +365,86 @@
                     </MudTable>
                 }
             </MudExpansionPanel>
+
+            @* Collections Section (Payments received for older unpaid sales) *@
+            @if (_report.CollectionItems.Any())
+            {
+                <MudExpansionPanel Text="@($"Collections ({_report.CollectionItems.Count} payments)")"
+                                   Icon="@Icons.Material.Rounded.Payments"
+                                   Style="border-left: 4px solid #9C27B0;">
+                    <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info" Class="mb-3" Dense="true">
+                        These are payments received for sales that were made <strong>before</strong> this report period.
+                    </MudAlert>
+                    <MudTable Items="@_report.CollectionItems" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+                        <HeaderContent>
+                            <MudTh>Sale Date</MudTh>
+                            <MudTh>Paid On</MudTh>
+                            <MudTh>Vehicle</MudTh>
+                            <MudTh>Product</MudTh>
+                            <MudTh Style="text-align: right">Qty</MudTh>
+                            <MudTh Style="text-align: right">Amount</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Sale Date">@context.OriginalSaleDate.ToString("dd/MM/yy")</MudTd>
+                            <MudTd DataLabel="Paid On">@context.PaymentReceivedDate.ToString("dd/MM/yy")</MudTd>
+                            <MudTd DataLabel="Vehicle">@context.VehicleRegistration</MudTd>
+                            <MudTd DataLabel="Product">@context.ProductName</MudTd>
+                            <MudTd DataLabel="Qty" Style="text-align: right">@context.Quantity.ToString("N0")</MudTd>
+                            <MudTd DataLabel="Amount" Style="text-align: right">
+                                <MudText Typo="Typo.body2" Class="font-weight-medium" Style="color: #9C27B0;">
+                                    KES @context.Amount.ToString("N1")
+                                </MudText>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                    <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-3">
+                        <MudText Typo="Typo.body1" Class="font-weight-bold" Style="color: #9C27B0;">
+                            Total Collections: KES @_report.TotalCollections.ToString("N0")
+                        </MudText>
+                    </MudStack>
+                </MudExpansionPanel>
+            }
+
+            @* Prepayments Section (Customer deposits received) *@
+            @if (_report.PrepaymentItems.Any())
+            {
+                <MudExpansionPanel Text="@($"Prepayments ({_report.PrepaymentItems.Count} deposits)")"
+                                   Icon="@Icons.Material.Rounded.Savings"
+                                   Style="border-left: 4px solid #4CAF50;">
+                    <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info" Class="mb-3" Dense="true">
+                        These are customer deposits/prepayments received during this report period.
+                    </MudAlert>
+                    <MudTable Items="@_report.PrepaymentItems" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+                        <HeaderContent>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Vehicle</MudTh>
+                            <MudTh>Client</MudTh>
+                            <MudTh>Product</MudTh>
+                            <MudTh>Reference</MudTh>
+                            <MudTh Style="text-align: right">Amount</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Date">@context.PrepaymentDate.ToString("dd/MM/yy")</MudTd>
+                            <MudTd DataLabel="Vehicle">@context.VehicleRegistration</MudTd>
+                            <MudTd DataLabel="Client">@(context.ClientName ?? "-")</MudTd>
+                            <MudTd DataLabel="Product">@context.ProductName</MudTd>
+                            <MudTd DataLabel="Reference">
+                                <MudText Typo="Typo.caption">@(context.PaymentReference ?? "-")</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Amount" Style="text-align: right">
+                                <MudText Typo="Typo.body2" Class="font-weight-medium" Style="color: #4CAF50;">
+                                    KES @context.AmountPaid.ToString("N1")
+                                </MudText>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                    <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-3">
+                        <MudText Typo="Typo.body1" Class="font-weight-bold" Style="color: #4CAF50;">
+                            Total Prepayments: KES @_report.TotalPrepayments.ToString("N0")
+                        </MudText>
+                    </MudStack>
+                </MudExpansionPanel>
+            }
         </MudExpansionPanels>
     }
     else if (!_reportGenerated)
@@ -469,6 +577,26 @@
     .unpaid-amount {
         background: linear-gradient(135deg, rgba(244, 67, 54, 0.1) 0%, rgba(244, 67, 54, 0.05) 100%);
         border-left: 4px solid #F44336;
+    }
+
+    .collections-highlight {
+        background: linear-gradient(135deg, rgba(156, 39, 176, 0.12) 0%, rgba(156, 39, 176, 0.06) 100%);
+        border: 2px solid #9C27B0;
+        box-shadow: 0 4px 16px rgba(156, 39, 176, 0.15);
+    }
+
+    .collections-highlight::before {
+        background: linear-gradient(90deg, #9C27B0 0%, #7B1FA2 100%);
+    }
+
+    .prepayments-highlight {
+        background: linear-gradient(135deg, rgba(76, 175, 80, 0.12) 0%, rgba(76, 175, 80, 0.06) 100%);
+        border: 2px solid #4CAF50;
+        box-shadow: 0 4px 16px rgba(76, 175, 80, 0.15);
+    }
+
+    .prepayments-highlight::before {
+        background: linear-gradient(90deg, #4CAF50 0%, #388E3C 100%);
     }
 </style>
 
@@ -603,8 +731,16 @@
                     $"/api/reports/clerk/pdf?fromDate={_report.FromDate:yyyy-MM-dd}&toDate={_report.ToDate:yyyy-MM-dd}&quarryId={_quarryId}&userId={_userId}").ToString();
                 var reportText = ExportService.GenerateMarkdownReport(_report, dailyNotes, pdfUrl);
 
-                await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", reportText);
-                Snackbar.Add("Report copied to clipboard", Severity.Success);
+                // Use shareText function with HTTP-compatible fallback
+                var success = await JSRuntime.InvokeAsync<bool>("shareText", "QDeskPro Report", reportText);
+                if (success)
+                {
+                    Snackbar.Add("Report copied to clipboard", Severity.Success);
+                }
+                else
+                {
+                    Snackbar.Add("Failed to copy report to clipboard", Severity.Warning);
+                }
             }
             catch (Exception ex)
             {
@@ -644,6 +780,39 @@
         catch (Exception ex)
         {
             Snackbar.Add($"Error downloading Excel: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ShowRawText()
+    {
+        if (_report == null)
+            return;
+
+        try
+        {
+            var dailyNotes = await GetDailyNotesAsync();
+            var pdfUrl = NavigationManager.ToAbsoluteUri(
+                $"/api/reports/clerk/pdf?fromDate={_report.FromDate:yyyy-MM-dd}&toDate={_report.ToDate:yyyy-MM-dd}&quarryId={_quarryId}&userId={_userId}").ToString();
+            var reportText = ExportService.GenerateMarkdownReport(_report, dailyNotes, pdfUrl);
+
+            var parameters = new DialogParameters
+            {
+                ["ReportText"] = reportText,
+                ["Title"] = $"Sales Report - {_report.ReportTitle}"
+            };
+
+            var options = new DialogOptions
+            {
+                MaxWidth = MaxWidth.Large,
+                FullWidth = true,
+                CloseButton = true
+            };
+
+            await DialogService.ShowAsync<QDeskPro.Features.Reports.Components.RawTextDialog>("Report Text", parameters, options);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error displaying report text: {ex.Message}", Severity.Error);
         }
     }
 

@@ -3,6 +3,7 @@ namespace QDeskPro.Features.Expenses.Services;
 using Microsoft.EntityFrameworkCore;
 using QDeskPro.Data;
 using QDeskPro.Domain.Entities;
+using QDeskPro.Features.Reports.Services;
 
 /// <summary>
 /// Service for expense operations (CRUD)
@@ -10,10 +11,12 @@ using QDeskPro.Domain.Entities;
 public class ExpenseService
 {
     private readonly AppDbContext _context;
+    private readonly ReportService _reportService;
 
-    public ExpenseService(AppDbContext context)
+    public ExpenseService(AppDbContext context, ReportService reportService)
     {
         _context = context;
+        _reportService = reportService;
     }
 
     /// <summary>
@@ -52,11 +55,11 @@ public class ExpenseService
     }
 
     /// <summary>
-    /// Get expenses for a clerk (last 14 days)
+    /// Get expenses for a clerk (last 5 days)
     /// </summary>
     public async Task<List<Expense>> GetExpensesForClerkAsync(string userId)
     {
-        var cutoffDate = DateTime.Today.AddDays(-14);
+        var cutoffDate = DateTime.Today.AddDays(-5);
 
         return await _context.Expenses
             .Where(e => e.ApplicationUserId == userId)
@@ -98,6 +101,9 @@ public class ExpenseService
 
             await _context.SaveChangesAsync();
 
+            // Trigger cascade recalculation for all days from edited date to today
+            await RecalculateClosingBalancesFromDate(existing.ExpenseDate.Value, existing.QId, userId);
+
             return (true, "Expense has been updated!");
         }
         catch (Exception ex)
@@ -124,6 +130,9 @@ public class ExpenseService
             expense.ModifiedBy = userId;
 
             await _context.SaveChangesAsync();
+
+            // Trigger cascade recalculation for all days from deleted expense date to today
+            await RecalculateClosingBalancesFromDate(expense.ExpenseDate!.Value, expense.QId, userId);
 
             return (true, "Expense deleted successfully");
         }
@@ -159,10 +168,10 @@ public class ExpenseService
         }
         else
         {
-            // Date validation: Max today, Min 14 days ago
-            if (expense.ExpenseDate < DateTime.Today.AddDays(-14))
+            // Date validation: Max today, Min 5 days ago
+            if (expense.ExpenseDate < DateTime.Today.AddDays(-5))
             {
-                errors.Add("Cannot backdate expense more than 14 days");
+                errors.Add("Cannot backdate expense more than 5 days");
             }
 
             if (expense.ExpenseDate > DateTime.Today)
@@ -194,5 +203,35 @@ public class ExpenseService
             "Cess and Road Fees",
             "Miscellaneous"
         };
+    }
+
+    /// <summary>
+    /// Recalculate closing balances for all days from startDate to today
+    /// This ensures the opening balance chain remains accurate after editing historical data
+    /// </summary>
+    private async Task RecalculateClosingBalancesFromDate(DateTime startDate, string quarryId, string userId)
+    {
+        var startStamp = startDate.ToString("yyyyMMdd");
+        var todayStamp = DateTime.Today.ToString("yyyyMMdd");
+
+        // Get all dates that need recalculation (from startDate to today)
+        var affectedDates = await _context.DailyNotes
+            .Where(n => string.Compare(n.DateStamp, startStamp) >= 0)
+            .Where(n => string.Compare(n.DateStamp, todayStamp) <= 0)
+            .Where(n => n.QId == quarryId)
+            .Where(n => n.IsActive)
+            .OrderBy(n => n.DateStamp)
+            .Select(n => n.DateStamp)
+            .ToListAsync();
+
+        // Recalculate each affected day's report (this auto-updates closing balance)
+        foreach (var dateStamp in affectedDates)
+        {
+            var date = DateTime.ParseExact(dateStamp, "yyyyMMdd",
+                System.Globalization.CultureInfo.InvariantCulture);
+
+            // Regenerate the report - this will recalculate and save the closing balance
+            await _reportService.GenerateClerkReportAsync(date, date, quarryId, userId);
+        }
     }
 }

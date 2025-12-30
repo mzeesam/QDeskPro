@@ -31,12 +31,11 @@
             <MudGrid>
                 <MudItem xs="12" sm="8">
                     <MudSelect T="string"
-                              @bind-Value="_selectedQuarryId"
+                              @bind-Value="SelectedQuarryId"
                               Label="Select Quarry"
                               Variant="Variant.Outlined"
                               Adornment="Adornment.Start"
-                              AdornmentIcon="@Icons.Material.Filled.Terrain"
-                              OnValueChanged="OnQuarryChangedAsync">
+                              AdornmentIcon="@Icons.Material.Filled.Terrain">
                         @foreach (var quarry in _quarries)
                         {
                             <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
@@ -226,6 +225,26 @@
     private string _userRole = string.Empty;
     private MudForm? _form;
 
+    // Property with setter to trigger data load when quarry changes
+    private string? SelectedQuarryId
+    {
+        get => _selectedQuarryId;
+        set
+        {
+            if (_selectedQuarryId != value)
+            {
+                _selectedQuarryId = value;
+                InvokeAsync(async () =>
+                {
+                    if (!string.IsNullOrEmpty(_selectedQuarryId))
+                    {
+                        await LoadPricesAsync();
+                    }
+                });
+            }
+        }
+    }
+
     private readonly DialogOptions _dialogOptions = new()
     {
         MaxWidth = MaxWidth.Small,
@@ -267,7 +286,9 @@
             }
             else if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
             {
-                _quarries = await MasterDataService.GetQuarriesForManagerAsync(_userId);
+                // Use GetAccessibleQuarriesForManagerAsync to include both owned and assigned quarries
+                // This allows Secondary Managers to see quarries they're assigned to
+                _quarries = await MasterDataService.GetAccessibleQuarriesForManagerAsync(_userId);
             }
 
             // Auto-select first quarry if available

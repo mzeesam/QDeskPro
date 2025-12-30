@@ -1,0 +1,38 @@
+@using QDeskPro.Features.Dashboard.Services
+@inject IJSRuntime JS
+
+<div style="height: @Height">
+    <canvas id="@CanvasId"></canvas>
+</div>
+
+@code {
+    [Parameter] public string CanvasId { get; set; } = "profitabilityBubbleChart";
+    [Parameter] public string Height { get; set; } = "400px";
+    [Parameter] public List<ProductBubbleData> Products { get; set; } = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || _dataChanged)
+        {
+            var jsProducts = Products.Select(p => new {
+                label = p.ProductName,
+                x = p.Revenue,
+                y = p.MarginPercent,
+                r = p.Quantity
+            }).ToArray();
+
+            await JS.InvokeVoidAsync("QDeskDataAnalyticsCharts.createProfitabilityBubbleChart",
+                CanvasId, jsProducts);
+            _dataChanged = false;
+        }
+    }
+
+    private bool _dataChanged = true;
+
+    public void UpdateData(List<ProductBubbleData> products)
+    {
+        Products = products;
+        _dataChanged = true;
+        StateHasChanged();
+    }
+}
