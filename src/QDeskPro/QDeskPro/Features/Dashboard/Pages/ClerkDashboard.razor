@@ -12,249 +12,724 @@
 
 <PageTitle>Dashboard - QDeskPro</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4 clerk-dashboard">
     @if (_loading)
     {
-        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <div class="clerk-loading-state">
+            <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
+            <MudText Typo="Typo.h6" Class="mt-3">Loading dashboard...</MudText>
+        </div>
     }
     else
     {
-        @* User Profile Section *@
-        <MudPaper Class="pa-6 mb-4 qdp-card-gradient" Elevation="0">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="4">
-                <MudAvatar Color="Color.Primary" Size="Size.Large" Class="qdp-avatar-shadow">
-                    <MudIcon Icon="@Icons.Material.Rounded.Person" Size="Size.Large" />
-                </MudAvatar>
-                <div>
-                    <MudText Typo="Typo.h5" Class="font-weight-bold">@_userFullName</MudText>
-                    <MudText Typo="Typo.body2" Style="opacity: 0.85;">@_userPosition</MudText>
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mt-1">
-                        <MudIcon Icon="@Icons.Material.Rounded.Terrain" Size="Size.Small" Style="color: rgba(255, 255, 255, 0.9);" />
-                        <MudText Typo="Typo.caption" Class="font-weight-medium" Style="opacity: 0.9;">@_quarryName</MudText>
+        @* Modern Dashboard Header *@
+        <div class="clerk-dashboard-header mb-4">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Wrap="Wrap.Wrap" Class="gap-3">
+                <div class="clerk-profile-section">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <div class="clerk-avatar-wrapper">
+                            <MudAvatar Size="Size.Large" Class="clerk-avatar">
+                                <MudIcon Icon="@Icons.Material.Rounded.Person" Size="Size.Large" />
+                            </MudAvatar>
+                            <div class="clerk-avatar-status"></div>
+                        </div>
+                        <div>
+                            <MudText Typo="Typo.h5" Class="clerk-name">@_userFullName</MudText>
+                            <MudText Typo="Typo.body2" Class="clerk-position">@_userPosition</MudText>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mt-1">
+                                <MudIcon Icon="@Icons.Material.Rounded.Terrain" Size="Size.Small" Class="clerk-quarry-icon" />
+                                <MudText Typo="Typo.caption" Class="clerk-quarry-name">@_quarryName</MudText>
+                            </MudStack>
+                        </div>
                     </MudStack>
                 </div>
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Rounded.Refresh"
+                               OnClick="RefreshDashboard"
+                               Class="clerk-refresh-btn">
+                        Refresh
+                    </MudButton>
+                </MudStack>
             </MudStack>
-        </MudPaper>
+        </div>
 
-        @* Current Date and Refresh Section *@
-        <MudPaper Class="pa-4 mb-4" Elevation="0">
-            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+        @* Date and Last Updated Banner *@
+        <div class="clerk-date-banner mb-4">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                    <MudIcon Icon="@Icons.Material.Rounded.CalendarToday" Color="Color.Primary" />
+                    <div class="clerk-date-icon">
+                        <MudIcon Icon="@Icons.Material.Rounded.CalendarToday" />
+                    </div>
                     <div>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">Today</MudText>
-                        <MudText Typo="Typo.body1" Class="font-weight-bold">@DateTime.Today.ToString("dddd, dd MMMM yyyy")</MudText>
+                        <MudText Typo="Typo.caption" Class="clerk-date-label">Today's Operations</MudText>
+                        <MudText Typo="Typo.body1" Class="clerk-date-value">@DateTime.Today.ToString("dddd, dd MMMM yyyy")</MudText>
                     </div>
                 </MudStack>
-                <MudIconButton Icon="@Icons.Material.Rounded.Refresh"
-                              Color="Color.Primary"
-                              OnClick="RefreshDashboard"
-                              Title="Refresh Dashboard"
-                              Size="Size.Medium" />
+                <div class="clerk-live-indicator">
+                    <div class="clerk-live-pulse"></div>
+                    <MudText Typo="Typo.caption">Live Data</MudText>
+                </div>
             </MudStack>
-        </MudPaper>
+        </div>
 
-        @* Balance B/F *@
-        <MudPaper Class="pa-4 mb-4" Elevation="0">
+        @* Balance B/F Card *@
+        <div class="clerk-balance-card mb-4">
             <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                <MudText Typo="Typo.subtitle1" Class="font-weight-medium">Balance B/F</MudText>
-                <MudText Typo="Typo.h6" Color="Color.Primary" Class="font-weight-bold">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <div class="clerk-balance-icon">
+                        <MudIcon Icon="@Icons.Material.Rounded.AccountBalanceWallet" />
+                    </div>
+                    <MudText Typo="Typo.subtitle1" Class="clerk-balance-label">Opening Balance (B/F)</MudText>
+                </MudStack>
+                <MudText Typo="Typo.h5" Class="clerk-balance-value">
                     KES @_stats.OpeningBalance.ToString("N0")
                 </MudText>
             </MudStack>
-        </MudPaper>
+        </div>
 
-        @* Today's Summary Cards *@
-        <MudGrid Class="mb-4">
+        @* Today's Summary Metrics *@
+        <MudGrid Class="mb-4" Spacing="3">
+            @* Sales Quantity Card *@
             <MudItem xs="12" sm="4">
-                <MudPaper Class="pa-4 qdp-stat-card" Elevation="0">
-                    <MudStack Spacing="2">
-                        <div class="d-flex align-center justify-space-between">
-                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Sales Qty</MudText>
-                            <MudIcon Icon="@Icons.Material.Rounded.Inventory" Color="Color.Primary" />
-                        </div>
-                        <MudText Typo="Typo.h5" Class="font-weight-bold">
+                <div class="clerk-metric-card clerk-metric-primary">
+                    <div class="clerk-metric-icon-container clerk-icon-blue">
+                        <MudIcon Icon="@Icons.Material.Rounded.Inventory" Size="Size.Medium" />
+                    </div>
+                    <div class="clerk-metric-content">
+                        <MudText Typo="Typo.caption" Class="clerk-metric-label">Sales Quantity</MudText>
+                        <MudText Typo="Typo.h4" Class="clerk-metric-value">
                             @_stats.TotalQuantity.ToString("N0")
-                            <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true">pcs</MudText>
                         </MudText>
-                    </MudStack>
-                </MudPaper>
+                        <MudText Typo="Typo.caption" Class="clerk-metric-unit">pieces sold today</MudText>
+                    </div>
+                </div>
             </MudItem>
 
+            @* Sales Revenue Card *@
             <MudItem xs="12" sm="4">
-                <MudPaper Class="pa-4 qdp-stat-card" Elevation="0">
-                    <MudStack Spacing="2">
-                        <div class="d-flex align-center justify-space-between">
-                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Sales Amount</MudText>
-                            <MudIcon Icon="@Icons.Material.Rounded.TrendingUp" Color="Color.Success" />
-                        </div>
-                        <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Success">
+                <div class="clerk-metric-card clerk-metric-success">
+                    <div class="clerk-metric-icon-container clerk-icon-green">
+                        <MudIcon Icon="@Icons.Material.Rounded.TrendingUp" Size="Size.Medium" />
+                    </div>
+                    <div class="clerk-metric-content">
+                        <MudText Typo="Typo.caption" Class="clerk-metric-label">Sales Revenue</MudText>
+                        <MudText Typo="Typo.h4" Class="clerk-metric-value clerk-value-success">
                             KES @_stats.TotalSales.ToString("N0")
                         </MudText>
                         @if (_stats.TotalPrepayments > 0 || _stats.TotalCollections > 0 || _stats.TotalUnpaid > 0)
                         {
-                            <MudStack Spacing="0" Class="mt-2">
+                            <div class="clerk-metric-breakdown">
                                 @if (_stats.TotalPrepayments > 0)
                                 {
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                        <MudIcon Icon="@Icons.Material.Rounded.Savings" Size="Size.Small" Class="mr-1" />
-                                        Prepayments: KES @_stats.TotalPrepayments.ToString("N0")
-                                    </MudText>
+                                    <div class="clerk-breakdown-item clerk-breakdown-info">
+                                        <MudIcon Icon="@Icons.Material.Rounded.Savings" Size="Size.Small" />
+                                        <span>Prepayments: KES @_stats.TotalPrepayments.ToString("N0")</span>
+                                    </div>
                                 }
                                 @if (_stats.TotalCollections > 0)
                                 {
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                        <MudIcon Icon="@Icons.Material.Rounded.AccountBalanceWallet" Size="Size.Small" Class="mr-1" />
-                                        Collections: KES @_stats.TotalCollections.ToString("N0")
-                                    </MudText>
+                                    <div class="clerk-breakdown-item clerk-breakdown-success">
+                                        <MudIcon Icon="@Icons.Material.Rounded.AccountBalanceWallet" Size="Size.Small" />
+                                        <span>Collections: KES @_stats.TotalCollections.ToString("N0")</span>
+                                    </div>
                                 }
                                 @if (_stats.TotalUnpaid > 0)
                                 {
-                                    <MudText Typo="Typo.caption" Color="Color.Error">
-                                        <MudIcon Icon="@Icons.Material.Rounded.Warning" Size="Size.Small" Class="mr-1" />
-                                        Unpaid: KES @_stats.TotalUnpaid.ToString("N0")
-                                    </MudText>
+                                    <div class="clerk-breakdown-item clerk-breakdown-warning">
+                                        <MudIcon Icon="@Icons.Material.Rounded.Warning" Size="Size.Small" />
+                                        <span>Unpaid: KES @_stats.TotalUnpaid.ToString("N0")</span>
+                                    </div>
                                 }
-                            </MudStack>
+                            </div>
                         }
-                    </MudStack>
-                </MudPaper>
+                    </div>
+                </div>
             </MudItem>
 
+            @* Expenses Card *@
             <MudItem xs="12" sm="4">
-                <MudPaper Class="pa-4 qdp-stat-card" Elevation="0">
-                    <MudStack Spacing="2">
-                        <div class="d-flex align-center justify-space-between">
-                            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Expenses</MudText>
-                            <MudIcon Icon="@Icons.Material.Rounded.Receipt" Color="Color.Error" />
-                        </div>
-                        <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Error">
+                <div class="clerk-metric-card clerk-metric-warning">
+                    <div class="clerk-metric-icon-container clerk-icon-orange">
+                        <MudIcon Icon="@Icons.Material.Rounded.Receipt" Size="Size.Medium" />
+                    </div>
+                    <div class="clerk-metric-content">
+                        <MudText Typo="Typo.caption" Class="clerk-metric-label">Total Expenses</MudText>
+                        <MudText Typo="Typo.h4" Class="clerk-metric-value clerk-value-warning">
                             KES @_stats.TotalExpenses.ToString("N0")
                         </MudText>
-                    </MudStack>
-                </MudPaper>
+                        <MudText Typo="Typo.caption" Class="clerk-metric-unit">expenses today</MudText>
+                    </div>
+                </div>
             </MudItem>
         </MudGrid>
 
-        @* Last Order Info *@
+        @* Last Sale Info Banner *@
         @if (!string.IsNullOrWhiteSpace(_stats.LastSaleDescription))
         {
-            <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.ShoppingCart" Class="mb-4" Elevation="0">
-                <MudText Typo="Typo.body2">Last Sale: @_stats.LastSaleDescription</MudText>
-            </MudAlert>
+            <div class="clerk-last-sale-banner mb-4">
+                <MudIcon Icon="@Icons.Material.Rounded.ShoppingCart" Class="clerk-last-sale-icon" />
+                <div class="clerk-last-sale-content">
+                    <MudText Typo="Typo.body2" Class="clerk-last-sale-label">Last Sale</MudText>
+                    <MudText Typo="Typo.body1" Class="clerk-last-sale-text">@_stats.LastSaleDescription</MudText>
+                </div>
+            </div>
         }
 
         @* Daily Notes Section *@
-        <MudExpansionPanels Class="mb-4">
-            <MudExpansionPanel Text="Daily Notes" Icon="@Icons.Material.Rounded.Notes">
-                <MudStack Spacing="3" Class="pt-2">
-                    <MudTextField @bind-Value="_dailyNote.Notes"
-                                  Label="Notes for today"
-                                  Variant="Variant.Outlined"
-                                  Lines="4"
-                                  Placeholder="Enter your daily notes here..." />
-                    <div class="d-flex justify-end">
-                        <MudButton Variant="Variant.Filled"
-                                   Color="Color.Primary"
-                                   StartIcon="@Icons.Material.Rounded.Save"
-                                   OnClick="SaveDailyNote"
-                                   Disabled="_savingNote">
-                            @if (_savingNote)
-                            {
-                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                            }
-                            Save Note
-                        </MudButton>
-                    </div>
-                </MudStack>
-            </MudExpansionPanel>
-        </MudExpansionPanels>
+        <MudPaper Class="clerk-notes-section mb-4" Elevation="0">
+            <MudExpansionPanels Elevation="0">
+                <MudExpansionPanel Text="Daily Notes" Icon="@Icons.Material.Rounded.Notes" Class="clerk-notes-panel">
+                    <MudStack Spacing="3" Class="pt-2">
+                        <MudTextField @bind-Value="_dailyNote.Notes"
+                                      Label="Notes for today"
+                                      Variant="Variant.Outlined"
+                                      Lines="4"
+                                      Placeholder="Enter your daily notes, observations, or important information here..."
+                                      Class="clerk-notes-input" />
+                        <div class="d-flex justify-end">
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Rounded.Save"
+                                       OnClick="SaveDailyNote"
+                                       Disabled="_savingNote"
+                                       Class="clerk-save-btn">
+                                @if (_savingNote)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                }
+                                Save Note
+                            </MudButton>
+                        </div>
+                    </MudStack>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        </MudPaper>
 
-        @* Quick Action Buttons *@
-        <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">Quick Actions</MudText>
-        <MudGrid>
-            <MudItem xs="6" sm="3">
-                <MudButton Href="/clerk/sales/new"
-                           Variant="Variant.Filled"
-                           Color="Color.Primary"
-                           FullWidth="true"
-                           StartIcon="@Icons.Material.Rounded.AddShoppingCart"
-                           Class="qdp-action-btn py-4">
-                    New Sale
-                </MudButton>
-            </MudItem>
-            <MudItem xs="6" sm="3">
-                <MudButton Href="/clerk/expenses"
-                           Variant="Variant.Outlined"
-                           Color="Color.Warning"
-                           FullWidth="true"
-                           StartIcon="@Icons.Material.Rounded.Receipt"
-                           Class="qdp-action-btn py-4">
-                    Expenses
-                </MudButton>
-            </MudItem>
-            <MudItem xs="6" sm="3">
-                <MudButton Href="/clerk/banking"
-                           Variant="Variant.Outlined"
-                           Color="Color.Tertiary"
-                           FullWidth="true"
-                           StartIcon="@Icons.Material.Rounded.AccountBalance"
-                           Class="qdp-action-btn py-4">
-                    Banking
-                </MudButton>
-            </MudItem>
-            <MudItem xs="6" sm="3">
-                <MudButton Href="/clerk/fuel"
-                           Variant="Variant.Outlined"
-                           Color="Color.Error"
-                           FullWidth="true"
-                           StartIcon="@Icons.Material.Rounded.LocalGasStation"
-                           Class="qdp-action-btn py-4">
-                    Fuel Usage
-                </MudButton>
-            </MudItem>
-        </MudGrid>
+        @* Quick Actions Section *@
+        <div class="clerk-actions-section">
+            <MudText Typo="Typo.h6" Class="clerk-actions-title mb-3">Quick Actions</MudText>
+            <MudGrid Spacing="3">
+                <MudItem xs="6" sm="3">
+                    <a href="/clerk/sales/new" class="clerk-action-card clerk-action-primary">
+                        <div class="clerk-action-icon">
+                            <MudIcon Icon="@Icons.Material.Rounded.AddShoppingCart" Size="Size.Large" />
+                        </div>
+                        <MudText Typo="Typo.body1" Class="clerk-action-label">New Sale</MudText>
+                    </a>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <a href="/clerk/expenses" class="clerk-action-card clerk-action-warning">
+                        <div class="clerk-action-icon">
+                            <MudIcon Icon="@Icons.Material.Rounded.Receipt" Size="Size.Large" />
+                        </div>
+                        <MudText Typo="Typo.body1" Class="clerk-action-label">Expenses</MudText>
+                    </a>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <a href="/clerk/banking" class="clerk-action-card clerk-action-success">
+                        <div class="clerk-action-icon">
+                            <MudIcon Icon="@Icons.Material.Rounded.AccountBalance" Size="Size.Large" />
+                        </div>
+                        <MudText Typo="Typo.body1" Class="clerk-action-label">Banking</MudText>
+                    </a>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <a href="/clerk/fuel" class="clerk-action-card clerk-action-error">
+                        <div class="clerk-action-icon">
+                            <MudIcon Icon="@Icons.Material.Rounded.LocalGasStation" Size="Size.Large" />
+                        </div>
+                        <MudText Typo="Typo.body1" Class="clerk-action-label">Fuel Usage</MudText>
+                    </a>
+                </MudItem>
+            </MudGrid>
 
-        <MudDivider Class="my-4" />
-
-        <MudButton Href="/clerk/reports"
-                   Variant="Variant.Text"
-                   Color="Color.Info"
-                   FullWidth="true"
-                   StartIcon="@Icons.Material.Rounded.Assessment"
-                   Class="qdp-action-btn">
-            View Daily Report
-        </MudButton>
+            <div class="clerk-report-link mt-4">
+                <MudButton Href="/clerk/reports"
+                           Variant="Variant.Outlined"
+                           Color="Color.Info"
+                           FullWidth="true"
+                           StartIcon="@Icons.Material.Rounded.Assessment"
+                           EndIcon="@Icons.Material.Rounded.ArrowForward"
+                           Class="clerk-report-btn">
+                    View Daily Report
+                </MudButton>
+            </div>
+        </div>
     }
 </MudContainer>
 
 <style>
-    .qdp-card-gradient {
+    /* Clerk Dashboard Modern Styles */
+    .clerk-dashboard {
+        background: transparent;
+    }
+
+    .clerk-loading-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        gap: 16px;
+    }
+
+    /* Dashboard Header */
+    .clerk-dashboard-header {
         background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        border-radius: 16px;
+        padding: 24px;
         color: white;
-        border-radius: 16px;
-        box-shadow: 0 8px 24px rgba(21, 101, 192, 0.3);
+        box-shadow: 0 8px 32px rgba(13, 71, 161, 0.3);
     }
 
-    .qdp-avatar-shadow {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    .clerk-profile-section {
+        display: flex;
+        align-items: center;
     }
 
-    .qdp-stat-card {
-        border-radius: 16px;
-        border: 1px solid #E0E6ED;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    .clerk-avatar-wrapper {
+        position: relative;
     }
 
-    .qdp-stat-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    .clerk-avatar {
+        background: rgba(255, 255, 255, 0.2) !important;
+        border: 3px solid rgba(255, 255, 255, 0.4);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
     }
 
-    .qdp-action-btn {
-        border-radius: 12px;
-        font-weight: 600;
+    .clerk-avatar-status {
+        position: absolute;
+        bottom: 2px;
+        right: 2px;
+        width: 14px;
+        height: 14px;
+        background: #4CAF50;
+        border-radius: 50%;
+        border: 2px solid white;
+        animation: statusPulse 2s ease-in-out infinite;
+    }
+
+    @@keyframes statusPulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.7; transform: scale(1.1); }
+    }
+
+    .clerk-name {
+        font-weight: 700;
+        color: white;
+        margin-bottom: 2px;
+    }
+
+    .clerk-position {
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .clerk-quarry-icon {
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    .clerk-quarry-name {
+        color: rgba(255, 255, 255, 0.9);
+        font-weight: 500;
+    }
+
+    .clerk-refresh-btn {
+        background: rgba(255, 255, 255, 0.15) !important;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: white !important;
         text-transform: none;
+        font-weight: 600;
+        border-radius: 10px;
+    }
+
+    .clerk-refresh-btn:hover {
+        background: rgba(255, 255, 255, 0.25) !important;
+    }
+
+    /* Date Banner */
+    .clerk-date-banner {
+        background: white;
+        border-radius: 12px;
+        padding: 16px 20px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        border: 1px solid #E8ECF0;
+    }
+
+    .clerk-date-icon {
+        width: 44px;
+        height: 44px;
+        background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #1976D2;
+    }
+
+    .clerk-date-label {
+        color: #64748b;
+        font-weight: 500;
+    }
+
+    .clerk-date-value {
+        font-weight: 700;
+        color: #1a1a2e;
+    }
+
+    .clerk-live-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #4CAF50;
+        font-weight: 500;
+    }
+
+    .clerk-live-pulse {
+        width: 10px;
+        height: 10px;
+        background: #4CAF50;
+        border-radius: 50%;
+        animation: livePulse 2s ease-in-out infinite;
+    }
+
+    @@keyframes livePulse {
+        0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4); }
+        50% { opacity: 0.8; box-shadow: 0 0 0 8px rgba(76, 175, 80, 0); }
+    }
+
+    /* Balance Card */
+    .clerk-balance-card {
+        background: linear-gradient(135deg, #F3F4F6 0%, #E5E7EB 100%);
+        border-radius: 12px;
+        padding: 16px 20px;
+        border-left: 4px solid #1976D2;
+    }
+
+    .clerk-balance-icon {
+        width: 40px;
+        height: 40px;
+        background: white;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #1976D2;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .clerk-balance-label {
+        font-weight: 600;
+        color: #374151;
+    }
+
+    .clerk-balance-value {
+        font-weight: 700;
+        color: #1976D2;
+    }
+
+    /* Metric Cards */
+    .clerk-metric-card {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+        border: 1px solid #E8ECF0;
+        transition: all 0.3s ease;
+        display: flex;
+        gap: 16px;
+        height: 100%;
+    }
+
+    .clerk-metric-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    }
+
+    .clerk-metric-icon-container {
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .clerk-icon-blue {
+        background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+        color: #1976D2;
+    }
+
+    .clerk-icon-green {
+        background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+        color: #2E7D32;
+    }
+
+    .clerk-icon-orange {
+        background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
+        color: #E65100;
+    }
+
+    .clerk-metric-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .clerk-metric-label {
+        color: #64748b;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-size: 11px;
+    }
+
+    .clerk-metric-value {
+        font-weight: 700;
+        color: #1a1a2e;
+        line-height: 1.2;
+        margin: 4px 0;
+    }
+
+    .clerk-value-success {
+        color: #2E7D32;
+    }
+
+    .clerk-value-warning {
+        color: #E65100;
+    }
+
+    .clerk-metric-unit {
+        color: #94a3b8;
+        font-size: 12px;
+    }
+
+    .clerk-metric-breakdown {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px dashed #E0E0E0;
+    }
+
+    .clerk-breakdown-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        margin-bottom: 4px;
+    }
+
+    .clerk-breakdown-info {
+        color: #1976D2;
+    }
+
+    .clerk-breakdown-success {
+        color: #2E7D32;
+    }
+
+    .clerk-breakdown-warning {
+        color: #E65100;
+    }
+
+    /* Last Sale Banner */
+    .clerk-last-sale-banner {
+        background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+        border-radius: 12px;
+        padding: 16px 20px;
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
+        border-left: 4px solid #1976D2;
+    }
+
+    .clerk-last-sale-icon {
+        color: #1976D2;
+        font-size: 28px !important;
+        margin-top: 2px;
+    }
+
+    .clerk-last-sale-content {
+        flex: 1;
+    }
+
+    .clerk-last-sale-label {
+        color: #1565C0;
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .clerk-last-sale-text {
+        color: #0D47A1;
+        font-weight: 500;
+        margin-top: 2px;
+    }
+
+    /* Notes Section */
+    .clerk-notes-section {
+        border-radius: 16px;
+        border: 1px solid #E8ECF0;
+        overflow: hidden;
+    }
+
+    .clerk-notes-panel {
+        background: white;
+    }
+
+    .clerk-notes-input {
+        background: #FAFBFC;
+    }
+
+    .clerk-save-btn {
+        text-transform: none;
+        font-weight: 600;
+        border-radius: 10px;
+    }
+
+    /* Quick Actions Section */
+    .clerk-actions-section {
+        margin-top: 8px;
+    }
+
+    .clerk-actions-title {
+        font-weight: 700;
+        color: #1a1a2e;
+    }
+
+    .clerk-action-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        border-radius: 16px;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+        min-height: 120px;
+    }
+
+    .clerk-action-card:hover {
+        transform: translateY(-4px);
+        text-decoration: none;
+    }
+
+    .clerk-action-primary {
+        background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+        color: #1976D2;
+        border-color: #BBDEFB;
+    }
+
+    .clerk-action-primary:hover {
+        background: linear-gradient(135deg, #BBDEFB 0%, #90CAF9 100%);
+        box-shadow: 0 8px 24px rgba(25, 118, 210, 0.25);
+    }
+
+    .clerk-action-warning {
+        background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
+        color: #E65100;
+        border-color: #FFE0B2;
+    }
+
+    .clerk-action-warning:hover {
+        background: linear-gradient(135deg, #FFE0B2 0%, #FFCC80 100%);
+        box-shadow: 0 8px 24px rgba(230, 81, 0, 0.25);
+    }
+
+    .clerk-action-success {
+        background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+        color: #2E7D32;
+        border-color: #C8E6C9;
+    }
+
+    .clerk-action-success:hover {
+        background: linear-gradient(135deg, #C8E6C9 0%, #A5D6A7 100%);
+        box-shadow: 0 8px 24px rgba(46, 125, 50, 0.25);
+    }
+
+    .clerk-action-error {
+        background: linear-gradient(135deg, #FFEBEE 0%, #FFCDD2 100%);
+        color: #C62828;
+        border-color: #FFCDD2;
+    }
+
+    .clerk-action-error:hover {
+        background: linear-gradient(135deg, #FFCDD2 0%, #EF9A9A 100%);
+        box-shadow: 0 8px 24px rgba(198, 40, 40, 0.25);
+    }
+
+    .clerk-action-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 12px;
+    }
+
+    .clerk-action-label {
+        font-weight: 600;
+        text-align: center;
+    }
+
+    .clerk-report-link {
+        padding-top: 8px;
+    }
+
+    .clerk-report-btn {
+        text-transform: none;
+        font-weight: 600;
+        border-radius: 12px;
+        padding: 12px 24px;
+    }
+
+    /* Responsive Adjustments */
+    @@media (max-width: 600px) {
+        .clerk-dashboard-header {
+            padding: 16px;
+        }
+
+        .clerk-metric-card {
+            padding: 16px;
+        }
+
+        .clerk-metric-icon-container {
+            width: 48px;
+            height: 48px;
+        }
+
+        .clerk-action-card {
+            padding: 16px 12px;
+            min-height: 100px;
+        }
+
+        .clerk-action-icon {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 8px;
+        }
+    }
+
+    /* Dark mode support */
+    .mud-theme-dark .clerk-date-banner,
+    .mud-theme-dark .clerk-metric-card,
+    .mud-theme-dark .clerk-notes-section {
+        background: #1E1E1E;
+        border-color: #333;
+    }
+
+    .mud-theme-dark .clerk-balance-card {
+        background: linear-gradient(135deg, #2D2D2D 0%, #1E1E1E 100%);
+    }
+
+    .mud-theme-dark .clerk-metric-value,
+    .mud-theme-dark .clerk-date-value,
+    .mud-theme-dark .clerk-actions-title {
+        color: #f1f5f9;
     }
 </style>
 

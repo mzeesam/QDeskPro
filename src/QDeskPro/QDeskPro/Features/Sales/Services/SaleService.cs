@@ -12,11 +12,13 @@ public class SaleService
 {
     private readonly AppDbContext _context;
     private readonly ReportService _reportService;
+    private readonly ILogger<SaleService> _logger;
 
-    public SaleService(AppDbContext context, ReportService reportService)
+    public SaleService(AppDbContext context, ReportService reportService, ILogger<SaleService> logger)
     {
         _context = context;
         _reportService = reportService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -94,10 +96,20 @@ public class SaleService
             _context.Sales.Add(sale);
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Sale created: {SaleId} | Vehicle: {Vehicle} | Product: {ProductId} | Qty: {Quantity} | Amount: {Amount:N0} | Payment: {PaymentStatus} | Clerk: {ClerkName}",
+                sale.Id, sale.VehicleRegistration, sale.ProductId, sale.Quantity, sale.GrossSaleAmount, sale.PaymentStatus, sale.ClerkName);
+
+            // Trigger cascade recalculation for backdated entries
+            if (sale.SaleDate!.Value.Date < DateTime.Today)
+            {
+                await RecalculateClosingBalancesFromDate(sale.SaleDate.Value, quarryId, userId);
+            }
+
             return (true, "Sale recorded successfully", sale);
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to create sale for vehicle {Vehicle}", sale.VehicleRegistration);
             return (false, $"Error saving sale: {ex.Message}", null);
         }
     }
@@ -217,6 +229,9 @@ public class SaleService
 
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Sale updated: {SaleId} | Vehicle: {Vehicle} | Qty: {Quantity} | Amount: {Amount:N0} | Payment: {PaymentStatus} | By: {UserId}",
+                sale.Id, existing.VehicleRegistration, existing.Quantity, existing.GrossSaleAmount, existing.PaymentStatus, userId);
+
             // Trigger cascade recalculation of closing balances
             await RecalculateClosingBalancesFromDate(existing.SaleDate.Value, existing.QId, userId);
 
@@ -224,6 +239,7 @@ public class SaleService
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to update sale {SaleId}", sale.Id);
             return (false, $"Error updating sale: {ex.Message}");
         }
     }
@@ -247,6 +263,9 @@ public class SaleService
 
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Sale deleted: {SaleId} | Vehicle: {Vehicle} | Amount: {Amount:N0} | By: {UserId}",
+                saleId, sale.VehicleRegistration, sale.GrossSaleAmount, userId);
+
             // Trigger cascade recalculation of closing balances
             await RecalculateClosingBalancesFromDate(sale.SaleDate!.Value, sale.QId, userId);
 
@@ -254,6 +273,7 @@ public class SaleService
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to delete sale {SaleId}", saleId);
             return (false, $"Error deleting sale: {ex.Message}");
         }
     }

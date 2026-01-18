@@ -3,6 +3,7 @@
 @using Microsoft.EntityFrameworkCore
 @using QDeskPro.Features.Reports.Services
 @using QDeskPro.Features.Admin.Services
+@using QDeskPro.Features.Timeline.Components
 @using QDeskPro.Domain.Entities
 @using QDeskPro.Data
 @attribute [Authorize(Roles = "Clerk")]
@@ -19,14 +20,35 @@
 
 <PageTitle>Sales Report - QDeskPro</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
-    <MudText Typo="Typo.h4" Class="font-weight-bold mb-4">
-        <MudIcon Icon="@Icons.Material.Rounded.Assessment" Class="mr-2" />
-        Sales Report
-    </MudText>
+<MudContainer MaxWidth="MaxWidth.Large" Class="report-container py-4">
+    @* Modern Page Header *@
+    <div class="report-page-header">
+        <div class="header-content">
+            <div class="header-icon-wrapper">
+                <MudIcon Icon="@Icons.Material.Rounded.Assessment" Size="Size.Large" />
+            </div>
+            <div class="header-text">
+                <h1>Sales Report</h1>
+                <p>Generate your daily sales reports</p>
+            </div>
+        </div>
+        @if (_reportGenerated)
+        {
+            <div class="header-stats">
+                <div class="stat-badge">
+                    <MudIcon Icon="@Icons.Material.Rounded.CalendarToday" Size="Size.Small" />
+                    <span>@_selectedDate?.ToString("dd/MM/yy")</span>
+                </div>
+            </div>
+        }
+    </div>
 
-    @* Date Selection *@
-    <MudPaper Class="pa-4 mb-4" Elevation="0">
+    @* Date Selection Card *@
+    <div class="date-selection-card">
+        <div class="card-header">
+            <MudIcon Icon="@Icons.Material.Rounded.DateRange" Size="Size.Small" />
+            <span>Select Report Date</span>
+        </div>
         <MudGrid>
             <MudItem xs="12" sm="8">
                 <MudDatePicker @bind-Date="_selectedDate"
@@ -43,6 +65,7 @@
                            FullWidth="true"
                            OnClick="GenerateReport"
                            Disabled="_generating"
+                           Class="generate-btn"
                            Style="height: 56px;">
                     @if (_generating)
                     {
@@ -52,7 +75,7 @@
                 </MudButton>
             </MudItem>
         </MudGrid>
-    </MudPaper>
+    </div>
 
     @if (_reportGenerated && _report != null)
     {
@@ -184,8 +207,19 @@
                 {
                     <MudItem xs="12" sm="6" md="4">
                         <div class="summary-item unpaid-highlight">
-                            <MudText Typo="Typo.body2" Color="Color.Error">Unpaid Orders</MudText>
-                            <MudText Typo="Typo.h6" Class="font-weight-bold" Color="Color.Error">KES @_report.Unpaid.ToString("N0")</MudText>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                                <div>
+                                    <MudText Typo="Typo.body2" Color="Color.Error">Unpaid Orders</MudText>
+                                    <MudText Typo="Typo.h6" Class="font-weight-bold" Color="Color.Error">KES @_report.Unpaid.ToString("N0")</MudText>
+                                </div>
+                                <QuickNoteButton QuarryId="@_quarryId"
+                                                 EntityType="UnpaidOrders"
+                                                 EntityReference="@($"{_report.Sales.Count(s => s.PaymentStatus != "Paid")} orders totaling KES {_report.Unpaid:N0}")"
+                                                 SuggestedTitle="Follow up on unpaid orders"
+                                                 DefaultType="Reminder"
+                                                 TooltipText="Set reminder for unpaid orders"
+                                                 ButtonColor="Color.Error" />
+                            </MudStack>
                         </div>
                     </MudItem>
                 }
@@ -449,15 +483,138 @@
     }
     else if (!_reportGenerated)
     {
-        <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info">
-            Select a date and click "Get Report" to generate your daily sales report
-        </MudAlert>
+        <div class="empty-state">
+            <div class="empty-icon">
+                <MudIcon Icon="@Icons.Material.Rounded.Assessment" Size="Size.Large" />
+            </div>
+            <MudText Typo="Typo.h6" Class="mt-3">No Report Generated</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Select a date and click "Get Report" to generate your daily sales report</MudText>
+        </div>
     }
 </MudContainer>
 
 <style>
-    .report-header {
+    /* Modern Page Header - Indigo/Blue Theme */
+    .report-page-header {
+        background: linear-gradient(135deg, #3949AB 0%, #283593 100%);
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 8px 32px rgba(40, 53, 147, 0.3);
+    }
+
+    .header-content {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .header-icon-wrapper {
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .header-text h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        margin: 0;
+        letter-spacing: -0.5px;
+    }
+
+    .header-text p {
+        margin: 4px 0 0 0;
+        opacity: 0.9;
+        font-size: 0.9rem;
+    }
+
+    .header-stats {
+        display: flex;
+        gap: 12px;
+    }
+
+    .stat-badge {
+        background: rgba(255, 255, 255, 0.2);
         border-radius: 20px;
+        padding: 8px 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.875rem;
+    }
+
+    /* Date Selection Card */
+    .date-selection-card {
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        border: 1px solid #E0E6ED;
+    }
+
+    .card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #E0E6ED;
+    }
+
+    .card-header .mud-icon-root {
+        color: #3949AB;
+    }
+
+    .generate-btn {
+        background: linear-gradient(135deg, #3949AB 0%, #283593 100%) !important;
+    }
+
+    .generate-btn:hover {
+        box-shadow: 0 4px 12px rgba(57, 73, 171, 0.4);
+    }
+
+    /* Empty State */
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 80px 20px;
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        border: 1px solid #E0E6ED;
+        text-align: center;
+    }
+
+    .empty-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, rgba(57, 73, 171, 0.1) 0%, rgba(57, 73, 171, 0.05) 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .empty-icon .mud-icon-root {
+        color: #3949AB;
+    }
+
+    /* Report Header Card */
+    .report-header {
+        border-radius: 16px;
         background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%);
         color: white;
         box-shadow: 0 8px 24px rgba(25, 118, 210, 0.25);
@@ -469,16 +626,17 @@
         box-shadow: 0 12px 32px rgba(25, 118, 210, 0.35);
     }
 
+    /* Summary Card */
     .summary-card {
-        border-radius: 20px;
-        border: 1px solid #E3F2FD;
-        background: linear-gradient(to bottom, #ffffff 0%, #f8fafb 100%);
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+        border-radius: 16px;
+        border: 1px solid #E0E6ED;
+        background: white;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
     }
 
     .summary-item {
         padding: 20px;
-        border-radius: 16px;
+        border-radius: 12px;
         background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
         border: 1px solid #e2e8f0;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -493,15 +651,15 @@
         left: 0;
         right: 0;
         height: 3px;
-        background: linear-gradient(90deg, #1976D2 0%, #42A5F5 100%);
+        background: linear-gradient(90deg, #3949AB 0%, #5C6BC0 100%);
         transform: scaleX(0);
         transition: transform 0.3s ease;
     }
 
     .summary-item:hover {
         transform: translateY(-4px);
-        box-shadow: 0 8px 24px rgba(25, 118, 210, 0.15);
-        border-color: #1976D2;
+        box-shadow: 0 8px 24px rgba(57, 73, 171, 0.15);
+        border-color: #3949AB;
     }
 
     .summary-item:hover::before {
@@ -597,6 +755,101 @@
 
     .prepayments-highlight::before {
         background: linear-gradient(90deg, #4CAF50 0%, #388E3C 100%);
+    }
+
+    /* Dark Mode Support */
+    :global(.mud-theme-dark) .report-page-header {
+        background: linear-gradient(135deg, #283593 0%, #1A237E 100%);
+    }
+
+    :global(.mud-theme-dark) .date-selection-card,
+    :global(.mud-theme-dark) .empty-state,
+    :global(.mud-theme-dark) .summary-card {
+        background: #1e1e1e;
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .card-header {
+        color: #f1f5f9;
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .empty-icon {
+        background: linear-gradient(135deg, rgba(57, 73, 171, 0.2) 0%, rgba(57, 73, 171, 0.1) 100%);
+    }
+
+    :global(.mud-theme-dark) .report-header {
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+    }
+
+    :global(.mud-theme-dark) .summary-item {
+        background: linear-gradient(135deg, #252525 0%, #1e1e1e 100%);
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .summary-item:hover {
+        border-color: #3949AB;
+    }
+
+    :global(.mud-theme-dark) .closing-balance {
+        background: linear-gradient(135deg, #252525 0%, #1e1e1e 100%);
+        border-color: #444;
+    }
+
+    :global(.mud-theme-dark) .banked-highlight {
+        background: linear-gradient(135deg, rgba(25, 118, 210, 0.25) 0%, rgba(21, 101, 192, 0.15) 100%);
+    }
+
+    :global(.mud-theme-dark) .unpaid-highlight {
+        background: linear-gradient(135deg, rgba(244, 67, 54, 0.2) 0%, rgba(244, 67, 54, 0.1) 100%);
+    }
+
+    :global(.mud-theme-dark) .collections-highlight {
+        background: linear-gradient(135deg, rgba(156, 39, 176, 0.2) 0%, rgba(156, 39, 176, 0.1) 100%);
+    }
+
+    :global(.mud-theme-dark) .prepayments-highlight {
+        background: linear-gradient(135deg, rgba(76, 175, 80, 0.2) 0%, rgba(76, 175, 80, 0.1) 100%);
+    }
+
+    /* Mobile Responsiveness */
+    @@media (max-width: 600px) {
+        .report-page-header {
+            flex-direction: column;
+            gap: 16px;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .header-content {
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .header-text h1 {
+            font-size: 1.5rem;
+        }
+
+        .header-stats {
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .date-selection-card,
+        .empty-state,
+        .summary-card {
+            border-radius: 12px;
+        }
+
+        .summary-item {
+            padding: 16px;
+        }
+
+        .banked-highlight::after {
+            top: 8px;
+            right: 8px;
+            font-size: 1rem;
+        }
     }
 </style>
 

@@ -1,0 +1,454 @@
+@page "/manager/expense-categories"
+@page "/admin/expense-categories"
+@using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.MasterData.Services
+@using QDeskPro.Features.Expenses.Services
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject AppDbContext DbContext
+@inject MasterDataService MasterDataService
+@inject ExpenseService ExpenseService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Expense Category Adjustment - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4 mb-8">
+    <MudStack Spacing="4">
+        @* Page Header with Gradient *@
+        <div class="admin-header admin-header-expenses">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.Category" Size="Size.Large" Style="color: #7E57C2;" />
+                    <div>
+                        <MudText Typo="Typo.h4" Class="admin-header-title">Expense Category Adjustment</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Update expense categories for previously recorded expenses
+                        </MudText>
+                    </div>
+                </MudStack>
+            </MudStack>
+        </div>
+
+        @* Info Card *@
+        <div class="admin-info-card">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Info" Color="Color.Info" />
+                <MudText>Only the <strong>Category</strong> field can be modified. All other expense details are read-only.</MudText>
+            </MudStack>
+        </div>
+
+        @* Filter Card *@
+        <div class="dashboard-filter-card">
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string"
+                              @bind-Value="_selectedQuarryId"
+                              Label="Select Quarry"
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Terrain"
+                              AnchorOrigin="Origin.BottomCenter">
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem T="string" Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudDatePicker @bind-Date="_fromDate"
+                                  Label="From Date"
+                                  Variant="Variant.Outlined"
+                                  DateFormat="dd/MM/yyyy"
+                                  MaxDate="DateTime.Today"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.CalendarMonth" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudDatePicker @bind-Date="_toDate"
+                                  Label="To Date"
+                                  Variant="Variant.Outlined"
+                                  DateFormat="dd/MM/yyyy"
+                                  MaxDate="DateTime.Today"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.CalendarMonth" />
+                </MudItem>
+                <MudItem xs="12" sm="2" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.Search"
+                              OnClick="LoadExpensesAsync"
+                              Disabled="@(_loading || string.IsNullOrEmpty(_selectedQuarryId))"
+                              FullWidth="true">
+                        @if (_loading)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Load
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </div>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+
+        @* Stats Summary Row *@
+        @if (_expenses.Any())
+        {
+            <div class="admin-mini-stats-row" style="grid-template-columns: repeat(3, 1fr);">
+                <div class="admin-mini-stat admin-mini-stat-gradient-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Large" Class="admin-mini-stat-icon" />
+                    <div class="admin-mini-stat-content">
+                        <span class="admin-mini-stat-value">@_expenses.Count</span>
+                        <span class="admin-mini-stat-label">Total Expenses</span>
+                    </div>
+                </div>
+                <div class="admin-mini-stat admin-mini-stat-gradient-1">
+                    <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Size="Size.Large" Class="admin-mini-stat-icon" />
+                    <div class="admin-mini-stat-content">
+                        <span class="admin-mini-stat-value">@_expenses.Sum(e => e.Amount).ToString("N0")</span>
+                        <span class="admin-mini-stat-label">Total Amount (KES)</span>
+                    </div>
+                </div>
+                <div class="admin-mini-stat admin-mini-stat-gradient-5">
+                    <MudIcon Icon="@Icons.Material.Filled.Edit" Size="Size.Large" Class="admin-mini-stat-icon" />
+                    <div class="admin-mini-stat-content">
+                        <span class="admin-mini-stat-value">@_modifiedExpenses.Count</span>
+                        <span class="admin-mini-stat-label">Pending Changes</span>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* Save Button - Show only when there are pending changes *@
+        @if (_modifiedExpenses.Any())
+        {
+            <MudPaper Class="pa-3" Elevation="0" Style="background: linear-gradient(90deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%); border-radius: 12px; border: 1px dashed rgba(76, 175, 80, 0.4);">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.PendingActions" Color="Color.Warning" />
+                        <MudText>You have <strong>@_modifiedExpenses.Count</strong> unsaved changes</MudText>
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Outlined"
+                                  Color="Color.Default"
+                                  StartIcon="@Icons.Material.Filled.Undo"
+                                  OnClick="DiscardChanges"
+                                  Disabled="_saving">
+                            Discard
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled"
+                                  Color="Color.Success"
+                                  StartIcon="@Icons.Material.Filled.Save"
+                                  OnClick="SaveChangesAsync"
+                                  Disabled="_saving">
+                            @if (_saving)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            }
+                            Save Changes
+                        </MudButton>
+                    </MudStack>
+                </MudStack>
+            </MudPaper>
+        }
+
+        @* Expenses Table *@
+        <div class="admin-table-card">
+            <MudTable Items="_expenses"
+                     Hover="true"
+                     Breakpoint="Breakpoint.Sm"
+                     Dense="true"
+                     Loading="_loading"
+                     LoadingProgressColor="Color.Primary"
+                     RowClassFunc="@((expense, _) => GetRowClass(expense))"
+                     FixedHeader="true"
+                     Height="500px">
+                <HeaderContent>
+                    <MudTh>Date</MudTh>
+                    <MudTh>Item Description</MudTh>
+                    <MudTh Style="text-align: right;">Amount (KES)</MudTh>
+                    <MudTh>Reference</MudTh>
+                    <MudTh Style="min-width: 200px;">Category</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Date">
+                        <MudText Typo="Typo.body2">@context.ExpenseDate?.ToString("dd/MM/yyyy")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Item">
+                        <MudText Typo="Typo.body2" Class="text-truncate" Style="max-width: 300px;">@context.Item</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Amount" Style="text-align: right;">
+                        <MudText Typo="Typo.body2" Class="font-weight-medium">@context.Amount.ToString("N2")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Reference">
+                        <MudText Typo="Typo.body2" Class="text-muted">@(context.TxnReference ?? "-")</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Category">
+                        <MudSelect T="string"
+                                  Value="@GetCurrentCategory(context)"
+                                  ValueChanged="@((string value) => OnCategoryChanged(context, value))"
+                                  Variant="Variant.Outlined"
+                                  Dense="true"
+                                  Margin="Margin.Dense"
+                                  AnchorOrigin="Origin.BottomCenter">
+                            @foreach (var category in _expenseCategories)
+                            {
+                                <MudSelectItem T="string" Value="@category">@category</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <div class="admin-empty-state">
+                        <div class="admin-empty-state-icon">
+                            <MudIcon Icon="@Icons.Material.Filled.Receipt" />
+                        </div>
+                        <MudText Typo="Typo.h6" Color="Color.Default">No expenses found</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                            @if (string.IsNullOrEmpty(_selectedQuarryId))
+                            {
+                                <span>Select a quarry and date range, then click Load</span>
+                            }
+                            else
+                            {
+                                <span>No expenses recorded for the selected period</span>
+                            }
+                        </MudText>
+                    </div>
+                </NoRecordsContent>
+            </MudTable>
+        </div>
+    </MudStack>
+</MudContainer>
+
+<style>
+    .modified-row {
+        background-color: rgba(255, 193, 7, 0.08) !important;
+        border-left: 3px solid #FFC107 !important;
+    }
+
+    .text-truncate {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
+
+@code {
+    private List<Quarry> _quarries = new();
+    private List<Expense> _expenses = new();
+    private Dictionary<string, string> _modifiedExpenses = new(); // ExpenseId -> NewCategory
+    private Dictionary<string, string> _originalCategories = new(); // ExpenseId -> OriginalCategory
+
+    private string? _selectedQuarryId;
+    private DateTime? _fromDate = DateTime.Today.AddDays(-30);
+    private DateTime? _toDate = DateTime.Today;
+    private string? _userId;
+    private string _userRole = string.Empty;
+    private bool _loading = false;
+    private bool _saving = false;
+
+    private static readonly string[] _expenseCategories = new[]
+    {
+        "Fuel",
+        "Transportation Hire",
+        "Maintenance and Repairs",
+        "Commission",
+        "Administrative",
+        "Marketing",
+        "Wages",
+        "Loaders Fees",
+        "Consumables and Utilities",
+        "Bank Charges",
+        "Cess and Road Fees",
+        "Miscellaneous"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        _userRole = user.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+
+        await LoadQuarriesAsync();
+    }
+
+    private async Task LoadQuarriesAsync()
+    {
+        try
+        {
+            if (_userRole == "Administrator")
+            {
+                _quarries = await MasterDataService.GetAllQuarriesAsync();
+            }
+            else if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
+            {
+                _quarries = await MasterDataService.GetAccessibleQuarriesForManagerAsync(_userId);
+            }
+
+            // Auto-select first quarry
+            if (_quarries.Any())
+            {
+                _selectedQuarryId = _quarries.First().Id;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadExpensesAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId) || _fromDate == null || _toDate == null)
+        {
+            Snackbar.Add("Please select a quarry and date range", Severity.Warning);
+            return;
+        }
+
+        _loading = true;
+        _modifiedExpenses.Clear();
+        _originalCategories.Clear();
+        StateHasChanged();
+
+        try
+        {
+            _expenses = await DbContext.Expenses
+                .Where(e => e.QId == _selectedQuarryId)
+                .Where(e => e.ExpenseDate >= _fromDate.Value.Date)
+                .Where(e => e.ExpenseDate <= _toDate.Value.Date)
+                .Where(e => e.IsActive)
+                .OrderByDescending(e => e.ExpenseDate)
+                .ThenByDescending(e => e.DateCreated)
+                .ToListAsync();
+
+            // Store original categories
+            foreach (var expense in _expenses)
+            {
+                _originalCategories[expense.Id] = expense.Category ?? "Miscellaneous";
+            }
+
+            if (_expenses.Count == 0)
+            {
+                Snackbar.Add("No expenses found for the selected period", Severity.Info);
+            }
+            else
+            {
+                Snackbar.Add($"Loaded {_expenses.Count} expenses", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading expenses: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetCurrentCategory(Expense expense)
+    {
+        // Return modified value if exists, otherwise return original
+        if (_modifiedExpenses.TryGetValue(expense.Id, out var modified))
+        {
+            return modified;
+        }
+        return expense.Category ?? "Miscellaneous";
+    }
+
+    private void OnCategoryChanged(Expense expense, string newCategory)
+    {
+        var originalCategory = _originalCategories.GetValueOrDefault(expense.Id, expense.Category ?? "Miscellaneous");
+
+        if (newCategory == originalCategory)
+        {
+            // If changed back to original, remove from modified list
+            _modifiedExpenses.Remove(expense.Id);
+        }
+        else
+        {
+            // Track the change
+            _modifiedExpenses[expense.Id] = newCategory;
+        }
+        StateHasChanged();
+    }
+
+    private string GetRowClass(Expense expense)
+    {
+        return _modifiedExpenses.ContainsKey(expense.Id) ? "modified-row" : "";
+    }
+
+    private void DiscardChanges()
+    {
+        _modifiedExpenses.Clear();
+        StateHasChanged();
+        Snackbar.Add("Changes discarded", Severity.Info);
+    }
+
+    private async Task SaveChangesAsync()
+    {
+        if (!_modifiedExpenses.Any())
+        {
+            Snackbar.Add("No changes to save", Severity.Info);
+            return;
+        }
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            var now = DateTime.UtcNow;
+            var count = 0;
+
+            foreach (var (expenseId, newCategory) in _modifiedExpenses)
+            {
+                var expense = await DbContext.Expenses.FindAsync(expenseId);
+                if (expense != null)
+                {
+                    expense.Category = newCategory;
+                    expense.DateModified = now;
+                    expense.ModifiedBy = _userId;
+                    count++;
+                }
+            }
+
+            await DbContext.SaveChangesAsync();
+
+            // Update original categories to reflect new values
+            foreach (var (expenseId, newCategory) in _modifiedExpenses)
+            {
+                _originalCategories[expenseId] = newCategory;
+                // Also update the in-memory expense object
+                var expense = _expenses.FirstOrDefault(e => e.Id == expenseId);
+                if (expense != null)
+                {
+                    expense.Category = newCategory;
+                }
+            }
+
+            _modifiedExpenses.Clear();
+            Snackbar.Add($"Successfully updated {count} expense(s)", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error saving changes: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+}

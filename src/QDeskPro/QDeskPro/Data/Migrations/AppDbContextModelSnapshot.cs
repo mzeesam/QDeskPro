@@ -474,6 +474,9 @@ namespace QDeskPro.Data.Migrations
                     b.Property<string>("ModifiedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("QId")
                         .HasColumnType("nvarchar(450)");
 
@@ -628,6 +631,9 @@ namespace QDeskPro.Data.Migrations
                     b.Property<string>("ModifiedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("QId")
                         .HasColumnType("nvarchar(450)");
 
@@ -677,6 +683,9 @@ namespace QDeskPro.Data.Migrations
                     b.Property<double>("NewStock")
                         .HasColumnType("float");
 
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<double>("OldStock")
                         .HasColumnType("float");
 
@@ -696,6 +705,108 @@ namespace QDeskPro.Data.Migrations
                     b.HasIndex("QId");
 
                     b.ToTable("FuelUsages");
+                });
+
+            modelBuilder.Entity("QDeskPro.Domain.Entities.GeneratedReport", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ClerkId")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ClerkName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DateModified")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DateStamp")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ExportFormat")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ExportedFilePath")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("FromDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("GeneratedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("GeneratedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<double?>("NetEarnings")
+                        .HasColumnType("float");
+
+                    b.Property<int?>("OrderCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("QId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("QuarryId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ReportDataJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ReportName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ReportType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("ToDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<double?>("TotalExpenses")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("TotalQuantity")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("TotalSales")
+                        .HasColumnType("float");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DateCreated");
+
+                    b.HasIndex("GeneratedByUserId");
+
+                    b.HasIndex("QuarryId");
+
+                    b.HasIndex("ReportType", "FromDate", "ToDate");
+
+                    b.ToTable("GeneratedReports");
                 });
 
             modelBuilder.Entity("QDeskPro.Domain.Entities.JournalEntry", b =>
@@ -1235,6 +1346,101 @@ namespace QDeskPro.Data.Migrations
                     b.ToTable("Quarries");
                 });
 
+            modelBuilder.Entity("QDeskPro.Domain.Entities.QuarryComment", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ApplicationUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("AuthorName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("CommentType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("CompletedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("DateCreated")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DateModified")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DateStamp")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsCompleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LinkedEntityId")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("LinkedEntityReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("LinkedEntityType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Priority")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("QId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("QuarryId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationUserId");
+
+                    b.HasIndex("DateCreated");
+
+                    b.HasIndex("DueDate");
+
+                    b.HasIndex("QuarryId");
+
+                    b.HasIndex("CommentType", "IsCompleted");
+
+                    b.HasIndex("LinkedEntityType", "LinkedEntityId");
+
+                    b.ToTable("QuarryComments");
+                });
+
             modelBuilder.Entity("QDeskPro.Domain.Entities.RefreshToken", b =>
                 {
                     b.Property<string>("Id")
@@ -1337,6 +1543,9 @@ namespace QDeskPro.Data.Migrations
                         .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("ModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Notes")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("PaymentMode")
@@ -1544,6 +1753,25 @@ namespace QDeskPro.Data.Migrations
                     b.Navigation("Quarry");
                 });
 
+            modelBuilder.Entity("QDeskPro.Domain.Entities.GeneratedReport", b =>
+                {
+                    b.HasOne("QDeskPro.Domain.Entities.ApplicationUser", "GeneratedBy")
+                        .WithMany()
+                        .HasForeignKey("GeneratedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("QDeskPro.Domain.Entities.Quarry", "Quarry")
+                        .WithMany()
+                        .HasForeignKey("QuarryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("GeneratedBy");
+
+                    b.Navigation("Quarry");
+                });
+
             modelBuilder.Entity("QDeskPro.Domain.Entities.JournalEntryLine", b =>
                 {
                     b.HasOne("QDeskPro.Domain.Entities.JournalEntry", "JournalEntry")
@@ -1618,6 +1846,25 @@ namespace QDeskPro.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Manager");
+                });
+
+            modelBuilder.Entity("QDeskPro.Domain.Entities.QuarryComment", b =>
+                {
+                    b.HasOne("QDeskPro.Domain.Entities.ApplicationUser", "Author")
+                        .WithMany()
+                        .HasForeignKey("ApplicationUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("QDeskPro.Domain.Entities.Quarry", "Quarry")
+                        .WithMany()
+                        .HasForeignKey("QuarryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Author");
+
+                    b.Navigation("Quarry");
                 });
 
             modelBuilder.Entity("QDeskPro.Domain.Entities.RefreshToken", b =>

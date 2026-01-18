@@ -12,11 +12,13 @@ public class BankingService
 {
     private readonly AppDbContext _context;
     private readonly ReportService _reportService;
+    private readonly ILogger<BankingService> _logger;
 
-    public BankingService(AppDbContext context, ReportService reportService)
+    public BankingService(AppDbContext context, ReportService reportService, ILogger<BankingService> logger)
     {
         _context = context;
         _reportService = reportService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -63,10 +65,20 @@ public class BankingService
             _context.Bankings.Add(banking);
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Banking created: {BankingId} | Amount: {Amount:N0} | Ref: {Reference} | Date: {Date:dd/MM/yy} | By: {UserId}",
+                banking.Id, banking.AmountBanked, banking.TxnReference, banking.BankingDate, userId);
+
+            // Trigger cascade recalculation for backdated entries
+            if (banking.BankingDate!.Value.Date < DateTime.Today)
+            {
+                await RecalculateClosingBalancesFromDate(banking.BankingDate.Value, quarryId, userId);
+            }
+
             return (true, "New banking record has been captured!", banking);
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to create banking record: {Reference}", banking.TxnReference);
             return (false, $"Error saving banking record: {ex.Message}", null);
         }
     }
@@ -136,6 +148,9 @@ public class BankingService
 
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Banking updated: {BankingId} | Amount: {Amount:N0} | Ref: {Reference} | By: {UserId}",
+                banking.Id, existing.AmountBanked, existing.TxnReference, userId);
+
             // Trigger cascade recalculation for all days from edited date to today
             await RecalculateClosingBalancesFromDate(existing.BankingDate.Value, existing.QId, userId);
 
@@ -143,6 +158,7 @@ public class BankingService
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to update banking record {BankingId}", banking.Id);
             return (false, $"Error updating banking record: {ex.Message}");
         }
     }
@@ -166,6 +182,9 @@ public class BankingService
 
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Banking deleted: {BankingId} | Amount: {Amount:N0} | By: {UserId}",
+                bankingId, banking.AmountBanked, userId);
+
             // Trigger cascade recalculation for all days from deleted banking date to today
             await RecalculateClosingBalancesFromDate(banking.BankingDate!.Value, banking.QId, userId);
 
@@ -173,6 +192,7 @@ public class BankingService
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to delete banking record {BankingId}", bankingId);
             return (false, $"Error deleting banking record: {ex.Message}");
         }
     }

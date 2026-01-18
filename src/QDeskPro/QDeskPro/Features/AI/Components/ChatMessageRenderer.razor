@@ -1,0 +1,111 @@
+@namespace QDeskPro.Features.AI.Components
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.AI.Models
+@using QDeskPro.Features.AI.Services
+@inject IContentParserService ContentParser
+@inject IJSRuntime JS
+
+<div class="rich-message-content @(IsStreaming ? "streaming" : "")">
+    @if (IsStreaming && !string.IsNullOrEmpty(StreamContent))
+    {
+        <div class="content-block text-block">
+            <MarkdownContent Content="@StreamContent" />
+            <span class="streaming-cursor">|</span>
+        </div>
+    }
+    else if (_blocks.Count > 0)
+    {
+        @foreach (var block in _blocks)
+        {
+            <div class="content-block @GetBlockClass(block.Type)">
+                @switch (block)
+                {
+                    case MarkdownBlock markdown:
+                        <MarkdownContent Content="@markdown.Content" />
+                        break;
+
+                    case DataTableBlock table:
+                        <DataTableContent
+                            Headers="@table.Headers"
+                            Rows="@table.Rows"
+                            Currency="@table.Currency"
+                            Title="@table.Title"
+                            Exportable="@table.Exportable"
+                            ToolName="@table.ToolName" />
+                        break;
+
+                    case ChartBlock chart:
+                        <ChartContent
+                            ChartType="@chart.ChartType"
+                            Labels="@chart.Labels"
+                            Datasets="@chart.Datasets"
+                            Options="@chart.Options"
+                            Title="@chart.Title" />
+                        break;
+
+                    case ChartTableComboBlock combo:
+                        <ChartTableCombo
+                            Chart="@combo.Chart"
+                            Table="@combo.Table"
+                            Title="@combo.Title" />
+                        break;
+
+                    case CodeBlock codeBlock:
+                        <CodeBlockContent Code="@codeBlock.Code" Language="@codeBlock.Language" />
+                        break;
+                }
+            </div>
+        }
+    }
+    else if (!string.IsNullOrEmpty(Message?.Content))
+    {
+        <div class="content-block text-block">
+            <MarkdownContent Content="@Message.Content" />
+        </div>
+    }
+
+    @if (ShowCopyButton && !string.IsNullOrEmpty(RawContent) && !IsStreaming)
+    {
+        <MudIconButton Icon="@Icons.Material.Outlined.ContentCopy"
+                       Size="Size.Small"
+                       OnClick="CopyToClipboard"
+                       Title="Copy to clipboard"
+                       Class="copy-button" />
+    }
+</div>
+
+@code {
+    [Parameter] public AIMessage? Message { get; set; }
+    [Parameter] public List<ToolResultData>? ToolResults { get; set; }
+    [Parameter] public bool ShowCopyButton { get; set; } = true;
+    [Parameter] public bool IsStreaming { get; set; }
+    [Parameter] public string? StreamContent { get; set; }
+
+    private List<RichContentBlock> _blocks = [];
+    private string? RawContent => Message?.Content;
+
+    protected override void OnParametersSet()
+    {
+        if (!IsStreaming && Message != null)
+        {
+            _blocks = ContentParser.Parse(Message, ToolResults);
+        }
+    }
+
+    private static string GetBlockClass(ContentType type) => type switch
+    {
+        ContentType.Chart => "chart-block",
+        ContentType.DataTable => "table-block",
+        ContentType.CodeBlock => "code-block",
+        ContentType.ChartWithTable => "combo-block",
+        _ => "text-block"
+    };
+
+    private async Task CopyToClipboard()
+    {
+        if (!string.IsNullOrEmpty(RawContent))
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", RawContent);
+        }
+    }
+}

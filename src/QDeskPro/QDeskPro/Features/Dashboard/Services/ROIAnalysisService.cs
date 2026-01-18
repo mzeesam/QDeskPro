@@ -255,8 +255,13 @@ public class ROIAnalysisService
         var commissionRatio = totalRevenue > 0 ? (commission / totalRevenue) * 100 : 0;
         var collectionEfficiency = totalOrders > 0 ? ((double)paidOrders / totalOrders) * 100 : 0;
 
-        // Break-even analysis
-        var breakEven = CalculateBreakEven(quarry, totalQuantity, operatingDays, totalRevenue, totalExpenses);
+        // For break-even average price calculation, exclude hardcore products (they have different pricing structure)
+        var nonHardcoreSales = sales.Where(s => s.Product?.ProductName?.ToLower() != "hardcore").ToList();
+        var nonHardcoreQuantity = nonHardcoreSales.Sum(s => s.Quantity);
+        var nonHardcoreRevenue = nonHardcoreSales.Sum(s => s.GrossSaleAmount);
+
+        // Break-even analysis (uses non-hardcore prices for more accurate average)
+        var breakEven = CalculateBreakEven(quarry, totalQuantity, operatingDays, totalRevenue, totalExpenses, nonHardcoreRevenue, nonHardcoreQuantity);
 
         // Monthly trends
         var monthlyHistory = await GetMonthlyTrendsAsync(quarryId, operationsStart, analysisToDate);
@@ -325,11 +330,17 @@ public class ROIAnalysisService
     /// <summary>
     /// Calculate break-even analysis
     /// </summary>
-    private BreakEvenAnalysis CalculateBreakEven(Quarry quarry, double totalQuantity, int operatingDays, double totalRevenue, double totalExpenses)
+    /// <param name="nonHardcoreRevenue">Revenue excluding hardcore products for accurate average price</param>
+    /// <param name="nonHardcoreQuantity">Quantity excluding hardcore products for accurate average price</param>
+    private BreakEvenAnalysis CalculateBreakEven(Quarry quarry, double totalQuantity, int operatingDays, double totalRevenue, double totalExpenses, double nonHardcoreRevenue, double nonHardcoreQuantity)
     {
         var fixedCosts = quarry.EstimatedMonthlyFixedCosts ?? 0;
         var avgQuantityPerMonth = operatingDays > 0 ? (totalQuantity / operatingDays) * 30 : 0;
-        var avgPricePerUnit = totalQuantity > 0 ? totalRevenue / totalQuantity : 0;
+        // Use non-hardcore values for average price calculation (hardcore has different pricing structure)
+        // Falls back to all products if no non-hardcore sales exist
+        var avgPricePerUnit = nonHardcoreQuantity > 0
+            ? nonHardcoreRevenue / nonHardcoreQuantity
+            : (totalQuantity > 0 ? totalRevenue / totalQuantity : 0);
 
         // Variable cost per unit (expenses that scale with quantity)
         // This includes commission, loaders fee, land rate (all per-piece costs)

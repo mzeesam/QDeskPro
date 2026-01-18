@@ -3,11 +3,11 @@
  * Handles JWT token storage, refresh, and automatic authentication
  */
 window.AuthManager = {
-    // Storage keys
-    ACCESS_TOKEN_KEY: 'qdeskpro_access_token',
-    REFRESH_TOKEN_KEY: 'qdeskpro_refresh_token',
-    REFRESH_EXPIRY_KEY: 'qdeskpro_refresh_expiry',
-    USER_INFO_KEY: 'qdeskpro_user_info',
+    // Storage keys - MUST match keys used in Blazor Login.razor and CustomAuthenticationStateProvider
+    ACCESS_TOKEN_KEY: 'authToken',
+    REFRESH_TOKEN_KEY: 'refreshToken',
+    REFRESH_EXPIRY_KEY: 'refreshTokenExpiry',
+    USER_INFO_KEY: 'userInfo',
 
     // Refresh token 5 minutes before expiry
     REFRESH_BUFFER_MS: 5 * 60 * 1000,
@@ -97,6 +97,12 @@ window.AuthManager = {
         localStorage.removeItem(this.REFRESH_TOKEN_KEY);
         localStorage.removeItem(this.REFRESH_EXPIRY_KEY);
         localStorage.removeItem(this.USER_INFO_KEY);
+
+        // Also clear Blazor-specific user info keys
+        localStorage.removeItem('userEmail');
+        localStorage.removeItem('userFullName');
+        localStorage.removeItem('userRole');
+        localStorage.removeItem('userQuarryId');
 
         if (this.refreshTimer) {
             clearTimeout(this.refreshTimer);
@@ -190,7 +196,8 @@ window.AuthManager = {
         }
 
         try {
-            const response = await fetch('/api/auth/refresh', {
+            // Use jwt-auth endpoint to match Blazor's TokenRefreshService
+            const response = await fetch('/api/jwt-auth/refresh', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -215,12 +222,13 @@ window.AuthManager = {
             const data = await response.json();
 
             // Store new tokens (keep existing user info)
+            // Note: API uses 'Token' not 'accessToken'
             const userInfo = this.getUserInfo();
             this.storeTokens(
-                data.accessToken,
-                data.refreshToken,
-                data.refreshTokenExpiry,
-                data.expiresIn,
+                data.Token || data.token || data.accessToken,
+                data.RefreshToken || data.refreshToken,
+                data.RefreshTokenExpiry || data.refreshTokenExpiry,
+                data.ExpiresIn || data.expiresIn,
                 userInfo
             );
 
@@ -351,12 +359,23 @@ window.AuthManager = {
             const response = await this.fetchWithAuth('/api/auth/me');
 
             if (response.ok) {
-                const userInfo = await response.json();
-                localStorage.setItem(this.USER_INFO_KEY, JSON.stringify(userInfo));
-                console.log('[AuthManager] User state synced');
+                // Check if response is JSON before parsing
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const userInfo = await response.json();
+                    localStorage.setItem(this.USER_INFO_KEY, JSON.stringify(userInfo));
+                    console.log('[AuthManager] User state synced');
+                } else {
+                    console.warn('[AuthManager] Non-JSON response from /api/auth/me');
+                }
+            } else if (response.status === 401) {
+                // Token is invalid, clear tokens
+                console.log('[AuthManager] Token invalid, clearing auth state');
+                this.clearTokens();
             }
         } catch (error) {
-            console.error('[AuthManager] Error syncing user state:', error);
+            // Silently handle errors - user state sync is optional
+            console.log('[AuthManager] Could not sync user state (this is normal on initial load)');
         }
     }
 };

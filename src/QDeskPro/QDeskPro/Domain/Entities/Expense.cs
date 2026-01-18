@@ -34,4 +34,9 @@ public class Expense : BaseEntity
     /// Clerk who recorded the expense
     /// </summary>
     public string? ApplicationUserId { get; set; }
+
+    /// <summary>
+    /// Optional notes for this expense
+    /// </summary>
+    public string? Notes { get; set; }
 }

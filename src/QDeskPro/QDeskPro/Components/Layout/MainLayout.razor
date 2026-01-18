@@ -5,11 +5,14 @@
 @using QDeskPro.Components.Layout
 @using Microsoft.AspNetCore.Components.Authorization
 @using QDeskPro.Data
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.Timeline.Services
 @using Microsoft.EntityFrameworkCore
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
 @inject AuthenticationStateProvider AuthStateProvider
 @inject AppDbContext DbContext
+@inject TimelineService TimelineService
 
 @*
     MainLayout - Primary layout for authenticated pages
@@ -46,6 +49,23 @@
         </MudStack>
 
         <MudSpacer />
+
+        @* Notes Timeline Toggle - Manager/Admin only *@
+        <AuthorizeView Roles="Manager,Administrator">
+            <Authorized>
+                <MudTooltip Text="Notes Timeline" Placement="Placement.Bottom">
+                    <MudBadge Content="@_pendingNotesCount"
+                              Color="Color.Error"
+                              Overlap="true"
+                              Visible="@(_pendingNotesCount > 0)"
+                              Class="mr-2">
+                        <MudIconButton Icon="@Icons.Material.Filled.EventNote"
+                                      Color="Color.Inherit"
+                                      OnClick="ToggleNotesPanel" />
+                    </MudBadge>
+                </MudTooltip>
+            </Authorized>
+        </AuthorizeView>
 
         @* User Menu *@
         <AuthorizeView>
@@ -135,6 +155,155 @@
         </MudDrawer>
     }
 
+    @* Notes Timeline Panel (Right Side) - Manager/Admin only *@
+    @* Using custom CSS panel instead of MudDrawer for proper click handling *@
+    <AuthorizeView Roles="Manager,Administrator">
+        <Authorized>
+            @* Overlay backdrop - only visible when panel is open *@
+            @if (_notesPanelOpen)
+            {
+                <div class="qdp-notes-overlay-backdrop" @onclick="CloseNotesPanel"></div>
+            }
+
+            @* Sliding panel - transforms based on open state *@
+            <div class="qdp-notes-panel @(_notesPanelOpen ? "qdp-notes-panel--open" : "")">
+                <div class="pa-4 qdp-notes-panel-content">
+                    @* Header *@
+                    <div class="d-flex justify-space-between align-center mb-3">
+                        <MudText Typo="Typo.h6">
+                            <MudIcon Icon="@Icons.Material.Filled.Timeline" Class="mr-2" Style="vertical-align: middle;" />
+                            Notes Timeline
+                        </MudText>
+                        <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                      Size="Size.Small"
+                                      OnClick="@(() => _notesPanelOpen = false)" />
+                    </div>
+
+                    @* Quarry Filter *@
+                    @if (_userQuarries.Count > 1)
+                    {
+                        <MudSelect T="string"
+                                   Value="_selectedQuarryFilter"
+                                   ValueChanged="OnQuarryFilterChanged"
+                                   Label="Quarry"
+                                   Variant="Variant.Outlined"
+                                   Dense="true"
+                                   Class="mb-3"
+                                   AnchorOrigin="Origin.BottomCenter">
+                            <MudSelectItem Value="@("All")">All Quarries</MudSelectItem>
+                            @foreach (var quarry in _userQuarries)
+                            {
+                                <MudSelectItem Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+
+                    @* Type Filters *@
+                    <MudChipSet T="string" SelectionMode="SelectionMode.SingleSelection"
+                               SelectedValue="_notesFilter"
+                               SelectedValueChanged="OnTypeFilterChanged"
+                               Class="mb-3">
+                        <MudChip Value="@("All")" Color="Color.Default" Variant="Variant.Outlined" Default="true">All</MudChip>
+                        <MudChip Value="@("Note")" Color="Color.Primary" Variant="Variant.Outlined">Notes</MudChip>
+                        <MudChip Value="@("Reminder")" Color="Color.Warning" Variant="Variant.Outlined">Reminders</MudChip>
+                        <MudChip Value="@("Task")" Color="Color.Success" Variant="Variant.Outlined">Tasks</MudChip>
+                    </MudChipSet>
+
+                    @* Timeline Content *@
+                    @if (_loadingNotes)
+                    {
+                        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                    }
+                    else
+                    {
+                        <div class="qdp-timeline-scroll" style="max-height: calc(100vh - 250px); overflow-y: auto;">
+                            @foreach (var dateGroup in _timelineNotes.GroupBy(n => n.DateCreated.Date).OrderByDescending(g => g.Key))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2 mt-3">
+                                    @FormatDateHeader(dateGroup.Key)
+                                </MudText>
+
+                                @foreach (var note in dateGroup.OrderByDescending(n => n.DateCreated))
+                                {
+                                    <MudCard Elevation="0" Class="mb-2 qdp-timeline-card" Outlined="true">
+                                        <MudCardContent Class="pa-3">
+                                            <div class="d-flex align-start gap-2">
+                                                <MudIcon Icon="@GetNoteIcon(note.CommentType)"
+                                                        Color="@GetNoteColor(note.CommentType)"
+                                                        Size="Size.Small" />
+                                                <div class="flex-grow-1">
+                                                    @if (!string.IsNullOrEmpty(note.Title))
+                                                    {
+                                                        <MudText Typo="Typo.body2" Class="font-weight-medium">
+                                                            @note.Title
+                                                        </MudText>
+                                                    }
+                                                    <MudText Typo="Typo.body2">@note.Content</MudText>
+
+                                                    @if (!string.IsNullOrEmpty(note.LinkedEntityReference))
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small"
+                                                                Color="Color.Info"
+                                                                Variant="Variant.Text"
+                                                                Class="mt-1 pa-0">
+                                                            @note.LinkedEntityType: @note.LinkedEntityReference
+                                                        </MudChip>
+                                                    }
+
+                                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                                        @note.AuthorName &bull; @FormatTimeAgo(note.DateCreated)
+                                                        @if (_userQuarries.Count > 1 && _selectedQuarryFilter == "All")
+                                                        {
+                                                            var quarryName = _userQuarries.FirstOrDefault(q => q.Id == note.QuarryId)?.QuarryName;
+                                                            if (!string.IsNullOrEmpty(quarryName))
+                                                            {
+                                                                <text> &bull; @quarryName</text>
+                                                            }
+                                                        }
+                                                    </MudText>
+                                                </div>
+
+                                                @if (note.CommentType == "Task" && !note.IsCompleted)
+                                                {
+                                                    <MudIconButton Icon="@Icons.Material.Filled.CheckCircleOutline"
+                                                                  Size="Size.Small"
+                                                                  Color="Color.Success"
+                                                                  OnClick="@(() => MarkTaskCompleteAsync(note))" />
+                                                }
+                                            </div>
+                                        </MudCardContent>
+                                    </MudCard>
+                                }
+                            }
+
+                            @if (!_timelineNotes.Any())
+                            {
+                                <div class="text-center pa-4">
+                                    <MudIcon Icon="@Icons.Material.Filled.Notes"
+                                            Size="Size.Large"
+                                            Color="Color.Secondary" />
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                                        No notes yet. Add notes from reports and dashboards.
+                                    </MudText>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @* View Full Timeline Link *@
+                    <div class="mt-3 text-center">
+                        <MudButton Variant="Variant.Text"
+                                  Color="Color.Primary"
+                                  Href="/manager/timeline"
+                                  OnClick="@(() => _notesPanelOpen = false)">
+                            View Full Timeline
+                        </MudButton>
+                    </div>
+                </div>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+
     @* Main Content Area *@
     <MudMainContent Class="@GetMainContentClass()">
         <div class="qdp-content-wrapper">
@@ -165,6 +334,16 @@
     private string _quarryName = "Loading...";
     private string _quarrySubtitle = "";
     private bool _isAuthenticated = false;
+    private bool _isMobile = false;
+
+    // Notes Timeline Panel fields
+    private bool _notesPanelOpen = false;
+    private bool _loadingNotes = false;
+    private string _notesFilter = "All";
+    private string _selectedQuarryFilter = "All";
+    private int _pendingNotesCount = 0;
+    private List<QuarryComment> _timelineNotes = new();
+    private List<Quarry> _userQuarries = new();
 
     // Receive dark mode state from Routes.razor cascading value
     [CascadingParameter(Name = "IsDarkMode")]
@@ -180,6 +359,29 @@
         _isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
 
         await LoadQuarryInfoAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Check screen width and collapse drawer on mobile
+            try
+            {
+                var screenWidth = await JS.InvokeAsync<int>("eval", "window.innerWidth");
+                _isMobile = screenWidth < 960; // MudBlazor Md breakpoint
+
+                if (_isMobile)
+                {
+                    _drawerOpen = false;
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                // Fallback: keep drawer open if JS fails
+            }
+        }
     }
 
     private async Task LoadQuarryInfoAsync()
@@ -280,6 +482,194 @@
     {
         _drawerOpen = !_drawerOpen;
     }
+
+    // Notes Timeline Panel methods
+    private async Task ToggleNotesPanel()
+    {
+        _notesPanelOpen = !_notesPanelOpen;
+        if (_notesPanelOpen)
+        {
+            await LoadUserQuarries();
+            await LoadTimelineNotes();
+        }
+    }
+
+    private void CloseNotesPanel()
+    {
+        _notesPanelOpen = false;
+    }
+
+    private async Task LoadUserQuarries()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var userRole = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                _userQuarries = new List<Quarry>();
+                return;
+            }
+
+            if (userRole == "Administrator")
+            {
+                _userQuarries = await DbContext.Quarries
+                    .Where(q => q.IsActive)
+                    .OrderBy(q => q.QuarryName)
+                    .ToListAsync();
+            }
+            else if (userRole == "Manager")
+            {
+                _userQuarries = await DbContext.Quarries
+                    .Where(q => q.ManagerId == userId && q.IsActive)
+                    .OrderBy(q => q.QuarryName)
+                    .ToListAsync();
+            }
+            else
+            {
+                _userQuarries = new List<Quarry>();
+            }
+        }
+        catch
+        {
+            _userQuarries = new List<Quarry>();
+        }
+    }
+
+    private async Task OnTypeFilterChanged(string value)
+    {
+        _notesFilter = value ?? "All";
+        await LoadTimelineNotes();
+    }
+
+    private async Task OnQuarryFilterChanged(string value)
+    {
+        _selectedQuarryFilter = value ?? "All";
+        await LoadTimelineNotes();
+    }
+
+    private async Task LoadTimelineNotes()
+    {
+        _loadingNotes = true;
+        StateHasChanged();
+
+        try
+        {
+            List<string> quarryIds;
+
+            // Apply quarry filter
+            if (_selectedQuarryFilter == "All")
+            {
+                quarryIds = _userQuarries.Select(q => q.Id).ToList();
+            }
+            else
+            {
+                quarryIds = new List<string> { _selectedQuarryFilter };
+            }
+
+            if (quarryIds.Any())
+            {
+                // Apply type filter if not "All"
+                var commentType = _notesFilter == "All" ? null : _notesFilter;
+                _timelineNotes = await TimelineService.GetRecentNotesAsync(quarryIds, commentType, limit: 50);
+                _pendingNotesCount = await TimelineService.GetPendingTasksCountAsync(quarryIds);
+            }
+            else
+            {
+                _timelineNotes = new List<QuarryComment>();
+                _pendingNotesCount = 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            _timelineNotes = new List<QuarryComment>();
+            _pendingNotesCount = 0;
+        }
+        finally
+        {
+            _loadingNotes = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<List<string>> GetUserQuarryIds()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var userRole = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+
+        if (string.IsNullOrEmpty(userId)) return new List<string>();
+
+        if (userRole == "Administrator")
+        {
+            // Admin sees all quarries
+            return await DbContext.Quarries
+                .Where(q => q.IsActive)
+                .Select(q => q.Id)
+                .ToListAsync();
+        }
+        else if (userRole == "Manager")
+        {
+            // Manager sees quarries they own
+            return await DbContext.Quarries
+                .Where(q => q.ManagerId == userId && q.IsActive)
+                .Select(q => q.Id)
+                .ToListAsync();
+        }
+
+        return new List<string>();
+    }
+
+    private async Task MarkTaskCompleteAsync(QuarryComment note)
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+
+        var result = await TimelineService.MarkAsCompletedAsync(note.Id, userId);
+        if (result.Success)
+        {
+            await LoadTimelineNotes();
+        }
+    }
+
+    private string FormatDateHeader(DateTime date)
+    {
+        if (date.Date == DateTime.Today) return "Today";
+        if (date.Date == DateTime.Today.AddDays(-1)) return "Yesterday";
+        if (date.Date > DateTime.Today.AddDays(-7)) return date.ToString("dddd");
+        return date.ToString("MMMM d, yyyy");
+    }
+
+    private string FormatTimeAgo(DateTime dateTime)
+    {
+        var diff = DateTime.UtcNow - dateTime;
+
+        if (diff.TotalMinutes < 1) return "Just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        return dateTime.ToString("MMM d");
+    }
+
+    private string GetNoteIcon(string? commentType) => commentType switch
+    {
+        "Note" => Icons.Material.Filled.Note,
+        "Reminder" => Icons.Material.Filled.Alarm,
+        "Task" => Icons.Material.Filled.CheckCircle,
+        _ => Icons.Material.Filled.Notes
+    };
+
+    private Color GetNoteColor(string? commentType) => commentType switch
+    {
+        "Note" => Color.Primary,
+        "Reminder" => Color.Warning,
+        "Task" => Color.Success,
+        _ => Color.Default
+    };
 
     private string GetMainContentClass()
     {
@@ -520,6 +910,7 @@
         width: 100%;
         max-width: 100%;
         box-sizing: border-box;
+        overflow: visible !important; /* Allow picker popovers to extend beyond */
     }
 
     @@media (min-width: 960px) {
@@ -556,5 +947,98 @@
 
     #blazor-error-ui .mud-alert {
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Notes Timeline Overlay Backdrop */
+    .qdp-notes-overlay-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 1299;
+        cursor: pointer;
+    }
+
+    /* Notes Timeline Sliding Panel */
+    .qdp-notes-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: 400px;
+        height: 100vh;
+        background-color: #ffffff;
+        box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+        z-index: 1300;
+        transform: translateX(100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        overflow-y: auto;
+    }
+
+    /* Panel open state */
+    .qdp-notes-panel--open {
+        transform: translateX(0);
+    }
+
+    /* Responsive width for smaller screens */
+    @@media (max-width: 480px) {
+        .qdp-notes-panel {
+            width: 100%;
+        }
+    }
+
+    /* Solid panel content */
+    .qdp-notes-panel-content {
+        background-color: #ffffff;
+        min-height: 100%;
+        position: relative;
+    }
+
+    /* Dark mode support */
+    .mud-theme-dark .qdp-notes-panel,
+    .mud-theme-dark .qdp-notes-panel-content {
+        background-color: #1e1e1e;
+    }
+
+    .mud-theme-dark .qdp-notes-overlay-backdrop {
+        background-color: rgba(0, 0, 0, 0.7);
+    }
+
+    .qdp-timeline-card {
+        border-radius: 8px;
+        transition: box-shadow 0.2s ease, transform 0.2s ease;
+        background-color: #ffffff;
+    }
+
+    .mud-theme-dark .qdp-timeline-card {
+        background-color: #2d2d2d;
+    }
+
+    .qdp-timeline-card:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transform: translateY(-1px);
+    }
+
+    .qdp-timeline-scroll {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(0,0,0,0.2) transparent;
+    }
+
+    .qdp-timeline-scroll::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .qdp-timeline-scroll::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .qdp-timeline-scroll::-webkit-scrollbar-thumb {
+        background-color: rgba(0,0,0,0.2);
+        border-radius: 3px;
+    }
+
+    .qdp-timeline-scroll::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(0,0,0,0.3);
     }
 </style>

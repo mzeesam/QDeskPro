@@ -1,0 +1,15 @@
+@namespace QDeskPro.Features.AI.Components
+
+<MudExpansionPanels Elevation="0" Class="collapsible-section">
+    <MudExpansionPanel Text="@Title"
+                       IsInitiallyExpanded="@InitiallyExpanded"
+                       Class="collapsible-panel">
+        @ChildContent
+    </MudExpansionPanel>
+</MudExpansionPanels>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Show Details";
+    [Parameter] public bool InitiallyExpanded { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

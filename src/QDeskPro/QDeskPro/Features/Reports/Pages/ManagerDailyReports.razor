@@ -1,6 +1,7 @@
 @page "/manager/daily-reports"
 @using QDeskPro.Features.Reports.Services
 @using QDeskPro.Features.MasterData.Services
+@using QDeskPro.Features.Timeline.Components
 @using QDeskPro.Data
 @using QDeskPro.Domain.Entities
 @using Microsoft.AspNetCore.Authorization
@@ -135,6 +136,13 @@
                                     <MudText Typo="Typo.h5" Class="font-weight-bold" Style="color: white;">@_dailyReport.ReportTitle</MudText>
                                     <MudText Typo="Typo.body2" Style="color: rgba(255,255,255,0.8);">@_dailyReport.QuarryName - @_dailyReport.ClerkName</MudText>
                                 </div>
+                                <QuickNoteButton QuarryId="@_selectedQuarryId"
+                                                 EntityType="DailyReport"
+                                                 EntityReference="@($"{_dailyReportDate:dd MMM yyyy} Daily Report")"
+                                                 SuggestedTitle="Daily Report Note"
+                                                 TooltipText="Add note about this daily report"
+                                                 ButtonColor="Color.Inherit"
+                                                 Class="quick-note-light" />
                             </MudStack>
                         </MudPaper>
 
@@ -453,40 +461,120 @@
                     {
                         @* Compact Report Header *@
                         <div class="weekly-header mt-3">
-                            <MudText Typo="Typo.h6" Class="fw-bold">Weekly Performance</MudText>
-                            <MudText Typo="Typo.caption" Class="text-secondary">
-                                @_weeklyReports.First().QuarryName • @_weeklyReports.Last().FromDate.ToString("dd MMM") - @_weeklyReports.First().ToDate.ToString("dd MMM yyyy")
-                            </MudText>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                                <div>
+                                    <MudText Typo="Typo.h6" Class="fw-bold">Weekly Performance</MudText>
+                                    <MudText Typo="Typo.caption" Class="text-secondary">
+                                        @_weeklyReports.First().QuarryName • @_weeklyReports.Last().FromDate.ToString("dd MMM") - @_weeklyReports.First().ToDate.ToString("dd MMM yyyy")
+                                    </MudText>
+                                </div>
+                                <QuickNoteButton QuarryId="@_selectedQuarryId"
+                                                 EntityType="WeeklyReport"
+                                                 EntityReference="@($"Week of {_weeklyReports.Last().FromDate:dd MMM} - {_weeklyReports.First().ToDate:dd MMM yyyy}")"
+                                                 SuggestedTitle="Weekly Report Note"
+                                                 TooltipText="Add note about this report" />
+                            </MudStack>
                         </div>
 
-                        @* Quick Stats Cards - Mobile Optimized *@
-                        <div class="quick-stats-grid mt-3">
-                            <div class="stat-card stat-success">
-                                <div class="stat-icon"><MudIcon Icon="@Icons.Material.Rounded.TrendingUp" Size="Size.Small" /></div>
-                                <div class="stat-content">
-                                    <div class="stat-label">Avg Sales/Day</div>
-                                    <div class="stat-value">@((_weeklyReports.Sum(r => r.TotalSales) / 7).ToString("N0"))</div>
+                        @* Quick Stats Cards - Comprehensive Metrics *@
+                        var totalPieces = _weeklyReports.Sum(r => r.TotalQuantity);
+                        var totalSales = _weeklyReports.Sum(r => r.TotalSales);
+                        var totalExpenses = _weeklyReports.Sum(r => r.TotalExpenses);
+                        var totalOrders = _weeklyReports.Sum(r => r.Sales.Count);
+                        var totalFuel = _weeklyReports.Sum(r => r.FuelUsages.Sum(f => f.Used));
+                        @* Calculate average price excluding hardcore products (they have different pricing structure) *@
+                        var nonHardcoreSales = _weeklyReports.SelectMany(r => r.Sales.Where(s => s.Product?.ProductName?.ToLower() != "hardcore"));
+                        var nonHardcorePieces = nonHardcoreSales.Sum(s => s.Quantity);
+                        var nonHardcoreRevenue = nonHardcoreSales.Sum(s => s.GrossSaleAmount);
+                        var avgPricePerPiece = nonHardcorePieces > 0 ? nonHardcoreRevenue / nonHardcorePieces : (totalPieces > 0 ? totalSales / totalPieces : 0);
+                        var avgCostPerPiece = totalPieces > 0 ? totalExpenses / totalPieces : 0;
+                        var litersPerPiece = totalPieces > 0 ? totalFuel / totalPieces : 0;
+
+                        @* Compact Stats Row - All metrics in one beautiful row *@
+                        <div class="stats-row">
+                            @* Total Sales *@
+                            <div class="mini-stat mini-stat-sales">
+                                <div class="mini-stat-icon">
+                                    <MudIcon Icon="@Icons.Material.Rounded.TrendingUp" Size="Size.Small" />
+                                </div>
+                                <div class="mini-stat-body">
+                                    <span class="mini-stat-value">@totalSales.ToString("N0")</span>
+                                    <span class="mini-stat-label">Sales</span>
+                                    <span class="mini-stat-sub">@((totalSales / 7).ToString("N0"))/day</span>
                                 </div>
                             </div>
-                            <div class="stat-card stat-primary">
-                                <div class="stat-icon"><MudIcon Icon="@Icons.Material.Rounded.AccountBalance" Size="Size.Small" /></div>
-                                <div class="stat-content">
-                                    <div class="stat-label">Avg Banked/Day</div>
-                                    <div class="stat-value">@((_weeklyReports.Sum(r => r.Banked) / 7).ToString("N0"))</div>
+
+                            @* Orders *@
+                            <div class="mini-stat mini-stat-orders">
+                                <div class="mini-stat-icon">
+                                    <MudIcon Icon="@Icons.Material.Rounded.Receipt" Size="Size.Small" />
+                                </div>
+                                <div class="mini-stat-body">
+                                    <span class="mini-stat-value">@totalOrders</span>
+                                    <span class="mini-stat-label">Orders</span>
+                                    <span class="mini-stat-sub">@((totalOrders / 7.0).ToString("N1"))/day</span>
                                 </div>
                             </div>
-                            <div class="stat-card stat-default">
-                                <div class="stat-icon"><MudIcon Icon="@Icons.Material.Rounded.Inventory2" Size="Size.Small" /></div>
-                                <div class="stat-content">
-                                    <div class="stat-label">Total Pieces</div>
-                                    <div class="stat-value">@_weeklyReports.Sum(r => r.TotalQuantity).ToString("N0")</div>
+
+                            @* Pieces *@
+                            <div class="mini-stat mini-stat-pieces">
+                                <div class="mini-stat-icon">
+                                    <MudIcon Icon="@Icons.Material.Rounded.Inventory2" Size="Size.Small" />
+                                </div>
+                                <div class="mini-stat-body">
+                                    <span class="mini-stat-value">@totalPieces.ToString("N0")</span>
+                                    <span class="mini-stat-label">Pieces</span>
+                                    <span class="mini-stat-sub">@((totalPieces / 7.0).ToString("N0"))/day</span>
                                 </div>
                             </div>
-                            <div class="stat-card @(_weeklyReports.Sum(r => r.Earnings) > 0 ? "stat-success" : "stat-error")">
-                                <div class="stat-icon"><MudIcon Icon="@Icons.Material.Rounded.Percent" Size="Size.Small" /></div>
-                                <div class="stat-content">
-                                    <div class="stat-label">Profit Margin</div>
-                                    <div class="stat-value">@((_weeklyReports.Sum(r => r.TotalSales) > 0 ? (_weeklyReports.Sum(r => r.Earnings) / _weeklyReports.Sum(r => r.TotalSales) * 100) : 0).ToString("N1"))%</div>
+
+                            @* Unit Economics (Price & Cost combined) *@
+                            <div class="mini-stat mini-stat-economics">
+                                <div class="mini-stat-icon">
+                                    <MudIcon Icon="@Icons.Material.Rounded.PriceCheck" Size="Size.Small" />
+                                </div>
+                                <div class="mini-stat-body">
+                                    <span class="mini-stat-value">@avgPricePerPiece.ToString("N0")</span>
+                                    <span class="mini-stat-label">Price/pc</span>
+                                    <span class="mini-stat-sub cost-sub">Cost: @avgCostPerPiece.ToString("N0")</span>
+                                </div>
+                            </div>
+
+                            @* Profit Margin *@
+                            <div class="mini-stat @(_weeklyReports.Sum(r => r.Earnings) > 0 ? "mini-stat-profit-positive" : "mini-stat-profit-negative")">
+                                <div class="mini-stat-icon">
+                                    <MudIcon Icon="@Icons.Material.Rounded.Percent" Size="Size.Small" />
+                                </div>
+                                <div class="mini-stat-body">
+                                    <span class="mini-stat-value">@((totalSales > 0 ? (_weeklyReports.Sum(r => r.Earnings) / totalSales * 100) : 0).ToString("N1"))%</span>
+                                    <span class="mini-stat-label">Margin</span>
+                                </div>
+                            </div>
+
+                            @* Fuel (combined with liters/piece) *@
+                            @if (totalFuel > 0)
+                            {
+                                <div class="mini-stat mini-stat-fuel">
+                                    <div class="mini-stat-icon">
+                                        <MudIcon Icon="@Icons.Material.Rounded.LocalGasStation" Size="Size.Small" />
+                                    </div>
+                                    <div class="mini-stat-body">
+                                        <span class="mini-stat-value">@totalFuel.ToString("N0")L</span>
+                                        <span class="mini-stat-label">Fuel</span>
+                                        <span class="mini-stat-sub">@litersPerPiece.ToString("N2") L/pc</span>
+                                    </div>
+                                </div>
+                            }
+
+                            @* Banked *@
+                            <div class="mini-stat mini-stat-banked">
+                                <div class="mini-stat-icon">
+                                    <MudIcon Icon="@Icons.Material.Rounded.AccountBalance" Size="Size.Small" />
+                                </div>
+                                <div class="mini-stat-body">
+                                    <span class="mini-stat-value">@_weeklyReports.Sum(r => r.Banked).ToString("N0")</span>
+                                    <span class="mini-stat-label">Banked</span>
+                                    <span class="mini-stat-sub">@((_weeklyReports.Sum(r => r.Banked) / 7).ToString("N0"))/day</span>
                                 </div>
                             </div>
                         </div>
@@ -513,24 +601,23 @@
                                         @foreach (var metric in GetWeeklyMetrics())
                                         {
                                             <tr class="metric-row">
-                                                <td class="metric-label sticky-col">@metric.Label</td>
+                                                <td class="metric-label sticky-col">
+                                                    @metric.Label
+                                                    @if (!string.IsNullOrEmpty(metric.Formula))
+                                                    {
+                                                        <div class="metric-formula">@metric.Formula</div>
+                                                    }
+                                                </td>
                                                 @foreach (var value in metric.Values)
                                                 {
                                                     <td class="metric-value" style="@metric.CellStyle">
-                                                        @if (metric.IsMonetary)
-                                                        {
-                                                            <span style="@metric.ValueStyle">@value.ToString("N0")</span>
-                                                        }
-                                                        else
-                                                        {
-                                                            <span style="@metric.ValueStyle">@value.ToString("N0")</span>
-                                                        }
+                                                        <span style="@metric.ValueStyle">@value.ToString("N0")</span>
                                                     </td>
                                                 }
                                                 <td class="metric-total" style="@metric.TotalCellStyle">
-                                                    @if (metric.IsMonetary)
+                                                    @if (metric.HideTotal)
                                                     {
-                                                        <strong style="@metric.TotalStyle">@metric.Total.ToString("N0")</strong>
+                                                        <span class="total-hidden">—</span>
                                                     }
                                                     else
                                                     {
@@ -642,84 +729,135 @@
         margin-bottom: 16px;
     }
 
-    /* Quick Stats Grid - Mobile First */
-    .quick-stats-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 12px;
+    /* Compact Stats Row - Single Row Layout */
+    .stats-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
         margin-bottom: 16px;
+        padding: 12px;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border-radius: 16px;
+        border: 1px solid rgba(0, 0, 0, 0.04);
     }
 
-    /* Stat Cards */
-    .stat-card {
+    /* Mini Stat Card - Compact Design */
+    .mini-stat {
         display: flex;
         align-items: center;
-        gap: 12px;
-        padding: 16px;
+        gap: 8px;
+        padding: 10px 14px;
         border-radius: 12px;
         background: white;
-        border: 1px solid rgba(0, 0, 0, 0.08);
+        border: 1px solid rgba(0, 0, 0, 0.06);
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-        transition: all 0.2s ease;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        flex: 1;
+        min-width: 110px;
+        max-width: 160px;
     }
 
-    .stat-card:hover {
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    .mini-stat:hover {
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
         transform: translateY(-2px);
     }
 
-    .stat-icon {
+    .mini-stat-icon {
         flex-shrink: 0;
-        width: 40px;
-        height: 40px;
+        width: 32px;
+        height: 32px;
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 10px;
+        border-radius: 8px;
     }
 
-    .stat-success .stat-icon {
-        background: rgba(76, 175, 80, 0.12);
-        color: #2E7D32;
-    }
-
-    .stat-primary .stat-icon {
-        background: rgba(25, 118, 210, 0.12);
-        color: #1565C0;
-    }
-
-    .stat-default .stat-icon {
-        background: rgba(66, 66, 66, 0.12);
-        color: #424242;
-    }
-
-    .stat-error .stat-icon {
-        background: rgba(244, 67, 54, 0.12);
-        color: #C62828;
-    }
-
-    .stat-content {
-        flex: 1;
+    .mini-stat-body {
+        display: flex;
+        flex-direction: column;
         min-width: 0;
+        line-height: 1.2;
     }
 
-    .stat-label {
-        font-size: 0.75rem;
-        color: #757575;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 4px;
-    }
-
-    .stat-value {
-        font-size: 1.25rem;
+    .mini-stat-value {
+        font-size: 0.95rem;
         font-weight: 700;
-        color: #212121;
+        color: #1e293b;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
+
+    .mini-stat-label {
+        font-size: 0.625rem;
+        color: #64748b;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    .mini-stat-sub {
+        font-size: 0.6rem;
+        color: #94a3b8;
+        font-weight: 500;
+        margin-top: 1px;
+    }
+
+    .cost-sub {
+        color: #f59e0b;
+        font-weight: 600;
+    }
+
+    /* Mini Stat Color Variants */
+    .mini-stat-sales .mini-stat-icon {
+        background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+        color: #16a34a;
+    }
+    .mini-stat-sales { border-left: 3px solid #22c55e; }
+
+    .mini-stat-orders .mini-stat-icon {
+        background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+        color: #2563eb;
+    }
+    .mini-stat-orders { border-left: 3px solid #3b82f6; }
+
+    .mini-stat-pieces .mini-stat-icon {
+        background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+        color: #4f46e5;
+    }
+    .mini-stat-pieces { border-left: 3px solid #6366f1; }
+
+    .mini-stat-economics .mini-stat-icon {
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        color: #d97706;
+    }
+    .mini-stat-economics { border-left: 3px solid #f59e0b; }
+
+    .mini-stat-profit-positive .mini-stat-icon {
+        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+        color: #059669;
+    }
+    .mini-stat-profit-positive { border-left: 3px solid #10b981; }
+    .mini-stat-profit-positive .mini-stat-value { color: #059669; }
+
+    .mini-stat-profit-negative .mini-stat-icon {
+        background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+        color: #dc2626;
+    }
+    .mini-stat-profit-negative { border-left: 3px solid #ef4444; }
+    .mini-stat-profit-negative .mini-stat-value { color: #dc2626; }
+
+    .mini-stat-fuel .mini-stat-icon {
+        background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%);
+        color: #c2410c;
+    }
+    .mini-stat-fuel { border-left: 3px solid #f97316; }
+
+    .mini-stat-banked .mini-stat-icon {
+        background: linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%);
+        color: #0d9488;
+    }
+    .mini-stat-banked { border-left: 3px solid #14b8a6; }
 
     /* Metrics Container */
     .metrics-container {
@@ -754,7 +892,7 @@
         width: 100%;
         min-width: 700px;
         border-collapse: collapse;
-        font-size: 0.875rem;
+        font-size: 0.8125rem;
     }
 
     .metrics-table thead {
@@ -762,7 +900,7 @@
     }
 
     .metrics-table th {
-        padding: 12px 10px;
+        padding: 10px 8px;
         text-align: center;
         font-weight: 600;
         color: #1565C0;
@@ -772,7 +910,7 @@
 
     .metrics-table th.metric-label {
         text-align: left;
-        padding-left: 16px;
+        padding-left: 12px;
         color: #424242;
     }
 
@@ -843,7 +981,7 @@
     }
 
     .metric-row td {
-        padding: 12px 10px;
+        padding: 10px 8px;
         text-align: center;
     }
 
@@ -851,7 +989,15 @@
         font-weight: 500;
         color: #424242;
         text-align: left !important;
-        padding-left: 16px !important;
+        padding-left: 12px !important;
+    }
+
+    .metric-formula {
+        font-size: 0.625rem;
+        color: #9E9E9E;
+        font-weight: 400;
+        margin-top: 2px;
+        font-style: italic;
     }
 
     .metric-value {
@@ -862,6 +1008,11 @@
         background: rgba(25, 118, 210, 0.05);
         font-weight: 700;
         color: #1565C0;
+    }
+
+    .total-hidden {
+        color: #BDBDBD;
+        font-weight: 400;
     }
 
     /* Scroll Hint */
@@ -928,32 +1079,36 @@
     /* Tablet and Desktop Styles */
     @@media (min-width: 600px) {
         .stat-card {
-            padding: 20px;
+            padding: 16px;
         }
 
         .stat-icon {
-            width: 48px;
-            height: 48px;
+            width: 44px;
+            height: 44px;
         }
 
         .stat-label {
-            font-size: 0.8125rem;
+            font-size: 0.75rem;
         }
 
         .stat-value {
-            font-size: 1.5rem;
+            font-size: 1.375rem;
+        }
+
+        .stat-sub {
+            font-size: 0.7rem;
         }
 
         .metrics-table {
-            font-size: 0.9375rem;
+            font-size: 0.875rem;
         }
 
         .metrics-table th {
-            padding: 14px 12px;
+            padding: 12px 10px;
         }
 
         .metric-row td {
-            padding: 14px 12px;
+            padding: 12px 10px;
         }
 
         .scroll-hint {
@@ -974,6 +1129,15 @@
         .total-header {
             min-width: 110px;
         }
+    }
+
+    /* Quick Note Button on dark backgrounds */
+    .quick-note-light :deep(.mud-icon-button) {
+        color: rgba(255, 255, 255, 0.9);
+    }
+    .quick-note-light :deep(.mud-icon-button:hover) {
+        background-color: rgba(255, 255, 255, 0.15);
+        color: white;
     }
 </style>
 
@@ -1128,7 +1292,8 @@
             Values = _weeklyReports.Select(r => r.Earnings).ToList(),
             IsMonetary = true,
             ValueStyle = "font-weight: 500;",
-            TotalStyle = "color: #1976D2;"
+            TotalStyle = "color: #1976D2;",
+            Formula = "Sales − Expenses"
         });
 
         // Collections (if any)
@@ -1145,7 +1310,7 @@
             });
         }
 
-        // Unpaid Orders
+        // Unpaid Orders (only shown if any day has unpaid > 0)
         if (_weeklyReports.Any(r => r.Unpaid > 0))
         {
             metrics.Add(new WeeklyMetric
@@ -1159,14 +1324,29 @@
             });
         }
 
-        // Net Income
+        // Prepayments (only shown if any day has prepayments > 0)
+        if (_weeklyReports.Any(r => r.TotalPrepayments > 0))
+        {
+            metrics.Add(new WeeklyMetric
+            {
+                Label = "Prepayments",
+                Values = _weeklyReports.Select(r => r.TotalPrepayments).ToList(),
+                IsMonetary = true,
+                ValueStyle = "color: #4CAF50; font-weight: 500;",
+                TotalStyle = "color: #2E7D32;",
+                CellStyle = "background: rgba(76, 175, 80, 0.03);"
+            });
+        }
+
+        // Net Income = (Earnings + B/F + Collections + Prepayments) - Unpaid
         metrics.Add(new WeeklyMetric
         {
             Label = "Net Income",
             Values = _weeklyReports.Select(r => r.NetEarnings).ToList(),
             IsMonetary = true,
             ValueStyle = "font-weight: 500;",
-            TotalStyle = "color: #1976D2;"
+            TotalStyle = "color: #1976D2;",
+            Formula = "(Earnings + B/F + Collections + Prepayments) − Unpaid"
         });
 
         // Amount Banked
@@ -1181,14 +1361,16 @@
             TotalCellStyle = "border-top: 2px solid rgba(25, 118, 210, 0.3);"
         });
 
-        // Closing Balance
+        // Closing Balance = Net Income - Banked (Don't sum across days)
         metrics.Add(new WeeklyMetric
         {
             Label = "Closing Balance (C/H)",
             Values = _weeklyReports.Select(r => r.CashInHand).ToList(),
             IsMonetary = true,
             ValueStyle = "font-weight: 500;",
-            TotalStyle = "color: #424242;"
+            TotalStyle = "color: #424242;",
+            HideTotal = true,
+            Formula = "Net Income − Banked"
         });
 
         return metrics;
@@ -1356,6 +1538,8 @@
         public string TotalStyle { get; set; } = "";
         public string CellStyle { get; set; } = "";
         public string TotalCellStyle { get; set; } = "";
+        public bool HideTotal { get; set; } = false;
+        public string? Formula { get; set; } = null;
         public double Total => Values.Sum();
     }
 }

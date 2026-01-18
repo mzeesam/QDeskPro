@@ -22,13 +22,24 @@
 <PageTitle>User Management - QDeskPro</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
-    <MudStack Spacing="3">
-        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-            <MudText Typo="Typo.h4">User Management</MudText>
-        </MudStack>
+    <MudStack Spacing="4">
+        @* Page Header with Gradient *@
+        <div class="admin-header admin-header-users">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Large" Style="color: #7B1FA2;" />
+                    <div>
+                        <MudText Typo="Typo.h4" Class="admin-header-title">User Management</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Manage clerks and managers for your quarries
+                        </MudText>
+                    </div>
+                </MudStack>
+            </MudStack>
+        </div>
 
-        @* Quarry Selector *@
-        <MudPaper Class="pa-4">
+        @* Quarry Selector & Action Card *@
+        <div class="admin-filter-card">
             <MudGrid>
                 <MudItem xs="12" sm="8">
                     <MudSelect T="string"
@@ -79,7 +90,7 @@
                     }
                 </MudItem>
             </MudGrid>
-        </MudPaper>
+        </div>
 
         @if (string.IsNullOrEmpty(_selectedQuarryId))
         {
@@ -94,12 +105,14 @@
                 <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
             }
 
-            <MudTable Items="_users"
-                     Hover="true"
-                     Breakpoint="Breakpoint.Sm"
-                     Dense="true"
-                     Loading="_loading"
-                     LoadingProgressColor="Color.Primary">
+            @* Table Card *@
+            <div class="admin-table-card">
+                <MudTable Items="_users"
+                         Hover="true"
+                         Breakpoint="Breakpoint.Sm"
+                         Dense="true"
+                         Loading="_loading"
+                         LoadingProgressColor="Color.Primary">
                 <HeaderContent>
                     <MudTh>Full Name</MudTh>
                     <MudTh>Email</MudTh>
@@ -212,21 +225,124 @@
                     </MudTd>
                 </RowTemplate>
                 <NoRecordsContent>
-                    <MudText Align="Align.Center" Class="pa-4">
+                    <div class="admin-empty-state">
+                        <div class="admin-empty-state-icon">
+                            <MudIcon Icon="@Icons.Material.Filled.PersonOff" />
+                        </div>
                         @if (_userRole == "Manager" && _canEditCurrentQuarry)
                         {
-                            <span>No users assigned to this quarry. Click "New User" to add one.</span>
+                            <MudText Typo="Typo.h6" Color="Color.Default">No users assigned</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                                Click "New User" to add a user to this quarry
+                            </MudText>
                         }
                         else
                         {
-                            <span>No users assigned to this quarry.</span>
+                            <MudText Typo="Typo.h6" Color="Color.Default">No users assigned</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                                Users will appear here once assigned
+                            </MudText>
                         }
-                    </MudText>
+                    </div>
                 </NoRecordsContent>
             </MudTable>
+            </div>
         }
     </MudStack>
 </MudContainer>
+
+@* Unassigned Users Section - Only visible to managers *@
+@if (_userRole == "Manager" && _unassignedUsers.Any())
+{
+    <MudContainer MaxWidth="MaxWidth.Large" Class="mt-6">
+        <div class="unassigned-users-section">
+            <div class="unassigned-users-header">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Style="width: 100%;">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.PersonOff" Color="Color.Warning" Size="Size.Large" />
+                        <div>
+                            <MudText Typo="Typo.h6">Unassigned Users</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Users created by you that need quarry assignment
+                            </MudText>
+                        </div>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">
+                            @_unassignedUsers.Count
+                        </MudChip>
+                    </MudStack>
+                    <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                                   Size="Size.Small"
+                                   OnClick="LoadUnassignedUsersAsync"
+                                   Disabled="_loadingUnassigned"
+                                   Title="Refresh" />
+                </MudStack>
+            </div>
+
+                @if (_loadingUnassigned)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                }
+                else
+                {
+                    <MudTable Items="_unassignedUsers"
+                              Hover="true"
+                              Dense="true"
+                              Breakpoint="Breakpoint.Sm"
+                              RowClass="cursor-pointer"
+                              T="ApplicationUser"
+                              OnRowClick="@(args => ManageQuarryAssignments(args.Item))">
+                        <HeaderContent>
+                            <MudTh>Name</MudTh>
+                            <MudTh>Email</MudTh>
+                            <MudTh>Role</MudTh>
+                            <MudTh>Position</MudTh>
+                            <MudTh Style="width: 120px;">Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Name">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudAvatar Size="Size.Small" Color="Color.Warning">
+                                        @(context.FullName?.FirstOrDefault().ToString().ToUpper() ?? "?")
+                                    </MudAvatar>
+                                    <MudText>@context.FullName</MudText>
+                                </MudStack>
+                            </MudTd>
+                            <MudTd DataLabel="Email">@context.Email</MudTd>
+                            <MudTd DataLabel="Role">
+                                @{
+                                    var role = _unassignedUserRoles.GetValueOrDefault(context.Id, "Unknown");
+                                    var chipColor = role switch
+                                    {
+                                        "Manager" => Color.Primary,
+                                        "Clerk" => Color.Info,
+                                        _ => Color.Default
+                                    };
+                                }
+                                <MudChip T="string" Size="Size.Small" Color="@chipColor" Variant="Variant.Text">
+                                    @role
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Position">@(context.Position ?? "-")</MudTd>
+                            <MudTd DataLabel="Actions">
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           Size="Size.Small"
+                                           StartIcon="@Icons.Material.Filled.AssignmentInd"
+                                           OnClick="@(() => ManageQuarryAssignments(context))">
+                                    Assign
+                                </MudButton>
+                            </MudTd>
+                        </RowTemplate>
+                        <NoRecordsContent>
+                            <MudText Align="Align.Center" Class="pa-4">
+                                All users have been assigned to quarries.
+                            </MudText>
+                        </NoRecordsContent>
+                    </MudTable>
+                }
+        </div>
+    </MudContainer>
+}
 
 @* Add/Edit Dialog *@
 <MudDialog @bind-Visible="_dialogVisible" Options="_dialogOptions">
@@ -641,6 +757,11 @@
     private string? _transferFromQuarryId;
     private string? _transferToQuarryId;
 
+    // Unassigned users (created by manager but not assigned to any quarry)
+    private List<ApplicationUser> _unassignedUsers = new();
+    private Dictionary<string, string> _unassignedUserRoles = new();
+    private bool _loadingUnassigned = false;
+
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -653,6 +774,8 @@
         if (_userRole == "Manager" && !string.IsNullOrEmpty(_userId))
         {
             _isManagerOwner = await UserService.IsManagerOwnerAsync(_userId);
+            // Load unassigned users created by this manager
+            await LoadUnassignedUsersAsync();
         }
 
         await LoadQuarriesAsync();
@@ -681,6 +804,36 @@
         catch (Exception ex)
         {
             Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadUnassignedUsersAsync()
+    {
+        if (_userRole != "Manager" || string.IsNullOrEmpty(_userId)) return;
+
+        _loadingUnassigned = true;
+        StateHasChanged();
+
+        try
+        {
+            _unassignedUsers = await UserService.GetUnassignedUsersByManagerAsync(_userId);
+
+            // Get roles for unassigned users
+            _unassignedUserRoles.Clear();
+            foreach (var user in _unassignedUsers)
+            {
+                var role = await UserService.GetUserRoleAsync(user);
+                _unassignedUserRoles[user.Id] = role ?? "Unknown";
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading unassigned users: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingUnassigned = false;
+            StateHasChanged();
         }
     }
 
@@ -991,6 +1144,7 @@
             Snackbar.Add(result.Message, Severity.Success);
             _userAssignedQuarries = await UserService.GetUserQuarriesAsync(_selectedUser.Id);
             await LoadUsersAsync();
+            await LoadUnassignedUsersAsync(); // Refresh unassigned users list
         }
         else
         {
@@ -1025,6 +1179,7 @@
                 Snackbar.Add(result.Message, Severity.Success);
                 _userAssignedQuarries = await UserService.GetUserQuarriesAsync(_selectedUser.Id);
                 await LoadUsersAsync();
+                await LoadUnassignedUsersAsync(); // Refresh unassigned users list
             }
             else
             {
@@ -1057,6 +1212,7 @@
                 // Refresh data
                 _userAssignedQuarries = await UserService.GetUserQuarriesAsync(_selectedUser.Id);
                 await LoadUsersAsync();
+                await LoadUnassignedUsersAsync(); // Refresh unassigned users list
 
                 // Clear transfer state
                 _transferFromQuarryId = null;

@@ -15,6 +15,7 @@ namespace QDeskPro.Domain.Services.AI;
 public interface IChatCompletionService
 {
     Task<ChatResponse> SendMessageAsync(string conversationId, string message, string userId, string? quarryId = null);
+    IAsyncEnumerable<StreamingChatChunk> SendMessageStreamingAsync(string conversationId, string message, string userId, string? quarryId = null);
     Task<AIConversation> CreateConversationAsync(string userId, string? quarryId = null, string chatType = "general");
     Task<List<AIConversation>> GetUserConversationsAsync(string userId, int limit = 20);
     Task<AIConversation?> GetConversationAsync(string conversationId);
@@ -36,6 +37,17 @@ public class ToolExecution
     public string ToolName { get; set; } = string.Empty;
     public string Arguments { get; set; } = string.Empty;
     public string Result { get; set; } = string.Empty;
+}
+
+public class StreamingChatChunk
+{
+    public string? Content { get; set; }
+    public bool IsComplete { get; set; }
+    public bool IsToolCall { get; set; }
+    public string? ToolName { get; set; }
+    public string? Error { get; set; }
+    public int TokensUsed { get; set; }
+    public List<ToolExecution>? ToolExecutions { get; set; }
 }
 
 public class ChatCompletionService : IChatCompletionService
@@ -249,6 +261,211 @@ public class ChatCompletionService : IChatCompletionService
                 ToolExecutions = toolExecutions
             };
         }
+    }
+
+    public async IAsyncEnumerable<StreamingChatChunk> SendMessageStreamingAsync(
+        string conversationId,
+        string message,
+        string userId,
+        string? quarryId = null)
+    {
+        var toolExecutions = new List<ToolExecution>();
+        var totalTokens = 0;
+        string? initError = null;
+
+        using var scope = _scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        AIConversation? conversation = null;
+        try
+        {
+            conversation = await context.AIConversations
+                .Include(c => c.Messages.OrderBy(m => m.Timestamp))
+                .FirstOrDefaultAsync(c => c.Id == conversationId && c.IsActive);
+
+            if (conversation == null)
+            {
+                initError = "Conversation not found";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading conversation {ConversationId}", conversationId);
+            initError = ex.Message;
+        }
+
+        if (initError != null)
+        {
+            yield return new StreamingChatChunk { Error = initError, IsComplete = true };
+            yield break;
+        }
+
+        // Get the system prompt based on chat type
+        var systemPrompt = GetSystemPrompt(conversation.ChatType, quarryId);
+
+        // Build message history
+        var messages = new List<ChatMessage> { ChatMessage.CreateSystemMessage(systemPrompt) };
+
+        var history = conversation.Messages?.ToList() ?? [];
+        var recentHistory = history.TakeLast(_config.Chat.MaxMessagesInContext).ToList();
+
+        foreach (var msg in recentHistory)
+        {
+            messages.Add(msg.Role switch
+            {
+                "user" => ChatMessage.CreateUserMessage(msg.Content),
+                "assistant" => ChatMessage.CreateAssistantMessage(msg.Content),
+                _ => ChatMessage.CreateUserMessage(msg.Content)
+            });
+        }
+
+        messages.Add(ChatMessage.CreateUserMessage(message));
+
+        // Save user message
+        var userMessage = new AIMessage
+        {
+            Id = Guid.NewGuid().ToString(),
+            AIConversationId = conversationId,
+            Role = "user",
+            Content = message,
+            Timestamp = DateTime.UtcNow,
+            DateCreated = DateTime.UtcNow,
+            CreatedBy = userId,
+            IsActive = true
+        };
+        context.AIMessages.Add(userMessage);
+        await context.SaveChangesAsync();
+
+        // Create chat client with tools
+        var chatClient = _providerFactory.CreateChatClient();
+        var tools = SalesQueryTools.GetAllTools().ToList();
+
+        var options = new ChatCompletionOptions { MaxOutputTokenCount = _config.OpenAI.MaxTokens };
+        foreach (var tool in tools) options.Tools.Add(tool);
+
+        var iterations = 0;
+        var maxIterations = _config.Chat.MaxFunctionCallIterations;
+        var fullResponse = new System.Text.StringBuilder();
+
+        while (iterations < maxIterations)
+        {
+            iterations++;
+
+            // First, check if we need to handle tool calls (non-streaming for tool detection)
+            ChatCompletion? toolCheckCompletion = null;
+            string? apiError = null;
+            try
+            {
+                toolCheckCompletion = await chatClient.CompleteChatAsync(messages, options);
+            }
+            catch (ClientResultException ex)
+            {
+                _logger.LogError(ex, "OpenAI API error during streaming");
+                apiError = $"AI service error: {ex.Message}";
+            }
+
+            if (apiError != null)
+            {
+                yield return new StreamingChatChunk { Error = apiError, IsComplete = true };
+                yield break;
+            }
+
+            totalTokens += toolCheckCompletion!.Usage?.TotalTokenCount ?? 0;
+
+            if (toolCheckCompletion.FinishReason == ChatFinishReason.ToolCalls)
+            {
+                // Handle tool calls
+                messages.Add(ChatMessage.CreateAssistantMessage(toolCheckCompletion));
+
+                foreach (var toolCall in toolCheckCompletion.ToolCalls)
+                {
+                    yield return new StreamingChatChunk
+                    {
+                        IsToolCall = true,
+                        ToolName = toolCall.FunctionName
+                    };
+
+                    _logger.LogInformation("Executing tool: {ToolName}", toolCall.FunctionName);
+
+                    var arguments = JsonDocument.Parse(toolCall.FunctionArguments.ToString()).RootElement;
+                    var result = await _queryService.ExecuteToolAsync(toolCall.FunctionName, arguments, quarryId);
+
+                    toolExecutions.Add(new ToolExecution
+                    {
+                        ToolName = toolCall.FunctionName,
+                        Arguments = toolCall.FunctionArguments.ToString(),
+                        Result = result
+                    });
+
+                    messages.Add(ChatMessage.CreateToolMessage(toolCall.Id, result));
+                }
+
+                continue;
+            }
+
+            // Normal completion - stream the response
+            // For streaming, we need to make another call without tools to get streaming
+            var streamOptions = new ChatCompletionOptions { MaxOutputTokenCount = _config.OpenAI.MaxTokens };
+
+            await foreach (var update in chatClient.CompleteChatStreamingAsync(messages, streamOptions))
+            {
+                foreach (var contentPart in update.ContentUpdate)
+                {
+                    if (!string.IsNullOrEmpty(contentPart.Text))
+                    {
+                        fullResponse.Append(contentPart.Text);
+                        yield return new StreamingChatChunk { Content = contentPart.Text };
+                    }
+                }
+
+                if (update.Usage != null)
+                {
+                    totalTokens += update.Usage.TotalTokenCount;
+                }
+            }
+
+            // Save assistant response
+            var assistantMessage = new AIMessage
+            {
+                Id = Guid.NewGuid().ToString(),
+                AIConversationId = conversationId,
+                Role = "assistant",
+                Content = fullResponse.ToString(),
+                TokensUsed = totalTokens,
+                Timestamp = DateTime.UtcNow,
+                DateCreated = DateTime.UtcNow,
+                CreatedBy = "system",
+                IsActive = true
+            };
+            context.AIMessages.Add(assistantMessage);
+
+            // Update conversation
+            conversation.LastMessageAt = DateTime.UtcNow;
+            conversation.TotalTokensUsed += totalTokens;
+
+            if (conversation.Title == "New Conversation" && history.Count == 0)
+            {
+                conversation.Title = GenerateTitle(message);
+            }
+
+            await context.SaveChangesAsync();
+
+            yield return new StreamingChatChunk
+            {
+                IsComplete = true,
+                TokensUsed = totalTokens,
+                ToolExecutions = toolExecutions
+            };
+
+            yield break;
+        }
+
+        yield return new StreamingChatChunk
+        {
+            Error = "Maximum tool call iterations exceeded",
+            IsComplete = true,
+            TokensUsed = totalTokens
+        };
     }
 
     private async Task<ChatResponse> ExecuteChatWithToolsAsync(

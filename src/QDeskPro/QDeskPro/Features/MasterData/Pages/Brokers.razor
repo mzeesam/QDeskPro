@@ -17,13 +17,24 @@
 <PageTitle>Brokers - QDeskPro</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
-    <MudStack Spacing="3">
-        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-            <MudText Typo="Typo.h4">Broker Management</MudText>
-        </MudStack>
+    <MudStack Spacing="4">
+        @* Page Header with Gradient *@
+        <div class="admin-header admin-header-brokers">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.Handshake" Size="Size.Large" Style="color: #E91E63;" />
+                    <div>
+                        <MudText Typo="Typo.h4" Class="admin-header-title">Broker Management</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Manage sales brokers and commissions for each quarry
+                        </MudText>
+                    </div>
+                </MudStack>
+            </MudStack>
+        </div>
 
-        @* Quarry Selector *@
-        <MudPaper Class="pa-4">
+        @* Quarry Selector Card *@
+        <div class="admin-filter-card">
             <MudGrid>
                 <MudItem xs="12" sm="8">
                     <MudSelect T="string"
@@ -44,12 +55,13 @@
                               StartIcon="@Icons.Material.Filled.Add"
                               OnClick="OpenAddDialog"
                               FullWidth="true"
+                              Class="admin-action-btn"
                               Disabled="@(string.IsNullOrEmpty(_selectedQuarryId) || _userRole == "Administrator")">
                         New Broker
                     </MudButton>
                 </MudItem>
             </MudGrid>
-        </MudPaper>
+        </div>
 
         @if (string.IsNullOrEmpty(_selectedQuarryId))
         {
@@ -64,59 +76,91 @@
                 <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
             }
 
-            <MudTable Items="_brokers"
-                     Hover="true"
-                     Breakpoint="Breakpoint.Sm"
-                     Dense="true"
-                     Loading="_loading"
-                     LoadingProgressColor="Color.Primary">
-                <HeaderContent>
-                    <MudTh>Broker Name</MudTh>
-                    <MudTh>Phone Number</MudTh>
-                    <MudTh>Actions</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Name">
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                            <MudIcon Icon="@Icons.Material.Filled.Person" Color="Color.Primary" Size="Size.Small" />
-                            <MudText>@context.BrokerName</MudText>
-                        </MudStack>
-                    </MudTd>
-                    <MudTd DataLabel="Phone">
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                            <MudIcon Icon="@Icons.Material.Filled.Phone" Size="Size.Small" />
-                            <MudText>@context.Phone</MudText>
-                        </MudStack>
-                    </MudTd>
-                    <MudTd DataLabel="Actions">
-                        <MudStack Row="true" Spacing="1">
-                            @if (_userRole == "Manager" && _canEditCurrentQuarry)
-                            {
-                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
-                                              Size="Size.Small"
-                                              Color="Color.Primary"
-                                              OnClick="@(() => OpenEditDialog(context))" />
-                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                                              Size="Size.Small"
-                                              Color="Color.Error"
-                                              OnClick="@(() => DeleteBrokerAsync(context))" />
-                            }
-                        </MudStack>
-                    </MudTd>
-                </RowTemplate>
-                <NoRecordsContent>
-                    <MudText Align="Align.Center" Class="pa-4">
-                        @if (_userRole == "Manager" && _canEditCurrentQuarry)
-                        {
-                            <span>No brokers found for this quarry. Click "New Broker" to add one.</span>
-                        }
-                        else
-                        {
-                            <span>No brokers found for this quarry.</span>
-                        }
-                    </MudText>
-                </NoRecordsContent>
-            </MudTable>
+            @* Stats Summary Row *@
+            @if (_brokers.Any())
+            {
+                <div class="admin-mini-stats-row" style="grid-template-columns: repeat(2, 1fr);">
+                    <div class="admin-mini-stat admin-mini-stat-gradient-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Handshake" Size="Size.Large" Class="admin-mini-stat-icon" />
+                        <div class="admin-mini-stat-content">
+                            <span class="admin-mini-stat-value">@_brokers.Count</span>
+                            <span class="admin-mini-stat-label">Total Brokers</span>
+                        </div>
+                    </div>
+                    <div class="admin-mini-stat admin-mini-stat-gradient-4">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Class="admin-mini-stat-icon" />
+                        <div class="admin-mini-stat-content">
+                            <span class="admin-mini-stat-value">@_brokers.Count(b => b.IsActive)</span>
+                            <span class="admin-mini-stat-label">Active</span>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* Table Card *@
+            <div class="admin-table-card">
+                <MudTable Items="_brokers"
+                         Hover="true"
+                         Breakpoint="Breakpoint.Sm"
+                         Dense="true"
+                         Loading="_loading"
+                         LoadingProgressColor="Color.Primary">
+                    <HeaderContent>
+                        <MudTh>Broker Name</MudTh>
+                        <MudTh>Phone Number</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Name">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudIcon Icon="@Icons.Material.Filled.Person" Color="Color.Primary" Size="Size.Small" />
+                                <MudText>@context.BrokerName</MudText>
+                            </MudStack>
+                        </MudTd>
+                        <MudTd DataLabel="Phone">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudIcon Icon="@Icons.Material.Filled.Phone" Size="Size.Small" />
+                                <MudText>@context.Phone</MudText>
+                            </MudStack>
+                        </MudTd>
+                        <MudTd DataLabel="Actions">
+                            <MudStack Row="true" Spacing="1">
+                                @if (_userRole == "Manager" && _canEditCurrentQuarry)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                                  Size="Size.Small"
+                                                  Color="Color.Primary"
+                                                  Class="admin-action-icon"
+                                                  OnClick="@(() => OpenEditDialog(context))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                  Size="Size.Small"
+                                                  Color="Color.Error"
+                                                  Class="admin-action-icon"
+                                                  OnClick="@(() => DeleteBrokerAsync(context))" />
+                                }
+                            </MudStack>
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <div class="admin-empty-state">
+                            <div class="admin-empty-state-icon">
+                                <MudIcon Icon="@Icons.Material.Filled.Handshake" />
+                            </div>
+                            <MudText Typo="Typo.h6" Color="Color.Default">No brokers found</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                                @if (_userRole == "Manager" && _canEditCurrentQuarry)
+                                {
+                                    <span>Click "New Broker" to add one for this quarry</span>
+                                }
+                                else
+                                {
+                                    <span>No brokers have been registered for this quarry</span>
+                                }
+                            </MudText>
+                        </div>
+                    </NoRecordsContent>
+                </MudTable>
+            </div>
         }
     </MudStack>
 </MudContainer>

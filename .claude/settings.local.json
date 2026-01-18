@@ -14,7 +14,8 @@
       "Bash(dotnet ef migrations add:*)",
       "Bash(dotnet publish:*)",
       "Bash(findstr:*)",
-      "Bash(dotnet clean:*)"
+      "Bash(dotnet clean:*)",
+      "Bash(dotnet build:*)"
     ]
   }
 }

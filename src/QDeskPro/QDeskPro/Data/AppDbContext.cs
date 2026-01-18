@@ -36,6 +36,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<JournalEntryLine> JournalEntryLines { get; set; } = null!;
     public DbSet<AccountingPeriod> AccountingPeriods { get; set; } = null!;
 
+    // Timeline/Comments DbSet
+    public DbSet<QuarryComment> QuarryComments { get; set; } = null!;
+
+    // Report History DbSet
+    public DbSet<GeneratedReport> GeneratedReports { get; set; } = null!;
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -395,6 +401,79 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             entity.HasIndex(e => e.QId);
             entity.HasIndex(e => e.FiscalYear);
             entity.HasIndex(e => new { e.QId, e.FiscalYear, e.PeriodNumber }).IsUnique();
+        });
+
+        // ===== TIMELINE/COMMENTS ENTITIES =====
+
+        // QuarryComment configuration
+        builder.Entity<QuarryComment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Content).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.Title).HasMaxLength(200);
+            entity.Property(e => e.CommentType).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.Priority).HasMaxLength(20);
+            entity.Property(e => e.LinkedEntityType).HasMaxLength(50);
+            entity.Property(e => e.LinkedEntityId).HasMaxLength(50);
+            entity.Property(e => e.LinkedEntityReference).HasMaxLength(200);
+            entity.Property(e => e.ApplicationUserId).IsRequired();
+            entity.Property(e => e.AuthorName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.QuarryId).IsRequired();
+
+            // Quarry relationship
+            entity.HasOne(e => e.Quarry)
+                .WithMany()
+                .HasForeignKey(e => e.QuarryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Author relationship
+            entity.HasOne(e => e.Author)
+                .WithMany()
+                .HasForeignKey(e => e.ApplicationUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Indexes for efficient querying
+            entity.HasIndex(e => e.QuarryId);
+            entity.HasIndex(e => e.ApplicationUserId);
+            entity.HasIndex(e => e.DateCreated);
+            entity.HasIndex(e => new { e.LinkedEntityType, e.LinkedEntityId });
+            entity.HasIndex(e => new { e.CommentType, e.IsCompleted }); // For task filtering
+            entity.HasIndex(e => e.DueDate); // For reminder queries
+        });
+
+        // ===== REPORT HISTORY ENTITIES =====
+
+        // GeneratedReport configuration
+        builder.Entity<GeneratedReport>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ReportName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.ReportType).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.QuarryId).IsRequired();
+            entity.Property(e => e.ClerkId).HasMaxLength(50);
+            entity.Property(e => e.ClerkName).HasMaxLength(200);
+            entity.Property(e => e.GeneratedByUserId).IsRequired();
+            entity.Property(e => e.GeneratedByName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.ExportedFilePath).HasMaxLength(500);
+            entity.Property(e => e.ExportFormat).HasMaxLength(20);
+
+            // Quarry relationship
+            entity.HasOne(e => e.Quarry)
+                .WithMany()
+                .HasForeignKey(e => e.QuarryId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // GeneratedBy user relationship
+            entity.HasOne(e => e.GeneratedBy)
+                .WithMany()
+                .HasForeignKey(e => e.GeneratedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Indexes for efficient querying
+            entity.HasIndex(e => e.QuarryId);
+            entity.HasIndex(e => e.GeneratedByUserId);
+            entity.HasIndex(e => e.DateCreated);
+            entity.HasIndex(e => new { e.ReportType, e.FromDate, e.ToDate });
         });
     }
 

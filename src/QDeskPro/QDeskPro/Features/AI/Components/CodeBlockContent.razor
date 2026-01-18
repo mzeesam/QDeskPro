@@ -1,0 +1,36 @@
+@namespace QDeskPro.Features.AI.Components
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<div class="code-block-wrapper">
+    <div class="code-header d-flex justify-space-between align-center">
+        <MudText Typo="Typo.caption" Class="code-language">
+            @(Language ?? "text")
+        </MudText>
+        <MudIconButton Icon="@Icons.Material.Outlined.ContentCopy"
+                       Size="Size.Small"
+                       Color="Color.Default"
+                       OnClick="CopyCode"
+                       Title="Copy code"
+                       Class="copy-code-btn" />
+    </div>
+    <pre class="code-content"><code class="language-@(Language ?? "plaintext")">@Code</code></pre>
+</div>
+
+@code {
+    [Parameter] public string Code { get; set; } = string.Empty;
+    [Parameter] public string? Language { get; set; }
+
+    private async Task CopyCode()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Code);
+            Snackbar.Add("Code copied to clipboard", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy", Severity.Error);
+        }
+    }
+}

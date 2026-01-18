@@ -636,56 +636,435 @@ public class AccountingService : IAccountingService
         _logger.LogInformation("Regenerating journal entries for quarry {QuarryId} from {From} to {To}",
             quarryId, from, to);
 
-        // Get all sales in the date range
-        var sales = await _context.Sales
-            .Where(s => s.QId == quarryId && s.IsActive)
-            .Where(s => s.SaleDate >= from && s.SaleDate <= to)
-            .ToListAsync();
+        // Set extended timeout for long-running operation
+        _context.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
 
-        foreach (var sale in sales)
+        try
         {
-            await GenerateJournalEntryForSaleAsync(sale, quarryId);
-            if (sale.PaymentReceivedDate != null)
+            // Pre-load and cache all accounts for this quarry (avoids repeated queries)
+            var accountCache = await _context.LedgerAccounts
+                .Where(a => a.QId == quarryId && a.IsActive)
+                .ToDictionaryAsync(a => a.AccountCode, a => a);
+
+            // Pre-load quarry settings
+            var quarry = await _context.Quarries.FindAsync(quarryId);
+            if (quarry == null)
             {
-                await GenerateJournalEntryForCollectionAsync(sale, quarryId);
+                _logger.LogWarning("Quarry {QuarryId} not found", quarryId);
+                return;
+            }
+
+            // Get existing journal entry source IDs to avoid duplicates
+            var existingSourceIds = await _context.JournalEntries
+                .Where(j => j.QId == quarryId && j.IsActive)
+                .Where(j => j.EntryDate >= from && j.EntryDate <= to)
+                .Select(j => new { j.SourceEntityType, j.SourceEntityId })
+                .ToListAsync();
+
+            var existingSet = existingSourceIds
+                .Where(e => !string.IsNullOrEmpty(e.SourceEntityType) && !string.IsNullOrEmpty(e.SourceEntityId))
+                .Select(e => $"{e.SourceEntityType}:{e.SourceEntityId}")
+                .ToHashSet();
+
+            // Get reference counter
+            var year = DateTime.Today.Year;
+            var existingCount = await _context.JournalEntries
+                .CountAsync(j => j.QId == quarryId && j.FiscalYear == year);
+            var referenceCounter = existingCount;
+
+            // Batch size for processing
+            const int batchSize = 100;
+            var newEntries = new List<JournalEntry>();
+            var processedCount = 0;
+
+            // Process Sales
+            var sales = await _context.Sales
+                .Include(s => s.Product)
+                .Where(s => s.QId == quarryId && s.IsActive)
+                .Where(s => s.SaleDate >= from && s.SaleDate <= to)
+                .ToListAsync();
+
+            _logger.LogInformation("Processing {Count} sales for journal entries", sales.Count);
+
+            foreach (var sale in sales)
+            {
+                // Skip if already has journal entry
+                if (existingSet.Contains($"Sale:{sale.Id}"))
+                    continue;
+
+                var entry = CreateSaleJournalEntry(sale, quarry, accountCache, ref referenceCounter);
+                if (entry != null)
+                {
+                    newEntries.Add(entry);
+                    processedCount++;
+                }
+
+                // Check for collection entry
+                if (sale.PaymentReceivedDate != null && sale.PaymentStatus == "Paid" &&
+                    sale.PaymentReceivedDate != sale.SaleDate &&
+                    !existingSet.Contains($"Collection:{sale.Id}"))
+                {
+                    var collectionEntry = CreateCollectionJournalEntry(sale, accountCache, ref referenceCounter);
+                    if (collectionEntry != null)
+                    {
+                        newEntries.Add(collectionEntry);
+                        processedCount++;
+                    }
+                }
+
+                // Save in batches
+                if (newEntries.Count >= batchSize)
+                {
+                    _context.JournalEntries.AddRange(newEntries);
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Saved batch of {Count} journal entries", newEntries.Count);
+                    newEntries.Clear();
+                }
+            }
+
+            // Process Expenses
+            var expenses = await _context.Expenses
+                .Where(e => e.QId == quarryId && e.IsActive)
+                .Where(e => e.ExpenseDate >= from && e.ExpenseDate <= to)
+                .ToListAsync();
+
+            _logger.LogInformation("Processing {Count} expenses for journal entries", expenses.Count);
+
+            foreach (var expense in expenses)
+            {
+                if (existingSet.Contains($"Expense:{expense.Id}"))
+                    continue;
+
+                var entry = CreateExpenseJournalEntry(expense, accountCache, ref referenceCounter);
+                if (entry != null)
+                {
+                    newEntries.Add(entry);
+                    processedCount++;
+                }
+
+                if (newEntries.Count >= batchSize)
+                {
+                    _context.JournalEntries.AddRange(newEntries);
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Saved batch of {Count} journal entries", newEntries.Count);
+                    newEntries.Clear();
+                }
+            }
+
+            // Process Banking records
+            var bankings = await _context.Bankings
+                .Where(b => b.QId == quarryId && b.IsActive)
+                .Where(b => b.BankingDate >= from && b.BankingDate <= to)
+                .ToListAsync();
+
+            _logger.LogInformation("Processing {Count} banking records for journal entries", bankings.Count);
+
+            foreach (var banking in bankings)
+            {
+                if (existingSet.Contains($"Banking:{banking.Id}"))
+                    continue;
+
+                var entry = CreateBankingJournalEntry(banking, accountCache, ref referenceCounter);
+                if (entry != null)
+                {
+                    newEntries.Add(entry);
+                    processedCount++;
+                }
+
+                if (newEntries.Count >= batchSize)
+                {
+                    _context.JournalEntries.AddRange(newEntries);
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Saved batch of {Count} journal entries", newEntries.Count);
+                    newEntries.Clear();
+                }
+            }
+
+            // Process Prepayments
+            var prepayments = await _context.Prepayments
+                .Where(p => p.QId == quarryId && p.IsActive)
+                .Where(p => p.PrepaymentDate >= from && p.PrepaymentDate <= to)
+                .ToListAsync();
+
+            _logger.LogInformation("Processing {Count} prepayments for journal entries", prepayments.Count);
+
+            foreach (var prepayment in prepayments)
+            {
+                if (existingSet.Contains($"Prepayment:{prepayment.Id}"))
+                    continue;
+
+                var entry = CreatePrepaymentJournalEntry(prepayment, accountCache, ref referenceCounter);
+                if (entry != null)
+                {
+                    newEntries.Add(entry);
+                    processedCount++;
+                }
+
+                if (newEntries.Count >= batchSize)
+                {
+                    _context.JournalEntries.AddRange(newEntries);
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Saved batch of {Count} journal entries", newEntries.Count);
+                    newEntries.Clear();
+                }
+            }
+
+            // Save remaining entries
+            if (newEntries.Any())
+            {
+                _context.JournalEntries.AddRange(newEntries);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Saved final batch of {Count} journal entries", newEntries.Count);
+            }
+
+            _logger.LogInformation("Journal entry regeneration completed for quarry {QuarryId}. Created {Count} new entries.",
+                quarryId, processedCount);
+        }
+        finally
+        {
+            // Reset timeout to default
+            _context.Database.SetCommandTimeout(TimeSpan.FromSeconds(30));
+        }
+    }
+
+    #region Bulk Entry Creation Helpers (No DB calls)
+
+    private JournalEntry? CreateSaleJournalEntry(Sale sale, Quarry quarry, Dictionary<string, LedgerAccount> accountCache, ref int referenceCounter)
+    {
+        referenceCounter++;
+        var entry = new JournalEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            QId = quarry.Id,
+            EntryDate = sale.SaleDate ?? DateTime.Today,
+            Reference = $"SL-{DateTime.Today.Year}-{referenceCounter:D5}",
+            Description = $"Sale - {sale.VehicleRegistration} - {sale.Product?.ProductName ?? "Product"} x {sale.Quantity:N0}",
+            EntryType = "Auto",
+            SourceEntityType = "Sale",
+            SourceEntityId = sale.Id,
+            FiscalYear = (sale.SaleDate ?? DateTime.Today).Year,
+            FiscalPeriod = (sale.SaleDate ?? DateTime.Today).Month,
+            IsPosted = true,
+            PostedDate = DateTime.UtcNow,
+            DateCreated = DateTime.UtcNow,
+            IsActive = true,
+            Lines = new List<JournalEntryLine>()
+        };
+
+        var grossAmount = sale.Quantity * sale.PricePerUnit;
+
+        // DR Cash or AR
+        var cashOrArCode = sale.PaymentStatus == "Paid" ? "1000" : "1100";
+        if (accountCache.TryGetValue(cashOrArCode, out var cashOrArAccount))
+        {
+            entry.Lines.Add(CreateBulkJournalLine(entry.Id, cashOrArAccount.Id, grossAmount, 0,
+                sale.PaymentStatus == "Paid" ? $"Cash from sale {sale.VehicleRegistration}" : $"A/R from sale {sale.VehicleRegistration}"));
+        }
+
+        // CR Sales Revenue
+        var revenueCode = ChartOfAccountsSeed.GetProductSalesAccountCode(sale.Product?.ProductName ?? "");
+        if (accountCache.TryGetValue(revenueCode, out var revenueAccount))
+        {
+            entry.Lines.Add(CreateBulkJournalLine(entry.Id, revenueAccount.Id, 0, grossAmount, $"Revenue from {sale.Product?.ProductName ?? "Product"}"));
+        }
+
+        // Commission expense
+        if (sale.CommissionPerUnit > 0)
+        {
+            var commissionAmount = sale.Quantity * sale.CommissionPerUnit;
+            if (accountCache.TryGetValue("5000", out var commissionAccount) && accountCache.TryGetValue("2100", out var accruedAccount))
+            {
+                entry.Lines.Add(CreateBulkJournalLine(entry.Id, commissionAccount.Id, commissionAmount, 0, "Commission expense"));
+                entry.Lines.Add(CreateBulkJournalLine(entry.Id, accruedAccount.Id, 0, commissionAmount, "Commission payable"));
             }
         }
 
-        // Get all expenses
-        var expenses = await _context.Expenses
-            .Where(e => e.QId == quarryId && e.IsActive)
-            .Where(e => e.ExpenseDate >= from && e.ExpenseDate <= to)
-            .ToListAsync();
-
-        foreach (var expense in expenses)
+        // Loaders fee expense
+        if (quarry.LoadersFee > 0)
         {
-            await GenerateJournalEntryForExpenseAsync(expense, quarryId);
+            var loadersFeeAmount = sale.Quantity * quarry.LoadersFee.Value;
+            if (accountCache.TryGetValue("5100", out var loadersAccount) && accountCache.TryGetValue("2100", out var accruedAccount))
+            {
+                entry.Lines.Add(CreateBulkJournalLine(entry.Id, loadersAccount.Id, loadersFeeAmount, 0, "Loaders fee expense"));
+                entry.Lines.Add(CreateBulkJournalLine(entry.Id, accruedAccount.Id, 0, loadersFeeAmount, "Loaders fee payable"));
+            }
         }
 
-        // Get all banking records
-        var bankings = await _context.Bankings
-            .Where(b => b.QId == quarryId && b.IsActive)
-            .Where(b => b.BankingDate >= from && b.BankingDate <= to)
-            .ToListAsync();
-
-        foreach (var banking in bankings)
+        // Land rate fee expense
+        var isReject = sale.Product?.ProductName?.ToLower().Contains("reject") == true;
+        var landRateFee = isReject ? (quarry.RejectsFee ?? 0) : (quarry.LandRateFee ?? 0);
+        if (landRateFee > 0)
         {
-            await GenerateJournalEntryForBankingAsync(banking, quarryId);
+            var landRateFeeAmount = sale.Quantity * landRateFee;
+            if (accountCache.TryGetValue("5200", out var landRateAccount) && accountCache.TryGetValue("2100", out var accruedAccount))
+            {
+                entry.Lines.Add(CreateBulkJournalLine(entry.Id, landRateAccount.Id, landRateFeeAmount, 0, "Land rate fee expense"));
+                entry.Lines.Add(CreateBulkJournalLine(entry.Id, accruedAccount.Id, 0, landRateFeeAmount, "Land rate fee payable"));
+            }
         }
 
-        // Get all prepayments
-        var prepayments = await _context.Prepayments
-            .Where(p => p.QId == quarryId && p.IsActive)
-            .Where(p => p.PrepaymentDate >= from && p.PrepaymentDate <= to)
-            .ToListAsync();
+        entry.TotalDebit = entry.Lines.Sum(l => l.DebitAmount);
+        entry.TotalCredit = entry.Lines.Sum(l => l.CreditAmount);
 
-        foreach (var prepayment in prepayments)
-        {
-            await GenerateJournalEntryForPrepaymentAsync(prepayment, quarryId);
-        }
-
-        _logger.LogInformation("Journal entry regeneration completed for quarry {QuarryId}", quarryId);
+        return entry.Lines.Any() ? entry : null;
     }
+
+    private JournalEntry? CreateCollectionJournalEntry(Sale sale, Dictionary<string, LedgerAccount> accountCache, ref int referenceCounter)
+    {
+        var collectionAmount = sale.GrossSaleAmount;
+        if (collectionAmount <= 0 || sale.PaymentReceivedDate == null) return null;
+
+        referenceCounter++;
+        var entry = new JournalEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            QId = sale.QId,
+            EntryDate = sale.PaymentReceivedDate.Value,
+            Reference = $"CL-{DateTime.Today.Year}-{referenceCounter:D5}",
+            Description = $"Collection - {sale.VehicleRegistration}",
+            EntryType = "Auto",
+            SourceEntityType = "Collection",
+            SourceEntityId = sale.Id,
+            FiscalYear = sale.PaymentReceivedDate.Value.Year,
+            FiscalPeriod = sale.PaymentReceivedDate.Value.Month,
+            IsPosted = true,
+            PostedDate = DateTime.UtcNow,
+            DateCreated = DateTime.UtcNow,
+            IsActive = true,
+            Lines = new List<JournalEntryLine>()
+        };
+
+        if (accountCache.TryGetValue("1000", out var cashAccount) && accountCache.TryGetValue("1100", out var arAccount))
+        {
+            entry.Lines.Add(CreateBulkJournalLine(entry.Id, cashAccount.Id, collectionAmount, 0, $"Collection from {sale.VehicleRegistration}"));
+            entry.Lines.Add(CreateBulkJournalLine(entry.Id, arAccount.Id, 0, collectionAmount, "Reduce A/R"));
+        }
+
+        entry.TotalDebit = entry.Lines.Sum(l => l.DebitAmount);
+        entry.TotalCredit = entry.Lines.Sum(l => l.CreditAmount);
+
+        return entry.Lines.Any() ? entry : null;
+    }
+
+    private JournalEntry? CreateExpenseJournalEntry(Expense expense, Dictionary<string, LedgerAccount> accountCache, ref int referenceCounter)
+    {
+        referenceCounter++;
+        var entry = new JournalEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            QId = expense.QId,
+            EntryDate = expense.ExpenseDate ?? DateTime.Today,
+            Reference = $"EX-{DateTime.Today.Year}-{referenceCounter:D5}",
+            Description = $"Expense - {expense.Item}",
+            EntryType = "Auto",
+            SourceEntityType = "Expense",
+            SourceEntityId = expense.Id,
+            FiscalYear = (expense.ExpenseDate ?? DateTime.Today).Year,
+            FiscalPeriod = (expense.ExpenseDate ?? DateTime.Today).Month,
+            IsPosted = true,
+            PostedDate = DateTime.UtcNow,
+            DateCreated = DateTime.UtcNow,
+            IsActive = true,
+            Lines = new List<JournalEntryLine>()
+        };
+
+        var expenseCode = ChartOfAccountsSeed.GetExpenseAccountCode(expense.Category ?? "Miscellaneous");
+        if (accountCache.TryGetValue(expenseCode, out var expenseAccount) && accountCache.TryGetValue("1000", out var cashAccount))
+        {
+            entry.Lines.Add(CreateBulkJournalLine(entry.Id, expenseAccount.Id, expense.Amount, 0, expense.Item));
+            entry.Lines.Add(CreateBulkJournalLine(entry.Id, cashAccount.Id, 0, expense.Amount, $"Cash paid for {expense.Item}"));
+        }
+
+        entry.TotalDebit = entry.Lines.Sum(l => l.DebitAmount);
+        entry.TotalCredit = entry.Lines.Sum(l => l.CreditAmount);
+
+        return entry.Lines.Any() ? entry : null;
+    }
+
+    private JournalEntry? CreateBankingJournalEntry(BankingEntity banking, Dictionary<string, LedgerAccount> accountCache, ref int referenceCounter)
+    {
+        referenceCounter++;
+        var entry = new JournalEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            QId = banking.QId,
+            EntryDate = banking.BankingDate ?? DateTime.Today,
+            Reference = $"BK-{DateTime.Today.Year}-{referenceCounter:D5}",
+            Description = $"Bank Deposit - {banking.TxnReference ?? "Deposit"}",
+            EntryType = "Auto",
+            SourceEntityType = "Banking",
+            SourceEntityId = banking.Id,
+            FiscalYear = (banking.BankingDate ?? DateTime.Today).Year,
+            FiscalPeriod = (banking.BankingDate ?? DateTime.Today).Month,
+            IsPosted = true,
+            PostedDate = DateTime.UtcNow,
+            DateCreated = DateTime.UtcNow,
+            IsActive = true,
+            Lines = new List<JournalEntryLine>()
+        };
+
+        if (accountCache.TryGetValue("1010", out var bankAccount) && accountCache.TryGetValue("1000", out var cashAccount))
+        {
+            entry.Lines.Add(CreateBulkJournalLine(entry.Id, bankAccount.Id, banking.AmountBanked, 0, $"Deposit ref: {banking.TxnReference}"));
+            entry.Lines.Add(CreateBulkJournalLine(entry.Id, cashAccount.Id, 0, banking.AmountBanked, "Cash deposited"));
+        }
+
+        entry.TotalDebit = entry.Lines.Sum(l => l.DebitAmount);
+        entry.TotalCredit = entry.Lines.Sum(l => l.CreditAmount);
+
+        return entry.Lines.Any() ? entry : null;
+    }
+
+    private JournalEntry? CreatePrepaymentJournalEntry(Prepayment prepayment, Dictionary<string, LedgerAccount> accountCache, ref int referenceCounter)
+    {
+        referenceCounter++;
+        var entry = new JournalEntry
+        {
+            Id = Guid.NewGuid().ToString(),
+            QId = prepayment.QId,
+            EntryDate = prepayment.PrepaymentDate,
+            Reference = $"PP-{DateTime.Today.Year}-{referenceCounter:D5}",
+            Description = $"Prepayment - {prepayment.VehicleRegistration}",
+            EntryType = "Auto",
+            SourceEntityType = "Prepayment",
+            SourceEntityId = prepayment.Id,
+            FiscalYear = prepayment.PrepaymentDate.Year,
+            FiscalPeriod = prepayment.PrepaymentDate.Month,
+            IsPosted = true,
+            PostedDate = DateTime.UtcNow,
+            DateCreated = DateTime.UtcNow,
+            IsActive = true,
+            Lines = new List<JournalEntryLine>()
+        };
+
+        if (accountCache.TryGetValue("1000", out var cashAccount) && accountCache.TryGetValue("2000", out var customerDepositsAccount))
+        {
+            entry.Lines.Add(CreateBulkJournalLine(entry.Id, cashAccount.Id, prepayment.TotalAmountPaid, 0, $"Prepayment from {prepayment.VehicleRegistration}"));
+            entry.Lines.Add(CreateBulkJournalLine(entry.Id, customerDepositsAccount.Id, 0, prepayment.TotalAmountPaid, "Customer deposit liability"));
+        }
+
+        entry.TotalDebit = entry.Lines.Sum(l => l.DebitAmount);
+        entry.TotalCredit = entry.Lines.Sum(l => l.CreditAmount);
+
+        return entry.Lines.Any() ? entry : null;
+    }
+
+    private static JournalEntryLine CreateBulkJournalLine(string entryId, string accountId, double debit, double credit, string? memo)
+    {
+        return new JournalEntryLine
+        {
+            Id = Guid.NewGuid().ToString(),
+            JournalEntryId = entryId,
+            LedgerAccountId = accountId,
+            DebitAmount = debit,
+            CreditAmount = credit,
+            Memo = memo,
+            DateCreated = DateTime.UtcNow,
+            IsActive = true
+        };
+    }
+
+    #endregion
 
     #endregion
 

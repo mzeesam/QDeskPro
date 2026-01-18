@@ -39,4 +39,9 @@ public class Banking : BaseEntity
     /// Clerk who recorded the banking
     /// </summary>
     public string? ApplicationUserId { get; set; }
+
+    /// <summary>
+    /// Optional notes for this banking record
+    /// </summary>
+    public string? Notes { get; set; }
 }

@@ -289,6 +289,201 @@ body {
    Enhanced MudBlazor Component Overrides
    ========================================================================== */
 
+/* ==========================================================================
+   MudDatePicker Calendar Fix - Ensure full calendar visibility (6 rows)
+   ========================================================================== */
+
+/*
+ * Problem: MudBlazor date picker calendar clips the last row of days
+ * when months span 6 weeks (e.g., December 2025 needs 30, 31 on row 6).
+ *
+ * Root cause: MudBlazor's picker has fixed height constraints.
+ * Each day row is ~40px, so 6 rows need ~240px for days + headers.
+ *
+ * Solution: Override height constraints on all picker containers.
+ */
+
+/* ===== POPOVER CONTAINER - The outermost popup element ===== */
+.mud-popover.mud-popover-open {
+    overflow: visible !important;
+}
+
+.mud-popover .mud-popover-paper,
+.mud-popover-paper {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+}
+
+/* ===== PICKER ROOT - Main picker component ===== */
+.mud-picker,
+.mud-picker-inline,
+.mud-picker-static {
+    overflow: visible !important;
+    max-height: none !important;
+}
+
+/* ===== PICKER PAPER - The card/paper containing the picker ===== */
+.mud-picker .mud-paper,
+.mud-picker-paper,
+.mud-picker-popover .mud-paper {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+}
+
+/* ===== PICKER CONTAINER - Wrapper inside the picker ===== */
+.mud-picker-container {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+}
+
+/* ===== PICKER CONTENT - Holds toolbar + calendar ===== */
+.mud-picker-content {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+}
+
+/* ===== PICKER VIEW - The switchable view area ===== */
+.mud-picker-view {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: 330px !important; /* Header (24px) + week labels (32px) + 6 rows (40px × 6 = 240px) + padding */
+}
+
+/* ===== CALENDAR WRAPPER ===== */
+.mud-picker-calendar {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+}
+
+/* ===== CALENDAR CONTAINER - Holds header + content ===== */
+.mud-picker-calendar-container {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: 280px !important;
+}
+
+/* ===== CALENDAR CONTENT - The actual day grid area (CRITICAL) ===== */
+.mud-picker-calendar-content {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: 280px !important; /* Week labels (32px) + 6 rows (40px × 6 = 240px) + padding */
+}
+
+/* ===== CALENDAR TRANSITION - Animation container ===== */
+.mud-picker-calendar-transition {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: 272px !important; /* 6 rows × 40px + week header + padding */
+}
+
+/* ===== DAY GRID CONTAINER ===== */
+.mud-picker-calendar-day {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: 240px !important; /* 6 rows × 40px */
+}
+
+/* ===== INDIVIDUAL DAY ROWS - Ensure all 6 are visible ===== */
+.mud-picker-calendar-row {
+    display: flex !important;
+    visibility: visible !important;
+    overflow: visible !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    flex-shrink: 0 !important;
+}
+
+/* Target the 6th row specifically if it exists */
+.mud-picker-calendar-row:nth-child(6),
+.mud-picker-calendar-row:nth-child(7) {
+    display: flex !important;
+    visibility: visible !important;
+    height: 40px !important;
+    min-height: 40px !important;
+}
+
+/* ===== WEEK HEADER ROW ===== */
+.mud-picker-calendar-header,
+.mud-picker-calendar-header-row {
+    overflow: visible !important;
+    flex-shrink: 0 !important;
+}
+
+/* ===== MONTH/YEAR PICKER VIEWS ===== */
+.mud-picker-month-container,
+.mud-picker-year-container {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: 200px !important;
+}
+
+/* ===== PICKER TOOLBAR (Date display header) ===== */
+.mud-picker-toolbar {
+    overflow: visible !important;
+    flex-shrink: 0 !important;
+}
+
+/* ===== PICKER ACTIONS (OK/Cancel buttons if shown) ===== */
+.mud-picker-actions {
+    overflow: visible !important;
+    flex-shrink: 0 !important;
+}
+
+/* ===== HIGH SPECIFICITY OVERRIDES ===== */
+/* For when inline styles or component styles override our CSS */
+div.mud-picker-calendar-content,
+div.mud-picker-calendar-day,
+div.mud-picker-calendar-transition,
+div.mud-picker-view {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+}
+
+/* Ensure the popover can grow */
+.mud-popover-cascading-value,
+.mud-popover-provider {
+    overflow: visible !important;
+}
+
+/* ===== Z-INDEX for proper layering ===== */
+.mud-picker-popover {
+    z-index: 1400 !important;
+}
+
+/* Date picker inside dialogs - needs higher z-index */
+.datepicker-above-dialog.mud-popover {
+    z-index: 2000 !important;
+}
+
+.datepicker-above-dialog .mud-popover-paper {
+    z-index: 2000 !important;
+}
+
+/* ===== TIME PICKER FIXES ===== */
+.mud-picker-time-view,
+.mud-time-picker-minute,
+.mud-time-picker-hour {
+    overflow: visible !important;
+}
+
+/* ===== DATE RANGE PICKER FIXES ===== */
+.mud-daterangepicker .mud-picker-calendar-content,
+.mud-daterangepicker .mud-picker-calendar-day {
+    min-height: 280px !important;
+}
+
 /* Cards */
 .mud-paper {
     transition: all var(--transition-normal);
@@ -859,4 +1054,1197 @@ body.no-pull-refresh {
         --text-secondary: #B0B0B0;
         --border: #333333;
     } */
+}
+
+/* ==========================================================================
+   AI Chat Rich Content Styles
+   ========================================================================== */
+
+/* Markdown Content */
+.ai-markdown-content {
+    line-height: 1.6;
+}
+
+.ai-markdown-content p {
+    margin-bottom: 0.75rem;
+}
+
+.ai-markdown-content p:last-child {
+    margin-bottom: 0;
+}
+
+.ai-markdown-content ul,
+.ai-markdown-content ol {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+}
+
+.ai-markdown-content li {
+    margin-bottom: 0.25rem;
+}
+
+.ai-markdown-content a {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.ai-markdown-content a:hover {
+    color: var(--primary-dark);
+}
+
+.ai-markdown-content code {
+    background: rgba(0, 0, 0, 0.06);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.875em;
+}
+
+.ai-markdown-content pre {
+    background: #f5f7fa;
+    border-radius: 8px;
+    padding: 1rem;
+    overflow-x: auto;
+    margin: 0.75rem 0;
+}
+
+.ai-markdown-content pre code {
+    background: none;
+    padding: 0;
+}
+
+.ai-markdown-content blockquote {
+    border-left: 3px solid var(--primary);
+    padding-left: 1rem;
+    margin: 0.75rem 0;
+    color: var(--text-secondary);
+}
+
+.ai-markdown-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.75rem 0;
+}
+
+.ai-markdown-content th,
+.ai-markdown-content td {
+    border: 1px solid var(--border);
+    padding: 0.5rem;
+    text-align: left;
+}
+
+.ai-markdown-content th {
+    background: var(--background-alt);
+    font-weight: 600;
+}
+
+/* Chart Container in Chat */
+.ai-chat-chart-container {
+    position: relative;
+    background: var(--surface);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    padding: var(--spacing-sm);
+    margin: var(--spacing-sm) 0;
+}
+
+.ai-chat-chart-container canvas {
+    max-width: 100%;
+}
+
+.chart-export-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.ai-chat-chart-container:hover .chart-export-btn {
+    opacity: 1;
+}
+
+/* Data Table in Chat */
+.ai-chat-table-container {
+    background: var(--surface);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    margin: var(--spacing-sm) 0;
+}
+
+.ai-chat-table-container .mud-table {
+    background: transparent;
+}
+
+.ai-chat-table-container .mud-table-head th {
+    background: var(--background-alt);
+    font-weight: 600;
+    font-size: 0.8125rem;
+    padding: 0.625rem 0.75rem;
+}
+
+.ai-chat-table-container .mud-table-body td {
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+}
+
+.ai-chat-table-container .table-export-row {
+    background: var(--background-alt);
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+/* Table row for unpaid orders */
+.ai-chat-table-container tr.unpaid-row {
+    background-color: rgba(244, 67, 54, 0.06) !important;
+}
+
+.ai-chat-table-container tr.unpaid-row:hover {
+    background-color: rgba(244, 67, 54, 0.1) !important;
+}
+
+/* Totals row */
+.ai-chat-table-container tr.totals-row {
+    background-color: var(--background-alt);
+    font-weight: 600;
+}
+
+.ai-chat-table-container tr.totals-row td {
+    border-top: 2px solid var(--border);
+}
+
+/* Chart + Table Combo Layout */
+.combo-container {
+    background: var(--surface);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    margin: var(--spacing-sm) 0;
+}
+
+/* Code Block in Chat */
+.code-block-wrapper {
+    background: #1e1e1e;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    margin: var(--spacing-sm) 0;
+}
+
+.code-header {
+    background: #2d2d2d;
+    padding: 0.375rem 0.75rem;
+    border-bottom: 1px solid #3d3d3d;
+}
+
+.code-language {
+    color: #999;
+    text-transform: uppercase;
+    font-size: 0.6875rem;
+    letter-spacing: 0.05em;
+}
+
+.copy-code-btn {
+    color: #999 !important;
+}
+
+.copy-code-btn:hover {
+    color: #fff !important;
+}
+
+.code-content {
+    margin: 0;
+    padding: 1rem;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: #d4d4d4;
+}
+
+.code-content code {
+    background: transparent;
+    padding: 0;
+    font-family: inherit;
+}
+
+/* Collapsible Section in Chat */
+.collapsible-section {
+    margin: var(--spacing-sm) 0;
+}
+
+.collapsible-section .mud-expansion-panel {
+    background: var(--background-alt);
+    border-radius: var(--radius-sm) !important;
+}
+
+.collapsible-section .mud-expansion-panel-header {
+    padding: 0.5rem 0.75rem;
+    min-height: 40px;
+}
+
+.collapsible-section .mud-expansion-panel-text {
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.collapsible-section .mud-expansion-panel-content {
+    padding: 0.75rem;
+    padding-top: 0;
+}
+
+/* Streaming Cursor Animation */
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+.streaming-cursor {
+    display: inline-block;
+    margin-left: 2px;
+    animation: blink 1s infinite;
+    color: var(--primary);
+    font-weight: bold;
+}
+
+/* Tool Execution Indicator */
+.tool-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    background: rgba(25, 118, 210, 0.1);
+    border-radius: var(--radius-full);
+    font-size: 0.8125rem;
+    color: var(--primary);
+}
+
+/* Chart and Table responsive adjustments */
+@media (max-width: 959px) {
+    .combo-container .mud-grid-item {
+        padding: 8px !important;
+    }
+
+    .ai-chat-chart-container {
+        height: 200px !important;
+    }
+}
+
+/* Assistant message bubble width adjustment for rich content */
+.assistant-message .message-bubble {
+    max-width: 90%;
+}
+
+@media (min-width: 960px) {
+    .assistant-message .message-bubble {
+        max-width: 85%;
+    }
+}
+
+/* Summary cards in chat */
+.ai-summary-card {
+    background: linear-gradient(135deg, var(--background-alt) 0%, var(--surface) 100%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    margin: var(--spacing-sm) 0;
+}
+
+.ai-summary-card .summary-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.375rem 0;
+    border-bottom: 1px dashed var(--border-light);
+}
+
+.ai-summary-card .summary-item:last-child {
+    border-bottom: none;
+}
+
+.ai-summary-card .summary-item.total {
+    font-weight: 600;
+    border-top: 2px solid var(--border);
+    border-bottom: none;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+}
+
+/* ==========================================================================
+   Admin & Master Data Pages Styling
+   Modern styling for User Management, Quarries, Products, Layers, Brokers, Prices
+   ========================================================================== */
+
+/* Admin Page Header - Gradient style similar to ROI/Analytics pages */
+.admin-header {
+    background: linear-gradient(135deg, rgba(25, 118, 210, 0.08) 0%, rgba(33, 150, 243, 0.05) 100%);
+    padding: 24px;
+    border-radius: 16px;
+    border-left: 4px solid var(--primary);
+    margin-bottom: 8px;
+}
+
+.admin-header-title {
+    background: linear-gradient(135deg, #1565C0, #0288D1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    display: flex;
+    align-items: center;
+    font-weight: 700;
+}
+
+.admin-header-title .mud-icon-root {
+    -webkit-text-fill-color: #1565C0;
+}
+
+/* Admin Action Button */
+.admin-action-btn {
+    border-radius: 12px !important;
+    box-shadow: 0 4px 14px rgba(25, 118, 210, 0.35) !important;
+}
+
+/* Admin Filter/Action Card */
+.admin-filter-card {
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    border-radius: 16px;
+    padding: 20px;
+}
+
+/* Admin Stats Row */
+.admin-stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin: 16px 0;
+}
+
+@media (max-width: 1280px) {
+    .admin-stats-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .admin-stats-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Admin Stat Card - Clean modern card with colored top border */
+.admin-stat-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px;
+    border-radius: 16px;
+    background: white;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.admin-stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.admin-stat-card-primary { border-top: 4px solid var(--primary); }
+.admin-stat-card-success { border-top: 4px solid var(--accent-success); }
+.admin-stat-card-warning { border-top: 4px solid var(--accent-warning); }
+.admin-stat-card-error { border-top: 4px solid var(--accent-error); }
+.admin-stat-card-info { border-top: 4px solid var(--accent-info); }
+.admin-stat-card-purple { border-top: 4px solid var(--accent-purple); }
+
+/* Admin Stat Icon Container */
+.admin-stat-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.admin-stat-icon .mud-icon-root {
+    color: white !important;
+}
+
+.admin-stat-icon-primary { background: linear-gradient(135deg, #1976D2, #1565C0); }
+.admin-stat-icon-success { background: linear-gradient(135deg, #4CAF50, #388E3C); }
+.admin-stat-icon-warning { background: linear-gradient(135deg, #FF9800, #F57C00); }
+.admin-stat-icon-error { background: linear-gradient(135deg, #F44336, #D32F2F); }
+.admin-stat-icon-info { background: linear-gradient(135deg, #2196F3, #1976D2); }
+.admin-stat-icon-purple { background: linear-gradient(135deg, #9C27B0, #7B1FA2); }
+
+.admin-stat-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.admin-stat-label {
+    color: #64748B;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 0.7rem !important;
+    margin-bottom: 4px;
+}
+
+.admin-stat-value {
+    font-weight: 700 !important;
+    font-size: 1.5rem;
+    color: #1E293B;
+    line-height: 1.2;
+}
+
+.admin-stat-subtext {
+    color: #94A3B8;
+    font-size: 0.8rem;
+    margin-top: 4px;
+}
+
+/* Admin Mini Stat Cards - Gradient background style */
+.admin-mini-stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin: 16px 0;
+}
+
+@media (max-width: 960px) {
+    .admin-mini-stats-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .admin-mini-stats-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.admin-mini-stat {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 20px;
+    border-radius: 16px;
+    color: white;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.admin-mini-stat:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+}
+
+.admin-mini-stat-gradient-1 { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+.admin-mini-stat-gradient-2 { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+.admin-mini-stat-gradient-3 { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+.admin-mini-stat-gradient-4 { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
+.admin-mini-stat-gradient-5 { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+.admin-mini-stat-gradient-6 { background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%); }
+
+.admin-mini-stat-icon {
+    opacity: 0.9;
+}
+
+.admin-mini-stat-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-mini-stat-value {
+    font-weight: 700;
+    font-size: 1.4rem;
+    line-height: 1.2;
+}
+
+.admin-mini-stat-label {
+    font-size: 0.75rem;
+    opacity: 0.9;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* Admin Table Card - Enhanced table container */
+.admin-table-card {
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    border-radius: 16px;
+    overflow: hidden;
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.admin-table-card .mud-table {
+    background: transparent;
+}
+
+.admin-table-card .mud-table-head th {
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.5px;
+    color: #64748B;
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.admin-table-card .mud-table-body td {
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.admin-table-card .mud-table-row:hover {
+    background-color: rgba(25, 118, 210, 0.04) !important;
+}
+
+/* Admin Section Header */
+.admin-section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid rgba(0, 0, 0, 0.06);
+}
+
+.admin-section-title {
+    font-weight: 700;
+    color: #1E293B;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Admin Info Card */
+.admin-info-card {
+    background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+    border: 1px solid rgba(25, 118, 210, 0.2);
+    border-radius: 12px;
+    padding: 16px 20px;
+}
+
+/* Admin Warning Card */
+.admin-warning-card {
+    background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
+    border: 1px solid rgba(255, 152, 0, 0.2);
+    border-radius: 12px;
+    padding: 16px 20px;
+}
+
+/* Admin Success Card */
+.admin-success-card {
+    background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+    border: 1px solid rgba(76, 175, 80, 0.2);
+    border-radius: 12px;
+    padding: 16px 20px;
+}
+
+/* Empty State Card */
+.admin-empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border-radius: 16px;
+    border: 2px dashed rgba(0, 0, 0, 0.1);
+}
+
+.admin-empty-state-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(25, 118, 210, 0.1) 0%, rgba(33, 150, 243, 0.05) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+}
+
+.admin-empty-state-icon .mud-icon-root {
+    color: var(--primary);
+    font-size: 2.5rem;
+}
+
+/* Admin Dialog Styling */
+.admin-dialog {
+    border-radius: 20px !important;
+}
+
+.admin-dialog .mud-dialog-title {
+    background: linear-gradient(135deg, rgba(25, 118, 210, 0.08) 0%, rgba(33, 150, 243, 0.05) 100%);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    padding: 20px 24px;
+}
+
+.admin-dialog .mud-dialog-content {
+    padding: 24px;
+}
+
+.admin-dialog .mud-dialog-actions {
+    padding: 16px 24px;
+    background: #f8fafc;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* Unassigned Users Section */
+.unassigned-users-section {
+    background: linear-gradient(135deg, rgba(255, 152, 0, 0.06) 0%, rgba(255, 193, 7, 0.04) 100%);
+    border: 1px solid rgba(255, 152, 0, 0.2);
+    border-radius: 16px;
+    padding: 20px;
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.unassigned-users-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 152, 0, 0.2);
+    margin-bottom: 16px;
+}
+
+/* Quarry Owner Badge */
+.owner-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #1565C0;
+}
+
+/* Secondary Manager Badge */
+.secondary-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: linear-gradient(135deg, #EDE7F6 0%, #D1C4E9 100%);
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #5E35B1;
+}
+
+/* Admin Action Icon Buttons */
+.admin-action-icon {
+    transition: all 0.2s ease;
+}
+
+.admin-action-icon:hover {
+    transform: scale(1.15);
+}
+
+/* Fee Configuration Card */
+.fee-config-card {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.fee-config-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dashed rgba(0, 0, 0, 0.08);
+}
+
+.fee-config-row:last-child {
+    border-bottom: none;
+}
+
+.fee-config-label {
+    color: #64748B;
+    font-weight: 500;
+}
+
+.fee-config-value {
+    font-weight: 600;
+    color: #1E293B;
+}
+
+/* Master Data Page Header Variants */
+.admin-header-users {
+    background: linear-gradient(135deg, rgba(103, 58, 183, 0.08) 0%, rgba(156, 39, 176, 0.05) 100%);
+    border-left: 4px solid #7B1FA2;
+}
+
+.admin-header-users .admin-header-title {
+    background: linear-gradient(135deg, #7B1FA2, #512DA8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.admin-header-quarries {
+    background: linear-gradient(135deg, rgba(0, 137, 123, 0.08) 0%, rgba(0, 150, 136, 0.05) 100%);
+    border-left: 4px solid #00897B;
+}
+
+.admin-header-quarries .admin-header-title {
+    background: linear-gradient(135deg, #00897B, #00695C);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.admin-header-products {
+    background: linear-gradient(135deg, rgba(255, 87, 34, 0.08) 0%, rgba(255, 152, 0, 0.05) 100%);
+    border-left: 4px solid #FF5722;
+}
+
+.admin-header-products .admin-header-title {
+    background: linear-gradient(135deg, #FF5722, #F57C00);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.admin-header-layers {
+    background: linear-gradient(135deg, rgba(63, 81, 181, 0.08) 0%, rgba(103, 58, 183, 0.05) 100%);
+    border-left: 4px solid #3F51B5;
+}
+
+.admin-header-layers .admin-header-title {
+    background: linear-gradient(135deg, #3F51B5, #5E35B1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.admin-header-brokers {
+    background: linear-gradient(135deg, rgba(233, 30, 99, 0.08) 0%, rgba(244, 67, 54, 0.05) 100%);
+    border-left: 4px solid #E91E63;
+}
+
+.admin-header-brokers .admin-header-title {
+    background: linear-gradient(135deg, #E91E63, #D32F2F);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.admin-header-prices {
+    background: linear-gradient(135deg, rgba(76, 175, 80, 0.08) 0%, rgba(139, 195, 74, 0.05) 100%);
+    border-left: 4px solid #4CAF50;
+}
+
+.admin-header-prices .admin-header-title {
+    background: linear-gradient(135deg, #4CAF50, #689F38);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.admin-header-data {
+    background: linear-gradient(135deg, rgba(126, 87, 194, 0.08) 0%, rgba(103, 58, 183, 0.05) 100%);
+    border-left: 4px solid #7E57C2;
+}
+
+.admin-header-data .admin-header-title {
+    background: linear-gradient(135deg, #7E57C2, #5E35B1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.admin-header-production {
+    background: linear-gradient(135deg, rgba(103, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.05) 100%);
+    border-left: 4px solid #667eea;
+}
+
+.admin-header-production .admin-header-title {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.admin-header-expenses {
+    background: linear-gradient(135deg, rgba(255, 107, 107, 0.08) 0%, rgba(238, 90, 90, 0.05) 100%);
+    border-left: 4px solid #ff6b6b;
+}
+
+.admin-header-expenses .admin-header-title {
+    background: linear-gradient(135deg, #ff6b6b, #ee5a5a);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Dashboard Chart Cards */
+.dashboard-chart-card {
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    border-radius: 16px;
+    padding: 20px;
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.dashboard-chart-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+/* Dashboard Filter Card */
+.dashboard-filter-card {
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    border-radius: 16px;
+    padding: 20px;
+}
+
+/* Staggered animation delays for stats */
+.admin-stat-card:nth-child(1) { animation-delay: 0.1s; }
+.admin-stat-card:nth-child(2) { animation-delay: 0.2s; }
+.admin-stat-card:nth-child(3) { animation-delay: 0.3s; }
+.admin-stat-card:nth-child(4) { animation-delay: 0.4s; }
+
+.admin-mini-stat:nth-child(1) { animation-delay: 0.1s; }
+.admin-mini-stat:nth-child(2) { animation-delay: 0.15s; }
+.admin-mini-stat:nth-child(3) { animation-delay: 0.2s; }
+.admin-mini-stat:nth-child(4) { animation-delay: 0.25s; }
+
+/* Additional Mini Stat Gradient */
+.admin-mini-stat-gradient-6 {
+    background: linear-gradient(135deg, #5C6BC0 0%, #3949AB 100%);
+}
+
+/* Admin Warning Card */
+.admin-warning-card {
+    background: linear-gradient(135deg, rgba(255, 152, 0, 0.08) 0%, rgba(255, 193, 7, 0.05) 100%);
+    padding: 16px 20px;
+    border-radius: 12px;
+    border-left: 4px solid #FF9800;
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* ==========================================================================
+   Authorization Loading Screen
+   Modern animated loading screen for Blazor authorization state
+   ========================================================================== */
+
+.auth-loading-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+    background-size: 400% 400%;
+    animation: gradientShift 8s ease infinite;
+    z-index: 10000;
+    overflow: hidden;
+}
+
+.auth-loading-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background:
+        radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(255, 255, 255, 0.05) 0%, transparent 40%);
+    pointer-events: none;
+}
+
+.auth-loading-container::after {
+    content: '';
+    position: absolute;
+    width: 200%;
+    height: 200%;
+    top: -50%;
+    left: -50%;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cpath d='M50 0 L100 50 L50 100 L0 50 Z' fill='none' stroke='rgba(255,255,255,0.03)' stroke-width='1'/%3E%3C/svg%3E");
+    background-size: 60px 60px;
+    animation: patternMove 20s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes gradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+}
+
+@keyframes patternMove {
+    0% { transform: translate(0, 0) rotate(0deg); }
+    100% { transform: translate(60px, 60px) rotate(5deg); }
+}
+
+.auth-loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    position: relative;
+    z-index: 1;
+    animation: contentFadeIn 0.6s ease-out;
+}
+
+@keyframes contentFadeIn {
+    0% { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+.auth-logo-wrapper {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.auth-logo-pulse {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    animation: logoPulse 2s ease-in-out infinite;
+}
+
+.auth-logo-pulse::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: -10px;
+    right: -10px;
+    bottom: -10px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    animation: logoPulse 2s ease-in-out infinite 0.3s;
+}
+
+.auth-logo-pulse::after {
+    content: '';
+    position: absolute;
+    top: -20px;
+    left: -20px;
+    right: -20px;
+    bottom: -20px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    animation: logoPulse 2s ease-in-out infinite 0.6s;
+}
+
+@keyframes logoPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.1); opacity: 0.7; }
+}
+
+.auth-logo {
+    width: 80px;
+    height: 80px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow:
+        0 20px 60px rgba(0, 0, 0, 0.3),
+        0 0 0 1px rgba(255, 255, 255, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    animation: logoFloat 3s ease-in-out infinite;
+    position: relative;
+    z-index: 2;
+}
+
+.auth-logo svg {
+    width: 48px;
+    height: 48px;
+    animation: logoSpin 8s ease-in-out infinite;
+}
+
+@keyframes logoFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+}
+
+@keyframes logoSpin {
+    0%, 100% { transform: rotate(-5deg); }
+    50% { transform: rotate(5deg); }
+}
+
+.auth-loading-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.auth-brand {
+    font-size: 32px;
+    font-weight: 700;
+    color: white;
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.2);
+    letter-spacing: -0.5px;
+}
+
+.auth-status {
+    font-size: 16px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 3px;
+}
+
+.auth-loading-dots {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.auth-loading-dots span {
+    width: 10px;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 50%;
+    animation: dotBounce 1.4s ease-in-out infinite;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.auth-loading-dots span:nth-child(1) { animation-delay: 0s; }
+.auth-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.auth-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotBounce {
+    0%, 80%, 100% {
+        transform: scale(0.8) translateY(0);
+        opacity: 0.5;
+    }
+    40% {
+        transform: scale(1.2) translateY(-12px);
+        opacity: 1;
+    }
+}
+
+.auth-loading-bar {
+    width: 200px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 16px;
+}
+
+.auth-loading-bar-progress {
+    height: 100%;
+    width: 40%;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.9) 50%,
+        transparent 100%);
+    border-radius: 4px;
+    animation: barSlide 1.5s ease-in-out infinite;
+}
+
+@keyframes barSlide {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+}
+
+/* Dark mode support for auth loading */
+@media (prefers-color-scheme: dark) {
+    .auth-loading-container {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    }
+
+    .auth-logo {
+        background: rgba(30, 30, 46, 0.95);
+    }
+
+    .auth-logo svg path:first-child {
+        fill: url(#grad1);
+    }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    .auth-loading-container,
+    .auth-loading-container::after,
+    .auth-logo-pulse,
+    .auth-logo-pulse::before,
+    .auth-logo-pulse::after,
+    .auth-logo,
+    .auth-logo svg,
+    .auth-loading-dots span,
+    .auth-loading-bar-progress {
+        animation: none;
+    }
+
+    .auth-loading-container {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .auth-loading-dots span {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    .auth-loading-bar-progress {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.5);
+    }
+}
+
+/* Mobile responsiveness for auth loading */
+@media (max-width: 600px) {
+    .auth-logo-wrapper {
+        width: 100px;
+        height: 100px;
+    }
+
+    .auth-logo {
+        width: 64px;
+        height: 64px;
+        border-radius: 18px;
+    }
+
+    .auth-logo svg {
+        width: 38px;
+        height: 38px;
+    }
+
+    .auth-brand {
+        font-size: 26px;
+    }
+
+    .auth-status {
+        font-size: 14px;
+        letter-spacing: 2px;
+    }
+
+    .auth-loading-bar {
+        width: 160px;
+    }
 }

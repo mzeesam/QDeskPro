@@ -12,11 +12,13 @@ public class ExpenseService
 {
     private readonly AppDbContext _context;
     private readonly ReportService _reportService;
+    private readonly ILogger<ExpenseService> _logger;
 
-    public ExpenseService(AppDbContext context, ReportService reportService)
+    public ExpenseService(AppDbContext context, ReportService reportService, ILogger<ExpenseService> logger)
     {
         _context = context;
         _reportService = reportService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -46,10 +48,20 @@ public class ExpenseService
             _context.Expenses.Add(expense);
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Expense created: {ExpenseId} | Item: {Item} | Category: {Category} | Amount: {Amount:N0} | By: {UserId}",
+                expense.Id, expense.Item, expense.Category, expense.Amount, userId);
+
+            // Trigger cascade recalculation for backdated entries
+            if (expense.ExpenseDate!.Value.Date < DateTime.Today)
+            {
+                await RecalculateClosingBalancesFromDate(expense.ExpenseDate.Value, quarryId, userId);
+            }
+
             return (true, "New expense has been captured!", expense);
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to create expense: {Item}", expense.Item);
             return (false, $"Error saving expense: {ex.Message}", null);
         }
     }
@@ -101,6 +113,9 @@ public class ExpenseService
 
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Expense updated: {ExpenseId} | Item: {Item} | Category: {Category} | Amount: {Amount:N0} | By: {UserId}",
+                expense.Id, existing.Item, existing.Category, existing.Amount, userId);
+
             // Trigger cascade recalculation for all days from edited date to today
             await RecalculateClosingBalancesFromDate(existing.ExpenseDate.Value, existing.QId, userId);
 
@@ -108,6 +123,7 @@ public class ExpenseService
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to update expense {ExpenseId}", expense.Id);
             return (false, $"Error updating expense: {ex.Message}");
         }
     }
@@ -131,6 +147,9 @@ public class ExpenseService
 
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Expense deleted: {ExpenseId} | Item: {Item} | Amount: {Amount:N0} | By: {UserId}",
+                expenseId, expense.Item, expense.Amount, userId);
+
             // Trigger cascade recalculation for all days from deleted expense date to today
             await RecalculateClosingBalancesFromDate(expense.ExpenseDate!.Value, expense.QId, userId);
 
@@ -138,6 +157,7 @@ public class ExpenseService
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to delete expense {ExpenseId}", expenseId);
             return (false, $"Error deleting expense: {ex.Message}");
         }
     }

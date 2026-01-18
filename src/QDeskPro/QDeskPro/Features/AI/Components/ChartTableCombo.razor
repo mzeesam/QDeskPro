@@ -1,0 +1,38 @@
+@namespace QDeskPro.Features.AI.Components
+@using QDeskPro.Features.AI.Models
+
+<MudPaper Elevation="0" Class="combo-container pa-2">
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <MudText Typo="Typo.subtitle1" Class="mb-3 font-weight-medium">@Title</MudText>
+    }
+
+    <MudGrid Spacing="2">
+        @* Chart - takes 5 columns on medium+ screens, full width on mobile *@
+        <MudItem xs="12" md="5">
+            <ChartContent
+                ChartType="@Chart.ChartType"
+                Labels="@Chart.Labels"
+                Datasets="@Chart.Datasets"
+                Options="@Chart.Options"
+                Height="220px" />
+        </MudItem>
+
+        @* Table - takes 7 columns on medium+ screens, full width on mobile *@
+        <MudItem xs="12" md="7">
+            <DataTableContent
+                Headers="@Table.Headers"
+                Rows="@Table.Rows"
+                Currency="@Table.Currency"
+                Exportable="@Table.Exportable"
+                ToolName="@Table.ToolName"
+                MaxRows="10" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@code {
+    [Parameter] public required ChartBlock Chart { get; set; }
+    [Parameter] public required DataTableBlock Table { get; set; }
+    [Parameter] public string? Title { get; set; }
+}

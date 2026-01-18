@@ -1,0 +1,76 @@
+@using MudBlazor
+@using QDeskPro.Features.Timeline.Services
+@using QDeskPro.Domain.Entities
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthState
+
+<MudTooltip Text="@TooltipText" Placement="Placement.Top">
+    <MudIconButton Icon="@Icons.Material.Filled.NoteAdd"
+                   Color="@ButtonColor"
+                   Size="@ButtonSize"
+                   OnClick="OpenQuickNote"
+                   Class="@Class" />
+</MudTooltip>
+
+@code {
+    [Parameter] public string QuarryId { get; set; } = string.Empty;
+
+    // Context parameters - pre-populate the dialog
+    [Parameter] public string? EntityType { get; set; }          // Sale, Expense, Report, Analysis, etc.
+    [Parameter] public string? EntityId { get; set; }            // Optional ID of specific entity
+    [Parameter] public string? EntityReference { get; set; }     // Human-readable reference
+    [Parameter] public string? SuggestedTitle { get; set; }      // Pre-filled title
+    [Parameter] public string? SuggestedContent { get; set; }    // Pre-filled content
+    [Parameter] public string DefaultType { get; set; } = "Note"; // Note, Reminder, Task
+
+    // UI customization
+    [Parameter] public string TooltipText { get; set; } = "Add Note";
+    [Parameter] public string Class { get; set; } = string.Empty;
+    [Parameter] public Color ButtonColor { get; set; } = Color.Primary;
+    [Parameter] public Size ButtonSize { get; set; } = Size.Small;
+
+    private async Task OpenQuickNote()
+    {
+        var authState = await AuthState.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+        var userName = user.FindFirst("FullName")?.Value ?? user.Identity?.Name ?? "Unknown";
+
+        // Pre-create comment with context
+        var comment = new QuarryComment
+        {
+            CommentType = DefaultType,
+            Title = SuggestedTitle,
+            Content = SuggestedContent ?? "",
+            LinkedEntityType = EntityType,
+            LinkedEntityId = EntityId,
+            LinkedEntityReference = EntityReference,
+            Priority = "Medium"
+        };
+
+        var parameters = new DialogParameters<CommentDialog>
+        {
+            { x => x.QuarryId, QuarryId },
+            { x => x.UserId, userId },
+            { x => x.AuthorName, userName },
+            { x => x.Comment, comment },
+            { x => x.IsQuickNote, true }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+
+        var dialog = await DialogService.ShowAsync<CommentDialog>("Quick Note", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            Snackbar.Add("Note added successfully", Severity.Success);
+        }
+    }
+}

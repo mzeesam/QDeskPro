@@ -1,16 +1,24 @@
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 using QDeskPro.Domain.Services;
 
 namespace QDeskPro.Shared.Services;
 
+/// <summary>
+/// Custom authentication state provider that uses JWT tokens with proactive refresh.
+/// ROLLBACK: If issues arise, revert to the previous version without proactive refresh.
+/// </summary>
 public class CustomAuthenticationStateProvider : AuthenticationStateProvider
 {
     private readonly LocalStorageService _localStorage;
     private readonly JwtTokenService _jwtTokenService;
     private readonly ILogger<CustomAuthenticationStateProvider> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
+
+    // Proactive refresh: refresh 5 minutes before expiration
+    private const int PROACTIVE_REFRESH_MINUTES = 5;
 
     public CustomAuthenticationStateProvider(
         LocalStorageService localStorage,
@@ -36,7 +44,25 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
                 return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
             }
 
-            var principal = _jwtTokenService.ValidateToken(token);
+            // PROACTIVE REFRESH: Check if token is about to expire
+            var tokenExpiration = GetTokenExpiration(token);
+            if (tokenExpiration.HasValue)
+            {
+                var timeUntilExpiry = tokenExpiration.Value - DateTimeOffset.UtcNow;
+
+                // If token expires within PROACTIVE_REFRESH_MINUTES, refresh proactively
+                if (timeUntilExpiry.TotalMinutes <= PROACTIVE_REFRESH_MINUTES && timeUntilExpiry.TotalMinutes > 0)
+                {
+                    _logger.LogInformation("Token expiring in {Minutes:F1} minutes, proactively refreshing", timeUntilExpiry.TotalMinutes);
+                    var refreshed = await TryRefreshTokenAsync();
+                    if (refreshed)
+                    {
+                        token = await _localStorage.GetItemAsync("authToken");
+                    }
+                }
+            }
+
+            var principal = _jwtTokenService.ValidateToken(token!);
 
             if (principal == null)
             {
@@ -70,6 +96,43 @@ public class CustomAuthenticationStateProvider : AuthenticationStateProvider
         {
             _logger.LogError(ex, "Error getting authentication state");
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+        }
+    }
+
+    /// <summary>
+    /// Parse JWT token to get expiration time without full validation
+    /// </summary>
+    private DateTimeOffset? GetTokenExpiration(string token)
+    {
+        try
+        {
+            var tokenParts = token.Split('.');
+            if (tokenParts.Length != 3) return null;
+
+            var payload = tokenParts[1];
+            // Add padding if needed for base64 decoding
+            switch (payload.Length % 4)
+            {
+                case 2: payload += "=="; break;
+                case 3: payload += "="; break;
+            }
+
+            var payloadBytes = Convert.FromBase64String(payload);
+            var payloadJson = System.Text.Encoding.UTF8.GetString(payloadBytes);
+
+            using var doc = JsonDocument.Parse(payloadJson);
+            if (doc.RootElement.TryGetProperty("exp", out var expElement))
+            {
+                var expSeconds = expElement.GetInt64();
+                return DateTimeOffset.FromUnixTimeSeconds(expSeconds);
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Error parsing token expiration");
+            return null;
         }
     }
 

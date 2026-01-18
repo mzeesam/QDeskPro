@@ -1,0 +1,475 @@
+@page "/admin/system-health"
+@attribute [Authorize(Policy = "RequireAdministrator")]
+@using Microsoft.AspNetCore.Authorization
+@using QDeskPro.Features.Monitoring.Services
+@using QDeskPro.Features.Monitoring.Models
+@inject MonitoringHealthService HealthService
+@inject MetricsCollectorService MetricsService
+@inject ISnackbar Snackbar
+@implements IDisposable
+
+<PageTitle>System Health - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudStack Spacing="4">
+        @* Header *@
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <div>
+                <MudText Typo="Typo.h4" Class="font-weight-bold">System Health</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Last updated: @_lastUpdated.ToLocalTime().ToString("HH:mm:ss")
+                </MudText>
+            </div>
+            <MudStack Row="true" Spacing="2">
+                <MudChip T="string" Color="@GetOverallHealthColor()" Size="Size.Medium">
+                    <MudIcon Icon="@GetOverallHealthIcon()" Class="mr-1" Size="Size.Small" />
+                    @(_healthStatus?.OverallStatus ?? "Loading")
+                </MudChip>
+                <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Primary"
+                               OnClick="RefreshHealth" Disabled="_loading" />
+            </MudStack>
+        </MudStack>
+
+        @* Quick Summary Cards *@
+        <MudGrid Spacing="3">
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="0" Class="border rounded-lg">
+                    <MudCardContent>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Uptime</MudText>
+                                <MudText Typo="Typo.h5" Class="font-weight-bold">
+                                    @FormatUptime(_healthStatus?.Uptime)
+                                </MudText>
+                            </div>
+                            <MudAvatar Color="Color.Info" Size="Size.Medium" Variant="Variant.Outlined">
+                                <MudIcon Icon="@Icons.Material.Filled.Timer" />
+                            </MudAvatar>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="0" Class="border rounded-lg">
+                    <MudCardContent>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Memory Usage</MudText>
+                                <MudText Typo="Typo.h5" Class="font-weight-bold">
+                                    @(_healthStatus?.MemoryUsageMB.ToString("N0") ?? "0") MB
+                                </MudText>
+                            </div>
+                            <MudAvatar Color="@GetMemoryColor()" Size="Size.Medium" Variant="Variant.Outlined">
+                                <MudIcon Icon="@Icons.Material.Filled.Memory" />
+                            </MudAvatar>
+                        </MudStack>
+                        <MudProgressLinear Color="@GetMemoryColor()" Value="@GetMemoryPercent()"
+                                           Class="mt-2" Rounded="true" />
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="0" Class="border rounded-lg">
+                    <MudCardContent>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Disk Usage</MudText>
+                                <MudText Typo="Typo.h5" Class="font-weight-bold">
+                                    @(_healthStatus?.DiskUsagePercent.ToString("N1") ?? "0")%
+                                </MudText>
+                            </div>
+                            <MudAvatar Color="@GetDiskColor()" Size="Size.Medium" Variant="Variant.Outlined">
+                                <MudIcon Icon="@Icons.Material.Filled.Storage" />
+                            </MudAvatar>
+                        </MudStack>
+                        <MudProgressLinear Color="@GetDiskColor()" Value="@(_healthStatus?.DiskUsagePercent ?? 0)"
+                                           Class="mt-2" Rounded="true" />
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="0" Class="border rounded-lg">
+                    <MudCardContent>
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                            <div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Health Checks</MudText>
+                                <MudText Typo="Typo.h5" Class="font-weight-bold">
+                                    @(_healthStatus?.Checks.Count(c => c.Status == "Healthy") ?? 0)/@(_healthStatus?.Checks.Count ?? 0)
+                                </MudText>
+                            </div>
+                            <MudAvatar Color="@GetOverallHealthColor()" Size="Size.Medium" Variant="Variant.Outlined">
+                                <MudIcon Icon="@Icons.Material.Filled.FactCheck" />
+                            </MudAvatar>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        @* Health Checks Detail *@
+        <MudCard Elevation="0" Class="border rounded-lg">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Health Check Results</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (_loading)
+                {
+                    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+                }
+                else if (_healthStatus?.Checks != null && _healthStatus.Checks.Any())
+                {
+                    <MudGrid Spacing="3">
+                        @foreach (var check in _healthStatus.Checks)
+                        {
+                            <MudItem xs="12" md="6">
+                                <MudPaper Elevation="0" Class="@($"pa-4 rounded-lg border {GetCheckBorderClass(check.Status)}")">
+                                    <MudStack Spacing="2">
+                                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                                <MudIcon Icon="@GetHealthIcon(check.Status)"
+                                                         Color="@GetHealthColor(check.Status)" />
+                                                <MudText Typo="Typo.subtitle1" Class="font-weight-bold">
+                                                    @FormatCheckName(check.Name)
+                                                </MudText>
+                                            </MudStack>
+                                            <MudChip T="string" Color="@GetHealthColor(check.Status)" Size="Size.Small">
+                                                @check.Status
+                                            </MudChip>
+                                        </MudStack>
+
+                                        @if (!string.IsNullOrEmpty(check.Description))
+                                        {
+                                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                                @check.Description
+                                            </MudText>
+                                        }
+
+                                        <MudStack Row="true" Spacing="4">
+                                            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                                <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small" Color="Color.Secondary" />
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                    @check.Duration.TotalMilliseconds.ToString("N0") ms
+                                                </MudText>
+                                            </MudStack>
+                                            @if (check.Tags != null && check.Tags.Any())
+                                            {
+                                                <MudStack Row="true" Spacing="1">
+                                                    @foreach (var tag in check.Tags)
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@tag</MudChip>
+                                                    }
+                                                </MudStack>
+                                            }
+                                        </MudStack>
+
+                                        @if (check.Data != null && check.Data.Any())
+                                        {
+                                            <MudExpansionPanels Elevation="0">
+                                                <MudExpansionPanel Text="Details" Dense="true">
+                                                    <MudSimpleTable Dense="true">
+                                                        <tbody>
+                                                            @foreach (var data in check.Data)
+                                                            {
+                                                                <tr>
+                                                                    <td><MudText Typo="Typo.caption" Style="font-weight: 600;">@data.Key</MudText></td>
+                                                                    <td><MudText Typo="Typo.caption">@data.Value</MudText></td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </MudSimpleTable>
+                                                </MudExpansionPanel>
+                                            </MudExpansionPanels>
+                                        }
+
+                                        @if (!string.IsNullOrEmpty(check.Exception))
+                                        {
+                                            <MudAlert Severity="Severity.Error" Dense="true" NoIcon="true">
+                                                <MudText Typo="Typo.caption" Style="font-family: monospace;">
+                                                    @check.Exception
+                                                </MudText>
+                                            </MudAlert>
+                                        }
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">No health check results available</MudAlert>
+                }
+            </MudCardContent>
+        </MudCard>
+
+        @* Request Metrics *@
+        <MudCard Elevation="0" Class="border rounded-lg">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Request Metrics (Last Hour)</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (_requestMetrics != null)
+                {
+                    <MudGrid Spacing="3">
+                        <MudItem xs="6" sm="4" md="2">
+                            <MudPaper Elevation="0" Class="border rounded-lg pa-3 text-center">
+                                <MudText Typo="Typo.h4" Color="Color.Primary">@_requestMetrics.TotalRequests.ToString("N0")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Total Requests</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="6" sm="4" md="2">
+                            <MudPaper Elevation="0" Class="border rounded-lg pa-3 text-center">
+                                <MudText Typo="Typo.h4">@_requestMetrics.AvgResponseTimeMs.ToString("N0")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Avg Response (ms)</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="6" sm="4" md="2">
+                            <MudPaper Elevation="0" Class="border rounded-lg pa-3 text-center">
+                                <MudText Typo="Typo.h4" Color="Color.Error">@_requestMetrics.ErrorCount</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Errors</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="6" sm="4" md="2">
+                            <MudPaper Elevation="0" Class="border rounded-lg pa-3 text-center">
+                                <MudText Typo="Typo.h4" Color="@(_requestMetrics.ErrorRatePercent > 5 ? Color.Error : Color.Success)">
+                                    @_requestMetrics.ErrorRatePercent.ToString("N1")%
+                                </MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Error Rate</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="6" sm="4" md="2">
+                            <MudPaper Elevation="0" Class="border rounded-lg pa-3 text-center">
+                                <MudText Typo="Typo.h4">@_requestMetrics.MinResponseTimeMs.ToString("N0")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Min (ms)</MudText>
+                            </MudPaper>
+                        </MudItem>
+                        <MudItem xs="6" sm="4" md="2">
+                            <MudPaper Elevation="0" Class="border rounded-lg pa-3 text-center">
+                                <MudText Typo="Typo.h4">@_requestMetrics.MaxResponseTimeMs.ToString("N0")</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Max (ms)</MudText>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+
+                    @* Status Code Breakdown *@
+                    @if (_requestMetrics.ByStatusCode.Any())
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Response Status Codes</MudText>
+                        <MudStack Row="true" Spacing="2" Class="flex-wrap">
+                            @foreach (var status in _requestMetrics.ByStatusCode.OrderBy(x => x.Key))
+                            {
+                                <MudChip T="string" Color="@GetStatusCodeColor(status.Key)" Variant="Variant.Filled">
+                                    @status.Key: @status.Value
+                                </MudChip>
+                            }
+                        </MudStack>
+                    }
+
+                    @* Top Endpoints *@
+                    @if (_requestMetrics.ByEndpoint.Any())
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Top Endpoints by Request Count</MudText>
+                        <MudSimpleTable Dense="true" Hover="true" Bordered="true" Striped="true">
+                            <thead>
+                                <tr>
+                                    <th>Endpoint</th>
+                                    <th>Method</th>
+                                    <th style="text-align: right;">Requests</th>
+                                    <th style="text-align: right;">Avg (ms)</th>
+                                    <th style="text-align: right;">Max (ms)</th>
+                                    <th style="text-align: right;">Errors</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var endpoint in _requestMetrics.ByEndpoint.OrderByDescending(x => x.RequestCount).Take(10))
+                                {
+                                    <tr>
+                                        <td>
+                                            <MudText Typo="Typo.body2" Style="font-family: monospace; font-size: 12px;">
+                                                @endpoint.Endpoint
+                                            </MudText>
+                                        </td>
+                                        <td>
+                                            <MudChip T="string" Size="Size.Small" Color="@GetMethodColor(endpoint.Method)">
+                                                @endpoint.Method
+                                            </MudChip>
+                                        </td>
+                                        <td style="text-align: right;">@endpoint.RequestCount.ToString("N0")</td>
+                                        <td style="text-align: right;">@endpoint.AvgResponseTimeMs.ToString("N0")</td>
+                                        <td style="text-align: right;">@endpoint.MaxResponseTimeMs.ToString("N0")</td>
+                                        <td style="text-align: right;">
+                                            <MudText Color="@(endpoint.ErrorCount > 0 ? Color.Error : Color.Default)">
+                                                @endpoint.ErrorCount
+                                            </MudText>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info">No request metrics available</MudAlert>
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudStack>
+</MudContainer>
+
+@code {
+    private bool _loading = true;
+    private DateTime _lastUpdated = DateTime.UtcNow;
+    private Timer? _refreshTimer;
+    private HealthStatus? _healthStatus;
+    private RequestMetrics? _requestMetrics;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshHealth();
+
+        // Auto-refresh every 30 seconds
+        _refreshTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await RefreshHealth();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private async Task RefreshHealth()
+    {
+        _loading = true;
+        try
+        {
+            _healthStatus = await HealthService.GetDetailedHealthAsync();
+            _requestMetrics = MetricsService.GetMetrics();
+            _lastUpdated = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to refresh health status: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string FormatUptime(TimeSpan? uptime)
+    {
+        if (uptime == null) return "N/A";
+        var ts = uptime.Value;
+        if (ts.TotalDays >= 1)
+            return $"{(int)ts.TotalDays}d {ts.Hours}h {ts.Minutes}m";
+        if (ts.TotalHours >= 1)
+            return $"{ts.Hours}h {ts.Minutes}m {ts.Seconds}s";
+        return $"{ts.Minutes}m {ts.Seconds}s";
+    }
+
+    private string FormatCheckName(string name)
+    {
+        // Convert kebab-case or snake_case to Title Case
+        return string.Join(" ", name
+            .Replace("-", " ")
+            .Replace("_", " ")
+            .Split(' ')
+            .Select(s => char.ToUpper(s[0]) + s[1..]));
+    }
+
+    private Color GetOverallHealthColor() => _healthStatus?.OverallStatus?.ToLower() switch
+    {
+        "healthy" => Color.Success,
+        "degraded" => Color.Warning,
+        "unhealthy" => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetOverallHealthIcon() => _healthStatus?.OverallStatus?.ToLower() switch
+    {
+        "healthy" => Icons.Material.Filled.CheckCircle,
+        "degraded" => Icons.Material.Filled.Warning,
+        "unhealthy" => Icons.Material.Filled.Error,
+        _ => Icons.Material.Filled.HelpOutline
+    };
+
+    private Color GetHealthColor(string? status) => status?.ToLower() switch
+    {
+        "healthy" => Color.Success,
+        "degraded" => Color.Warning,
+        "unhealthy" => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetHealthIcon(string? status) => status?.ToLower() switch
+    {
+        "healthy" => Icons.Material.Filled.CheckCircle,
+        "degraded" => Icons.Material.Filled.Warning,
+        "unhealthy" => Icons.Material.Filled.Error,
+        _ => Icons.Material.Filled.HelpOutline
+    };
+
+    private string GetCheckBorderClass(string? status) => status?.ToLower() switch
+    {
+        "healthy" => "border-success",
+        "degraded" => "border-warning",
+        "unhealthy" => "border-error",
+        _ => ""
+    };
+
+    private Color GetMemoryColor()
+    {
+        var mb = _healthStatus?.MemoryUsageMB ?? 0;
+        if (mb > 2000) return Color.Error;
+        if (mb > 1000) return Color.Warning;
+        return Color.Success;
+    }
+
+    private double GetMemoryPercent()
+    {
+        var mb = _healthStatus?.MemoryUsageMB ?? 0;
+        // Assume 4GB max for visualization
+        return Math.Min(100, mb / 40);
+    }
+
+    private Color GetDiskColor()
+    {
+        var percent = _healthStatus?.DiskUsagePercent ?? 0;
+        if (percent > 95) return Color.Error;
+        if (percent > 80) return Color.Warning;
+        return Color.Success;
+    }
+
+    private Color GetStatusCodeColor(int statusCode) => statusCode switch
+    {
+        >= 200 and < 300 => Color.Success,
+        >= 300 and < 400 => Color.Info,
+        >= 400 and < 500 => Color.Warning,
+        >= 500 => Color.Error,
+        _ => Color.Default
+    };
+
+    private Color GetMethodColor(string method) => method.ToUpper() switch
+    {
+        "GET" => Color.Info,
+        "POST" => Color.Success,
+        "PUT" => Color.Warning,
+        "DELETE" => Color.Error,
+        "PATCH" => Color.Secondary,
+        _ => Color.Default
+    };
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+}

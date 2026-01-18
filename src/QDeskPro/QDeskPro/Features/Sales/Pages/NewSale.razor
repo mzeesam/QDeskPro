@@ -19,24 +19,41 @@
 
 <PageTitle>New Sale - QDeskPro</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Medium" Class="py-4">
-    <MudText Typo="Typo.h4" Class="font-weight-bold mb-4">
-        <MudIcon Icon="@Icons.Material.Rounded.AddShoppingCart" Class="mr-2" />
-        New Sale
-    </MudText>
+<MudContainer MaxWidth="MaxWidth.Medium" Class="new-sale-container py-4">
+    @* Modern Page Header *@
+    <div class="new-sale-header">
+        <div class="header-content">
+            <div class="header-icon-wrapper">
+                <MudIcon Icon="@Icons.Material.Rounded.AddShoppingCart" Size="Size.Large" />
+            </div>
+            <div class="header-text">
+                <h1>New Sale</h1>
+                <p>@(_quarry?.QuarryName ?? "Loading...")</p>
+            </div>
+        </div>
+        <div class="header-badge">
+            <MudIcon Icon="@Icons.Material.Rounded.Today" Size="Size.Small" />
+            <span>@DateTime.Today.ToString("dd MMM yyyy")</span>
+        </div>
+    </div>
 
     @if (_loading)
     {
-        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <div class="loading-container">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+            <MudText Typo="Typo.body1" Class="mt-3" Color="Color.Secondary">Loading sale form...</MudText>
+        </div>
     }
     else
     {
         @* Prepayment Application Section (Optional) *@
-        <MudExpansionPanels Class="mb-4">
-            <MudExpansionPanel Text="Apply Prepayment (Optional)"
-                               Icon="@Icons.Material.Rounded.AccountBalanceWallet"
-                               IsExpanded="@(_selectedPrepayment != null)">
-                <MudGrid>
+        <div class="prepayment-section">
+            <MudExpansionPanels Elevation="0">
+                <MudExpansionPanel Text="Apply Prepayment (Optional)"
+                                   Icon="@Icons.Material.Rounded.AccountBalanceWallet"
+                                   IsExpanded="@(_selectedPrepayment != null)"
+                                   Class="prepayment-panel">
+                    <MudGrid>
                     <MudItem xs="12">
                         <MudTextField @bind-Value="_vehicleSearchQuery"
                                       Label="Search Vehicle Registration"
@@ -124,12 +141,14 @@
                             </MudAlert>
                         </MudItem>
                     }
-                </MudGrid>
-            </MudExpansionPanel>
-        </MudExpansionPanels>
+                    </MudGrid>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        </div>
 
         <MudForm @ref="_form" @bind-IsValid="_isValid">
-            <MudPaper Class="pa-4 mb-4" Elevation="0">
+            @* Sale Details Form Card *@
+            <div class="form-card">
                 <MudGrid>
                     @* Product Selection *@
                     <MudItem xs="12" sm="6">
@@ -201,24 +220,27 @@
 
                     @* Quantity *@
                     <MudItem xs="12" sm="6">
-                        <MudNumericField Value="_sale.Quantity"
+                        <MudNumericField T="double"
+                                         @bind-Value="_sale.Quantity"
+                                         @bind-Value:after="CalculateOrderSummary"
                                          Label="Quantity"
                                          Variant="Variant.Outlined"
                                          Min="1"
+                                         HideSpinButtons="true"
                                          Required="true"
-                                         RequiredError="Cannot proceed if quantity not provided"
-                                         ValueChanged="@((double val) => { _sale.Quantity = val; CalculateOrderSummary(); })" />
+                                         RequiredError="Cannot proceed if quantity not provided" />
                     </MudItem>
 
                     @* Price Per Unit *@
                     <MudItem xs="12" sm="6">
-                        <MudNumericField Value="_sale.PricePerUnit"
+                        <MudNumericField T="double"
+                                         @bind-Value="_sale.PricePerUnit"
+                                         @bind-Value:after="CalculateOrderSummary"
                                          Label="Price Per Unit"
                                          Variant="Variant.Outlined"
                                          Min="0"
                                          Required="true"
                                          RequiredError="Cannot proceed if price not provided"
-                                         ValueChanged="@((double val) => { _sale.PricePerUnit = val; CalculateOrderSummary(); })"
                                          Adornment="Adornment.Start"
                                          AdornmentText="KES" />
                     </MudItem>
@@ -240,11 +262,12 @@
 
                     @* Commission Per Unit *@
                     <MudItem xs="12" sm="6">
-                        <MudNumericField Value="_sale.CommissionPerUnit"
+                        <MudNumericField T="double"
+                                         @bind-Value="_sale.CommissionPerUnit"
+                                         @bind-Value:after="CalculateOrderSummary"
                                          Label="Commission Per Unit"
                                          Variant="Variant.Outlined"
                                          Min="0"
-                                         ValueChanged="@((double val) => { _sale.CommissionPerUnit = val; CalculateOrderSummary(); })"
                                          Adornment="Adornment.Start"
                                          AdornmentText="KES"
                                          Disabled="@(string.IsNullOrWhiteSpace(_sale.BrokerId))" />
@@ -283,6 +306,16 @@
                                       Lines="2" />
                     </MudItem>
 
+                    @* Notes *@
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_sale.Notes"
+                                      Label="Notes (Optional)"
+                                      Variant="Variant.Outlined"
+                                      Lines="2"
+                                      Placeholder="Add any additional notes..."
+                                      MaxLength="500" />
+                    </MudItem>
+
                     @* Land Rate Option - Always visible for transparency *@
                     <MudItem xs="12">
                         <MudPaper Class="pa-3" Elevation="0" Style="background-color: rgba(76, 175, 80, 0.05); border-radius: 8px;">
@@ -310,132 +343,490 @@
                         </MudPaper>
                     </MudItem>
                 </MudGrid>
-            </MudPaper>
+            </div>
 
             @* Client Details - Expandable Section *@
-            <MudExpansionPanels Class="mb-4">
-                <MudExpansionPanel Text="Client Details (Optional)" Icon="@Icons.Material.Rounded.Person">
-                    <MudGrid Class="pt-2">
-                        <MudItem xs="12">
-                            <MudTextField @bind-Value="_sale.ClientName"
-                                          Label="Client Name"
-                                          Variant="Variant.Outlined" />
-                        </MudItem>
-                        <MudItem xs="12" sm="6">
-                            <MudTextField @bind-Value="_sale.ClientPhone"
-                                          Label="Phone Number"
-                                          Variant="Variant.Outlined"
-                                          InputType="InputType.Telephone" />
-                        </MudItem>
-                        <MudItem xs="12" sm="6">
-                            <MudAutocomplete @bind-Value="_sale.Destination"
-                                             Label="Destination"
-                                             SearchFunc="SearchCounties"
-                                             Variant="Variant.Outlined"
-                                             Clearable="true" />
-                        </MudItem>
-                    </MudGrid>
-                </MudExpansionPanel>
-            </MudExpansionPanels>
+            <div class="client-details-section">
+                <MudExpansionPanels Elevation="0">
+                    <MudExpansionPanel Text="Client Details (Optional)" Icon="@Icons.Material.Rounded.Person" Class="client-panel">
+                        <MudGrid Class="pt-2">
+                            <MudItem xs="12">
+                                <MudTextField @bind-Value="_sale.ClientName"
+                                              Label="Client Name"
+                                              Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField @bind-Value="_sale.ClientPhone"
+                                              Label="Phone Number"
+                                              Variant="Variant.Outlined"
+                                              InputType="InputType.Telephone" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudAutocomplete @bind-Value="_sale.Destination"
+                                                 Label="Destination"
+                                                 SearchFunc="SearchCounties"
+                                                 Variant="Variant.Outlined"
+                                                 Clearable="true" />
+                            </MudItem>
+                        </MudGrid>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            </div>
 
             @* Order Summary *@
-            <MudPaper Class="pa-4 mb-4 order-summary-card" Elevation="0">
-                <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">Order Summary</MudText>
-                <MudStack Spacing="2">
-                    <div class="d-flex justify-space-between">
-                        <MudText>Total Amount</MudText>
-                        <MudText Typo="Typo.body1" Class="font-weight-medium">KES @_calculations.GrossAmount.ToString("N1")</MudText>
+            <div class="order-summary-card">
+                <div class="summary-header">
+                    <div class="summary-icon">
+                        <MudIcon Icon="@Icons.Material.Rounded.Receipt" />
                     </div>
-                    <div class="d-flex justify-space-between">
-                        <MudText Color="Color.Secondary">Commission</MudText>
-                        <MudText Color="Color.Secondary">- KES @_calculations.Commission.ToString("N1")</MudText>
+                    <span>Order Summary</span>
+                </div>
+                <div class="summary-content">
+                    <div class="summary-row">
+                        <span class="summary-label">Total Amount</span>
+                        <span class="summary-value">KES @_calculations.GrossAmount.ToString("N0")</span>
                     </div>
-                    <div class="d-flex justify-space-between">
-                        <MudText Color="Color.Secondary">Loaders Fee</MudText>
-                        <MudText Color="Color.Secondary">- KES @_calculations.LoadersFee.ToString("N1")</MudText>
+                    <div class="summary-row deduction">
+                        <span class="summary-label">Commission</span>
+                        <span class="summary-value">- KES @_calculations.Commission.ToString("N0")</span>
+                    </div>
+                    <div class="summary-row deduction">
+                        <span class="summary-label">Loaders Fee</span>
+                        <span class="summary-value">- KES @_calculations.LoadersFee.ToString("N0")</span>
                     </div>
                     @if (_landRateVisible && _sale.IncludeLandRate && _calculations.LandRateFee > 0)
                     {
-                        <div class="d-flex justify-space-between">
-                            <MudText Color="Color.Secondary">Land Rate Fee</MudText>
-                            <MudText Color="Color.Secondary">- KES @_calculations.LandRateFee.ToString("N1")</MudText>
+                        <div class="summary-row deduction">
+                            <span class="summary-label">Land Rate Fee</span>
+                            <span class="summary-value">- KES @_calculations.LandRateFee.ToString("N0")</span>
                         </div>
                     }
                     else if (_landRateVisible && !_sale.IncludeLandRate)
                     {
-                        <div class="d-flex justify-space-between">
-                            <MudText Color="Color.Secondary" Style="text-decoration: line-through;">Land Rate Fee</MudText>
-                            <MudText Color="Color.Secondary" Style="text-decoration: line-through;">Excluded</MudText>
+                        <div class="summary-row excluded">
+                            <span class="summary-label">Land Rate Fee</span>
+                            <span class="summary-value">Excluded</span>
                         </div>
                     }
                     @if (_selectedPrepayment != null)
                     {
-                        <MudDivider Class="my-2" />
-                        <div class="d-flex justify-space-between">
-                            <MudText Color="Color.Success">Prepayment Applied</MudText>
-                            <MudText Color="Color.Success">- KES @PrepaymentAppliedAmount.ToString("N1")</MudText>
+                        <div class="summary-divider"></div>
+                        <div class="summary-row prepayment">
+                            <span class="summary-label">
+                                <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Size="Size.Small" Class="mr-1" />
+                                Prepayment Applied
+                            </span>
+                            <span class="summary-value">- KES @PrepaymentAppliedAmount.ToString("N0")</span>
                         </div>
                     }
-                    <MudDivider Class="my-2" />
-                    <div class="d-flex justify-space-between">
-                        <MudText Typo="Typo.h6">@(_selectedPrepayment != null ? "Balance Due" : "Net Amount")</MudText>
-                        <MudText Typo="Typo.h6" Color="@(BalanceDue > 0 && _selectedPrepayment != null ? Color.Warning : Color.Primary)" Class="font-weight-bold" Style="text-decoration: underline;">
-                            KES @BalanceDue.ToString("N1")
-                        </MudText>
+                    <div class="summary-divider"></div>
+                    <div class="summary-row total @(BalanceDue > 0 && _selectedPrepayment != null ? "warning" : "")">
+                        <span class="summary-label">@(_selectedPrepayment != null ? "Balance Due" : "Net Amount")</span>
+                        <span class="summary-value">KES @BalanceDue.ToString("N0")</span>
                     </div>
-                </MudStack>
-            </MudPaper>
+                </div>
+            </div>
 
             @* Action Buttons *@
-            <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mt-4">
-                <MudButton Variant="Variant.Text"
+            <div class="action-buttons">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
                            OnClick="Cancel"
-                           Disabled="_processing">
+                           Disabled="_processing"
+                           StartIcon="@Icons.Material.Rounded.ArrowBack"
+                           Class="cancel-btn">
                     Cancel
                 </MudButton>
                 <MudButton Variant="Variant.Filled"
                            Color="Color.Primary"
                            Disabled="@(!_isValid || _processing)"
                            OnClick="SubmitSale"
-                           Class="touch-target">
+                           StartIcon="@(_processing ? null : Icons.Material.Rounded.Save)"
+                           Class="submit-btn">
                     @if (_processing)
                     {
-                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" Color="Color.Surface" />
                     }
                     Submit Sale
                 </MudButton>
-            </MudStack>
+            </div>
         </MudForm>
     }
 </MudContainer>
 
 <style>
-    .order-summary-card {
-        border-radius: 16px;
-        border: 2px solid #1976D2;
-        background: linear-gradient(135deg, rgba(25, 118, 210, 0.05) 0%, rgba(25, 118, 210, 0.02) 100%);
+    /* Container Styling */
+    .new-sale-container {
+        max-width: 800px;
     }
 
-    .touch-target {
-        min-height: 44px;
-        min-width: 44px;
+    /* Modern Page Header */
+    .new-sale-header {
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        border-radius: 16px;
+        padding: 24px;
+        color: white;
+        margin-bottom: 24px;
+        box-shadow: 0 8px 32px rgba(13, 71, 161, 0.3);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
+    .header-content {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .header-icon-wrapper {
+        width: 56px;
+        height: 56px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(10px);
+    }
+
+    .header-icon-wrapper .mud-icon-root {
+        color: white;
+    }
+
+    .header-text h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        margin: 0;
+        letter-spacing: -0.02em;
+    }
+
+    .header-text p {
+        font-size: 0.9rem;
+        margin: 4px 0 0 0;
+        opacity: 0.9;
+    }
+
+    .header-badge {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 24px;
+        padding: 8px 16px;
+        font-size: 0.875rem;
+        backdrop-filter: blur(10px);
+    }
+
+    /* Loading Container */
+    .loading-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        text-align: center;
+    }
+
+    /* Prepayment Section */
+    .prepayment-section {
+        margin-bottom: 20px;
+    }
+
+    .prepayment-section .mud-expansion-panels {
+        background: white;
+        border-radius: 16px;
+        border: 1px solid #E8ECF0;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    }
+
+    .prepayment-panel {
+        background: linear-gradient(135deg, rgba(76, 175, 80, 0.05) 0%, rgba(76, 175, 80, 0.02) 100%);
     }
 
     .prepayment-item {
-        padding: 12px;
+        padding: 16px;
         border: 1px solid #e0e0e0;
-        transition: all 0.2s ease;
+        border-radius: 12px;
+        transition: all 0.25s ease;
+        background: white;
     }
 
     .prepayment-item:hover {
         background-color: rgba(76, 175, 80, 0.08);
         border-color: #4CAF50;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.15);
     }
 
     .selected-prepayment {
-        padding: 12px;
-        background-color: rgba(76, 175, 80, 0.12);
+        padding: 16px;
+        background: linear-gradient(135deg, rgba(76, 175, 80, 0.12) 0%, rgba(76, 175, 80, 0.08) 100%);
         border: 2px solid #4CAF50;
+        border-radius: 12px;
+        box-shadow: 0 4px 16px rgba(76, 175, 80, 0.2);
+    }
+
+    /* Form Card */
+    .form-card {
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 20px;
+        border: 1px solid #E8ECF0;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    }
+
+    /* Client Details Section */
+    .client-details-section {
+        margin-bottom: 20px;
+    }
+
+    .client-details-section .mud-expansion-panels {
+        background: white;
+        border-radius: 16px;
+        border: 1px solid #E8ECF0;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    }
+
+    .client-panel {
+        background: linear-gradient(135deg, rgba(25, 118, 210, 0.03) 0%, rgba(25, 118, 210, 0.01) 100%);
+    }
+
+    /* Order Summary Card - Modern Design */
+    .order-summary-card {
+        background: white;
+        border-radius: 16px;
+        border: 2px solid #1976D2;
+        overflow: hidden;
+        margin-bottom: 24px;
+        box-shadow: 0 8px 24px rgba(25, 118, 210, 0.15);
+    }
+
+    .summary-header {
+        background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%);
+        color: white;
+        padding: 16px 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 600;
+        font-size: 1.1rem;
+    }
+
+    .summary-icon {
+        width: 36px;
+        height: 36px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .summary-icon .mud-icon-root {
+        color: white;
+        font-size: 1.25rem;
+    }
+
+    .summary-content {
+        padding: 20px;
+    }
+
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 0;
+    }
+
+    .summary-label {
+        font-size: 0.95rem;
+        color: #1a1a2e;
+        display: flex;
+        align-items: center;
+    }
+
+    .summary-value {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #1a1a2e;
+    }
+
+    .summary-row.deduction .summary-label,
+    .summary-row.deduction .summary-value {
+        color: #666;
+    }
+
+    .summary-row.excluded .summary-label,
+    .summary-row.excluded .summary-value {
+        color: #999;
+        text-decoration: line-through;
+        font-style: italic;
+    }
+
+    .summary-row.prepayment .summary-label,
+    .summary-row.prepayment .summary-value {
+        color: #4CAF50;
+        font-weight: 600;
+    }
+
+    .summary-divider {
+        height: 1px;
+        background: linear-gradient(90deg, transparent, #E0E0E0 20%, #E0E0E0 80%, transparent);
+        margin: 8px 0;
+    }
+
+    .summary-row.total {
+        padding: 16px;
+        margin: 8px -20px -20px -20px;
+        background: linear-gradient(135deg, rgba(25, 118, 210, 0.08) 0%, rgba(25, 118, 210, 0.04) 100%);
+        border-top: 1px solid rgba(25, 118, 210, 0.2);
+    }
+
+    .summary-row.total .summary-label {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #1976D2;
+    }
+
+    .summary-row.total .summary-value {
+        font-size: 1.25rem;
+        font-weight: 800;
+        color: #1976D2;
+    }
+
+    .summary-row.total.warning .summary-label,
+    .summary-row.total.warning .summary-value {
+        color: #F57C00;
+    }
+
+    .summary-row.total.warning {
+        background: linear-gradient(135deg, rgba(255, 152, 0, 0.08) 0%, rgba(255, 152, 0, 0.04) 100%);
+        border-top-color: rgba(255, 152, 0, 0.2);
+    }
+
+    /* Action Buttons */
+    .action-buttons {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        padding: 20px 0;
+    }
+
+    .cancel-btn {
+        min-width: 120px;
+        height: 48px;
+        border-radius: 12px;
+        font-weight: 600;
+        text-transform: none;
+        font-size: 1rem;
+    }
+
+    .submit-btn {
+        min-width: 160px;
+        height: 52px;
+        border-radius: 12px;
+        font-weight: 700;
+        text-transform: none;
+        font-size: 1.05rem;
+        box-shadow: 0 4px 16px rgba(25, 118, 210, 0.4);
+        transition: all 0.3s ease;
+    }
+
+    .submit-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 24px rgba(25, 118, 210, 0.5);
+    }
+
+    .submit-btn:disabled {
+        box-shadow: none;
+    }
+
+    /* Dark Mode Support */
+    :global(.mud-theme-dark) .form-card,
+    :global(.mud-theme-dark) .client-details-section .mud-expansion-panels,
+    :global(.mud-theme-dark) .prepayment-section .mud-expansion-panels {
+        background: #1E1E1E;
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .new-sale-header {
+        background: linear-gradient(135deg, #0D47A1 0%, #1565C0 100%);
+    }
+
+    :global(.mud-theme-dark) .order-summary-card {
+        background: #1E1E1E;
+        border-color: #90CAF9;
+    }
+
+    :global(.mud-theme-dark) .summary-header {
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+    }
+
+    :global(.mud-theme-dark) .summary-label,
+    :global(.mud-theme-dark) .summary-value {
+        color: #f1f5f9;
+    }
+
+    :global(.mud-theme-dark) .summary-row.deduction .summary-label,
+    :global(.mud-theme-dark) .summary-row.deduction .summary-value {
+        color: #94a3b8;
+    }
+
+    :global(.mud-theme-dark) .prepayment-item {
+        background: #252525;
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .prepayment-item:hover {
+        background: rgba(76, 175, 80, 0.15);
+    }
+
+    /* Mobile Responsiveness */
+    @@media (max-width: 599px) {
+        .new-sale-header {
+            padding: 20px;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .header-text h1 {
+            font-size: 1.5rem;
+        }
+
+        .header-badge {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .form-card {
+            padding: 16px;
+        }
+
+        .summary-content {
+            padding: 16px;
+        }
+
+        .summary-row.total {
+            margin: 8px -16px -16px -16px;
+            padding: 12px 16px;
+        }
+
+        .action-buttons {
+            flex-direction: column-reverse;
+            gap: 12px;
+        }
+
+        .cancel-btn,
+        .submit-btn {
+            width: 100%;
+        }
     }
 </style>
 

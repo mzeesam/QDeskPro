@@ -20,21 +20,23 @@
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4 mb-8">
     <MudStack Spacing="4">
-        @* Header *@
-        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-            <div>
-                <MudText Typo="Typo.h4" Class="fw-bold">
-                    <MudIcon Icon="@Icons.Material.Filled.Storage" Class="mr-2" Style="vertical-align: middle;" />
-                    Data Management
-                </MudText>
-                <MudText Typo="Typo.body2" Class="text-muted mt-1">
-                    Export, import, or clear quarry operational data
-                </MudText>
-            </div>
-        </MudStack>
+        @* Page Header with Gradient *@
+        <div class="admin-header admin-header-data">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Large" Style="color: #7E57C2;" />
+                    <div>
+                        <MudText Typo="Typo.h4" Class="admin-header-title">Data Management</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Export, import, backup, or clear quarry operational data
+                        </MudText>
+                    </div>
+                </MudStack>
+            </MudStack>
+        </div>
 
-        @* Quarry Selector *@
-        <MudPaper Class="pa-4" Elevation="0">
+        @* Quarry Selector Card *@
+        <div class="admin-filter-card">
             <MudGrid>
                 <MudItem xs="12" sm="8" md="6">
                     <MudSelect T="string"
@@ -50,7 +52,7 @@
                     </MudSelect>
                 </MudItem>
             </MudGrid>
-        </MudPaper>
+        </div>
 
         @if (string.IsNullOrEmpty(_selectedQuarryId))
         {
@@ -60,53 +62,61 @@
         }
         else
         {
-            @* Data Summary *@
-            <MudPaper Class="pa-4" Elevation="0">
-                <MudText Typo="Typo.h6" Class="mb-3">Current Data Summary</MudText>
-                @if (_loading)
-                {
-                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
-                }
-                else if (_dataCounts != null)
-                {
-                    <MudGrid>
-                        <MudItem xs="6" sm="3">
-                            <div class="data-stat-card">
-                                <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Color="Color.Primary" Size="Size.Large" />
-                                <MudText Typo="Typo.h5" Class="mt-2">@_dataCounts.SalesCount</MudText>
-                                <MudText Typo="Typo.caption" Class="text-muted">Sales</MudText>
-                            </div>
-                        </MudItem>
-                        <MudItem xs="6" sm="3">
-                            <div class="data-stat-card">
-                                <MudIcon Icon="@Icons.Material.Filled.Receipt" Color="Color.Warning" Size="Size.Large" />
-                                <MudText Typo="Typo.h5" Class="mt-2">@_dataCounts.ExpensesCount</MudText>
-                                <MudText Typo="Typo.caption" Class="text-muted">Expenses</MudText>
-                            </div>
-                        </MudItem>
-                        <MudItem xs="6" sm="3">
-                            <div class="data-stat-card">
-                                <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Color="Color.Success" Size="Size.Large" />
-                                <MudText Typo="Typo.h5" Class="mt-2">@_dataCounts.BankingCount</MudText>
-                                <MudText Typo="Typo.caption" Class="text-muted">Banking</MudText>
-                            </div>
-                        </MudItem>
-                        <MudItem xs="6" sm="3">
-                            <div class="data-stat-card">
-                                <MudIcon Icon="@Icons.Material.Filled.LocalGasStation" Color="Color.Error" Size="Size.Large" />
-                                <MudText Typo="Typo.h5" Class="mt-2">@_dataCounts.FuelUsageCount</MudText>
-                                <MudText Typo="Typo.caption" Class="text-muted">Fuel Usage</MudText>
-                            </div>
-                        </MudItem>
-                    </MudGrid>
-                }
-            </MudPaper>
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+
+            @* Data Summary Stats Row *@
+            @if (_dataCounts != null)
+            {
+                <div class="admin-mini-stats-row" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="admin-mini-stat admin-mini-stat-gradient-1">
+                        <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Size="Size.Large" Class="admin-mini-stat-icon" />
+                        <div class="admin-mini-stat-content">
+                            <span class="admin-mini-stat-value">@_dataCounts.SalesCount.ToString("N0")</span>
+                            <span class="admin-mini-stat-label">Sales</span>
+                        </div>
+                    </div>
+                    <div class="admin-mini-stat admin-mini-stat-gradient-3">
+                        <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Large" Class="admin-mini-stat-icon" />
+                        <div class="admin-mini-stat-content">
+                            <span class="admin-mini-stat-value">@_dataCounts.ExpensesCount.ToString("N0")</span>
+                            <span class="admin-mini-stat-label">Expenses</span>
+                        </div>
+                    </div>
+                    <div class="admin-mini-stat admin-mini-stat-gradient-4">
+                        <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Size="Size.Large" Class="admin-mini-stat-icon" />
+                        <div class="admin-mini-stat-content">
+                            <span class="admin-mini-stat-value">@_dataCounts.BankingCount.ToString("N0")</span>
+                            <span class="admin-mini-stat-label">Banking</span>
+                        </div>
+                    </div>
+                    <div class="admin-mini-stat admin-mini-stat-gradient-5">
+                        <MudIcon Icon="@Icons.Material.Filled.LocalGasStation" Size="Size.Large" Class="admin-mini-stat-icon" />
+                        <div class="admin-mini-stat-content">
+                            <span class="admin-mini-stat-value">@_dataCounts.FuelUsageCount.ToString("N0")</span>
+                            <span class="admin-mini-stat-label">Fuel Usage</span>
+                        </div>
+                    </div>
+                </div>
+
+                @* Total Records Info Card *@
+                <div class="admin-info-card">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Info" Color="Color.Primary" />
+                        <MudText Typo="Typo.body2">
+                            <strong>@_dataCounts.TotalCount.ToString("N0")</strong> total records available for this quarry
+                        </MudText>
+                    </MudStack>
+                </div>
+            }
 
             @* Action Cards - Excel Import/Export *@
-            <MudText Typo="Typo.h6" Class="mt-2 mb-1">
-                <MudIcon Icon="@Icons.Material.Filled.TableChart" Size="Size.Small" Class="mr-2" Style="vertical-align: middle;" />
-                Excel Import & Export
-            </MudText>
+            <div class="admin-section-header">
+                <MudIcon Icon="@Icons.Material.Filled.TableChart" Size="Size.Small" Style="color: #1976D2;" />
+                <MudText Typo="Typo.h6">Excel Import & Export</MudText>
+            </div>
             <MudGrid>
                 @* Export Data Card *@
                 <MudItem xs="12" md="4">
@@ -219,10 +229,10 @@
             </MudGrid>
 
             @* Database Backup & Restore Section *@
-            <MudText Typo="Typo.h6" Class="mt-4 mb-1">
-                <MudIcon Icon="@Icons.Material.Filled.Backup" Size="Size.Small" Class="mr-2" Style="vertical-align: middle;" />
-                Database Backup & Restore
-            </MudText>
+            <div class="admin-section-header mt-4">
+                <MudIcon Icon="@Icons.Material.Filled.Backup" Size="Size.Small" Style="color: #424242;" />
+                <MudText Typo="Typo.h6">Database Backup & Restore</MudText>
+            </div>
             <MudGrid>
                 @* SQL Backup Card *@
                 <MudItem xs="12" md="6">
@@ -294,32 +304,32 @@
             @* Restore Results *@
             @if (_restoreSummary != null)
             {
-                <MudPaper Class="pa-4" Elevation="0">
+                <div class="admin-table-card">
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
-                        <MudText Typo="Typo.h6">
-                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" Style="vertical-align: middle;" />
-                            Restore Completed
-                        </MudText>
-                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ClearRestoreSummary">
-                            <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" />
-                        </MudButton>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" />
+                            <MudText Typo="Typo.h6">Restore Completed Successfully</MudText>
+                        </MudStack>
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="ClearRestoreSummary" />
                     </MudStack>
 
                     @* Summary Cards *@
-                    <MudGrid Class="mb-3">
-                        <MudItem xs="6" sm="4" md="3">
-                            <MudPaper Class="pa-2 text-center" Elevation="0" Style="background: #E8F5E9;">
-                                <MudText Typo="Typo.h6" Color="Color.Success">@_restoreSummary.TotalRestored</MudText>
-                                <MudText Typo="Typo.caption">Restored</MudText>
-                            </MudPaper>
-                        </MudItem>
-                        <MudItem xs="6" sm="4" md="3">
-                            <MudPaper Class="pa-2 text-center" Elevation="0" Style="background: #FFF3E0;">
-                                <MudText Typo="Typo.h6" Color="Color.Warning">@_restoreSummary.TotalSkipped</MudText>
-                                <MudText Typo="Typo.caption">Skipped (Duplicates)</MudText>
-                            </MudPaper>
-                        </MudItem>
-                    </MudGrid>
+                    <div class="admin-mini-stats-row mb-3" style="grid-template-columns: repeat(2, 1fr); max-width: 400px;">
+                        <div class="admin-mini-stat admin-mini-stat-gradient-4">
+                            <MudIcon Icon="@Icons.Material.Filled.CloudDone" Size="Size.Medium" Class="admin-mini-stat-icon" />
+                            <div class="admin-mini-stat-content">
+                                <span class="admin-mini-stat-value">@_restoreSummary.TotalRestored</span>
+                                <span class="admin-mini-stat-label">Restored</span>
+                            </div>
+                        </div>
+                        <div class="admin-mini-stat admin-mini-stat-gradient-3">
+                            <MudIcon Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Medium" Class="admin-mini-stat-icon" />
+                            <div class="admin-mini-stat-content">
+                                <span class="admin-mini-stat-value">@_restoreSummary.TotalSkipped</span>
+                                <span class="admin-mini-stat-label">Skipped</span>
+                            </div>
+                        </div>
+                    </div>
 
                     @* Detailed Breakdown *@
                     <MudExpansionPanels Elevation="0">
@@ -390,29 +400,27 @@
                             }
                         </MudExpansionPanel>
                     </MudExpansionPanels>
-                </MudPaper>
+                </div>
             }
 
             @* Validation Results *@
             @if (_validationResult != null)
             {
-                <MudPaper Class="pa-4" Elevation="0">
+                <div class="admin-table-card">
                     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
-                        <MudText Typo="Typo.h6">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                             @if (_validationResult.IsValid)
                             {
-                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" Style="vertical-align: middle;" />
-                                <span>Validation Passed</span>
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" />
+                                <MudText Typo="Typo.h6">Validation Passed</MudText>
                             }
                             else
                             {
-                                <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" Class="mr-2" Style="vertical-align: middle;" />
-                                <span>Validation Failed</span>
+                                <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" />
+                                <MudText Typo="Typo.h6">Validation Failed</MudText>
                             }
-                        </MudText>
-                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ClearValidation">
-                            <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" />
-                        </MudButton>
+                        </MudStack>
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="ClearValidation" />
                     </MudStack>
 
                     @* Row Counts Preview *@
@@ -505,35 +513,56 @@
                             </MudExpansionPanels>
                         }
                     }
-                </MudPaper>
+                </div>
             }
 
             @* Import Results *@
             @if (_importSummary != null && _validationResult == null)
             {
-                <MudPaper Class="pa-4" Elevation="0">
-                    <MudText Typo="Typo.h6" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" Style="vertical-align: middle;" />
-                        Import Completed
-                    </MudText>
-                    <MudGrid>
-                        <MudItem xs="6" sm="3">
-                            <MudChip T="string" Color="Color.Primary" Size="Size.Small">Sales: @_importSummary.SalesImported</MudChip>
-                        </MudItem>
-                        <MudItem xs="6" sm="3">
-                            <MudChip T="string" Color="Color.Warning" Size="Size.Small">Expenses: @_importSummary.ExpensesImported</MudChip>
-                        </MudItem>
-                        <MudItem xs="6" sm="3">
-                            <MudChip T="string" Color="Color.Success" Size="Size.Small">Banking: @_importSummary.BankingImported</MudChip>
-                        </MudItem>
-                        <MudItem xs="6" sm="3">
-                            <MudChip T="string" Color="Color.Error" Size="Size.Small">Fuel: @_importSummary.FuelUsageImported</MudChip>
-                        </MudItem>
-                    </MudGrid>
-                    <MudText Typo="Typo.body2" Class="mt-3 text-muted">
-                        Total: @_importSummary.TotalImported records imported successfully
-                    </MudText>
-                </MudPaper>
+                <div class="admin-table-card">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-3">
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" />
+                        <MudText Typo="Typo.h6">Import Completed Successfully</MudText>
+                    </MudStack>
+                    <div class="admin-mini-stats-row mb-3" style="grid-template-columns: repeat(4, 1fr);">
+                        <div class="admin-mini-stat admin-mini-stat-gradient-1">
+                            <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Size="Size.Small" Class="admin-mini-stat-icon" />
+                            <div class="admin-mini-stat-content">
+                                <span class="admin-mini-stat-value" style="font-size: 1.25rem;">@_importSummary.SalesImported</span>
+                                <span class="admin-mini-stat-label">Sales</span>
+                            </div>
+                        </div>
+                        <div class="admin-mini-stat admin-mini-stat-gradient-3">
+                            <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Small" Class="admin-mini-stat-icon" />
+                            <div class="admin-mini-stat-content">
+                                <span class="admin-mini-stat-value" style="font-size: 1.25rem;">@_importSummary.ExpensesImported</span>
+                                <span class="admin-mini-stat-label">Expenses</span>
+                            </div>
+                        </div>
+                        <div class="admin-mini-stat admin-mini-stat-gradient-4">
+                            <MudIcon Icon="@Icons.Material.Filled.AccountBalance" Size="Size.Small" Class="admin-mini-stat-icon" />
+                            <div class="admin-mini-stat-content">
+                                <span class="admin-mini-stat-value" style="font-size: 1.25rem;">@_importSummary.BankingImported</span>
+                                <span class="admin-mini-stat-label">Banking</span>
+                            </div>
+                        </div>
+                        <div class="admin-mini-stat admin-mini-stat-gradient-5">
+                            <MudIcon Icon="@Icons.Material.Filled.LocalGasStation" Size="Size.Small" Class="admin-mini-stat-icon" />
+                            <div class="admin-mini-stat-content">
+                                <span class="admin-mini-stat-value" style="font-size: 1.25rem;">@_importSummary.FuelUsageImported</span>
+                                <span class="admin-mini-stat-label">Fuel Usage</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="admin-info-card">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.DoneAll" Color="Color.Success" />
+                            <MudText Typo="Typo.body2">
+                                <strong>@_importSummary.TotalImported</strong> records imported successfully
+                            </MudText>
+                        </MudStack>
+                    </div>
+                </div>
             }
         }
     </MudStack>
@@ -605,64 +634,91 @@
 </MudDialog>
 
 <style>
-    .data-stat-card {
-        text-align: center;
-        padding: 16px;
-        border-radius: 12px;
-        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-        border: 1px solid rgba(0, 0, 0, 0.06);
+    /* Section Header */
+    .admin-section-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 0;
+        margin-bottom: 8px;
+        border-bottom: 2px solid rgba(0, 0, 0, 0.04);
     }
 
+    .admin-section-header .mud-typography-h6 {
+        font-weight: 600;
+        color: #1e293b;
+    }
+
+    /* Action Cards - Enhanced */
     .action-card {
         border-radius: 16px;
         background: linear-gradient(180deg, white 0%, #f8fafc 100%);
         border: 1px solid rgba(0, 0, 0, 0.06);
-        transition: all 0.3s ease;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         height: 100%;
+        animation: fadeInUp 0.5s ease-out forwards;
     }
 
     .action-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+        transform: translateY(-6px);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
     }
 
     .action-icon {
-        width: 64px;
-        height: 64px;
-        border-radius: 16px;
+        width: 72px;
+        height: 72px;
+        border-radius: 18px;
         display: flex;
         align-items: center;
         justify-content: center;
         color: white;
+        transition: transform 0.3s ease;
+    }
+
+    .action-card:hover .action-icon {
+        transform: scale(1.1);
     }
 
     .export-icon {
-        background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
-        box-shadow: 0 6px 24px rgba(76, 175, 80, 0.3);
+        background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+        box-shadow: 0 8px 32px rgba(76, 175, 80, 0.35);
     }
 
     .import-icon {
-        background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%);
-        box-shadow: 0 6px 24px rgba(25, 118, 210, 0.3);
+        background: linear-gradient(135deg, #1976D2 0%, #0D47A1 100%);
+        box-shadow: 0 8px 32px rgba(25, 118, 210, 0.35);
     }
 
     .clear-icon {
-        background: linear-gradient(135deg, #F44336 0%, #D32F2F 100%);
-        box-shadow: 0 6px 24px rgba(244, 67, 54, 0.3);
+        background: linear-gradient(135deg, #F44336 0%, #C62828 100%);
+        box-shadow: 0 8px 32px rgba(244, 67, 54, 0.35);
     }
 
     .clear-card {
-        border: 1px dashed rgba(244, 67, 54, 0.3);
+        border: 1px dashed rgba(244, 67, 54, 0.4);
+        background: linear-gradient(180deg, white 0%, rgba(244, 67, 54, 0.02) 100%);
     }
 
     .backup-icon {
-        background: linear-gradient(135deg, #424242 0%, #212121 100%);
-        box-shadow: 0 6px 24px rgba(66, 66, 66, 0.3);
+        background: linear-gradient(135deg, #616161 0%, #212121 100%);
+        box-shadow: 0 8px 32px rgba(66, 66, 66, 0.35);
     }
 
     .restore-icon {
         background: linear-gradient(135deg, #0288D1 0%, #01579B 100%);
-        box-shadow: 0 6px 24px rgba(2, 136, 209, 0.3);
+        box-shadow: 0 8px 32px rgba(2, 136, 209, 0.35);
+    }
+
+    /* Animation */
+    @@keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 </style>
 

@@ -1,0 +1,991 @@
+@page "/manager/expenses-dashboard"
+@page "/admin/expenses-dashboard"
+@using QDeskPro.Features.Dashboard.Services
+@using QDeskPro.Features.Timeline.Components
+@using QDeskPro.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using QuestPDF.Fluent
+@inject ExpenseAnalyticsService ExpenseService
+@inject AppDbContext DbContext
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode InteractiveServer
+
+<PageTitle>Expense Dashboard - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4 mb-8">
+    <MudStack Spacing="4">
+        @* Header *@
+        <div class="admin-header admin-header-expenses">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Large" Style="color: #ff6b6b;" />
+                    <div>
+                        <MudText Typo="Typo.h4" Class="admin-header-title">Expense Dashboard</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @if (_fromDate.HasValue && _toDate.HasValue)
+                            {
+                                <span>@_fromDate.Value.ToString("MMM dd") - @_toDate.Value.ToString("MMM dd, yyyy")</span>
+                            }
+                            else
+                            {
+                                <span>Analyze expense metrics and trends</span>
+                            }
+                        </MudText>
+                    </div>
+                </MudStack>
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    @if (!string.IsNullOrEmpty(_selectedQuarryId))
+                    {
+                        <QuickNoteButton QuarryId="@_selectedQuarryId"
+                                         EntityType="ExpenseAnalysis"
+                                         EntityReference="@($"Expense Analytics {_fromDate:dd MMM} - {_toDate:dd MMM yyyy}")"
+                                         SuggestedTitle="Expense Analysis Note"
+                                         TooltipText="Add note about this expense analysis"
+                                         ButtonColor="Color.Secondary" />
+                    }
+                    <MudMenu Icon="@Icons.Material.Filled.FileDownload" Label="Export" Variant="Variant.Outlined" Color="Color.Primary">
+                        <MudMenuItem OnClick="ExportToExcelAsync">
+                            <MudIcon Icon="@Icons.Material.Filled.TableChart" Class="mr-2" /> Excel
+                        </MudMenuItem>
+                        <MudMenuItem OnClick="ExportToPdfAsync">
+                            <MudIcon Icon="@Icons.Material.Filled.PictureAsPdf" Class="mr-2" /> PDF
+                        </MudMenuItem>
+                    </MudMenu>
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.Refresh"
+                              OnClick="@(async () => await LoadDataAsync())"
+                              Disabled="_loading">
+                        Refresh
+                    </MudButton>
+                </MudStack>
+            </MudStack>
+        </div>
+
+        @* Filters Card *@
+        <div class="dashboard-filter-card">
+            <MudGrid>
+                <MudItem xs="12" sm="3">
+                    <MudSelect T="string"
+                              @bind-Value="_selectedQuarryId"
+                              Label="Quarry"
+                              Variant="Variant.Outlined"
+                              AnchorOrigin="Origin.BottomCenter"
+                              Dense="true"
+                              Disabled="_loading">
+                        @if (_userRole == "Administrator")
+                        {
+                            <MudSelectItem Value="@((string?)null)">All Quarries</MudSelectItem>
+                        }
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="2">
+                    <MudDatePicker @bind-Date="_fromDate"
+                                  Label="From Date"
+                                  Variant="Variant.Outlined"
+                                  MaxDate="DateTime.Today"
+                                  Dense="true"
+                                  Disabled="_loading" />
+                </MudItem>
+                <MudItem xs="12" sm="2">
+                    <MudDatePicker @bind-Date="_toDate"
+                                  Label="To Date"
+                                  Variant="Variant.Outlined"
+                                  MinDate="_fromDate"
+                                  MaxDate="DateTime.Today"
+                                  Dense="true"
+                                  Disabled="_loading" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudSwitch @bind-Value="_includeAutoCalculated"
+                              Label="Include Auto-Calculated"
+                              Color="Color.Warning"
+                              Class="mt-2" />
+                </MudItem>
+                <MudItem xs="12" sm="2">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Error"
+                              FullWidth="true"
+                              OnClick="@(async () => await LoadDataAsync())"
+                              Disabled="_loading"
+                              Class="mt-1">
+                        Apply
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </div>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Color="Color.Error" Indeterminate="true" Class="my-4" />
+        }
+        else if (!_quarries.Any())
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="my-4">
+                No quarries found. Please contact your administrator to set up a quarry.
+            </MudAlert>
+        }
+        else if (_data != null)
+        {
+            @* Summary Metric Cards *@
+            <div class="admin-mini-stats-row">
+                <div class="admin-mini-stat admin-mini-stat-gradient-6">
+                    <MudIcon Icon="@Icons.Material.Filled.Receipt" Size="Size.Large" Class="admin-mini-stat-icon" />
+                    <div class="admin-mini-stat-content">
+                        <span class="admin-mini-stat-value">KES @((_data.TotalExpenses / 1000).ToString("N1"))K</span>
+                        <span class="admin-mini-stat-label">Total Expenses</span>
+                    </div>
+                </div>
+                <div class="admin-mini-stat admin-mini-stat-gradient-5">
+                    <MudIcon Icon="@Icons.Material.Filled.FormatListNumbered" Size="Size.Large" Class="admin-mini-stat-icon" />
+                    <div class="admin-mini-stat-content">
+                        <span class="admin-mini-stat-value">@_data.ExpenseCount</span>
+                        <span class="admin-mini-stat-label">Expense Entries</span>
+                    </div>
+                </div>
+                <div class="admin-mini-stat admin-mini-stat-gradient-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Category" Size="Size.Large" Class="admin-mini-stat-icon" />
+                    <div class="admin-mini-stat-content">
+                        <span class="admin-mini-stat-value">@_data.TopCategory</span>
+                        <span class="admin-mini-stat-label">Top Category</span>
+                    </div>
+                </div>
+                <div class="admin-mini-stat admin-mini-stat-gradient-4">
+                    <MudIcon Icon="@Icons.Material.Filled.Calculate" Size="Size.Large" Class="admin-mini-stat-icon" />
+                    <div class="admin-mini-stat-content">
+                        <span class="admin-mini-stat-value">KES @_data.AverageExpenseAmount.ToString("N0")</span>
+                        <span class="admin-mini-stat-label">Average Expense</span>
+                    </div>
+                </div>
+            </div>
+
+            @* Secondary Metrics *@
+            <div class="admin-info-card">
+                <MudGrid>
+                    <MudItem xs="6" sm="4" md="3">
+                        <MudStack Spacing="0" Class="text-center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Avg Daily</MudText>
+                            <MudText Typo="Typo.h6" Class="fw-bold">KES @_data.AverageDailyExpense.ToString("N0")</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">per day</MudText>
+                        </MudStack>
+                    </MudItem>
+                    <MudItem xs="6" sm="4" md="3">
+                        <MudStack Spacing="0" Class="text-center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Categories</MudText>
+                            <MudText Typo="Typo.h6" Class="fw-bold">@_data.UniqueCategories</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">used</MudText>
+                        </MudStack>
+                    </MudItem>
+                    <MudItem xs="6" sm="4" md="3">
+                        <MudStack Spacing="0" Class="text-center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Period</MudText>
+                            <MudText Typo="Typo.h6" Class="fw-bold">@((_data.ToDate - _data.FromDate).Days + 1)</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">days</MudText>
+                        </MudStack>
+                    </MudItem>
+                    <MudItem xs="6" sm="4" md="3">
+                        <MudStack Spacing="0" Class="text-center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Data Type</MudText>
+                            <MudText Typo="Typo.h6" Class="fw-bold">@(_data.IncludesAutoCalculated ? "All" : "Manual")</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">expenses</MudText>
+                        </MudStack>
+                    </MudItem>
+                </MudGrid>
+            </div>
+
+            @* Charts Row *@
+            <MudGrid>
+                @* Expenses by Category Chart *@
+                <MudItem xs="12" md="6">
+                    <div class="dashboard-chart-card">
+                        <MudText Typo="Typo.h6" Class="mb-3">Expenses by Category</MudText>
+                        @if (_data.ExpensesByCategory.Any())
+                        {
+                            <MudChart ChartType="ChartType.Donut"
+                                      InputData="@_data.ExpensesByCategory.Select(e => e.TotalAmount).ToArray()"
+                                      InputLabels="@_data.ExpensesByCategory.Select(e => e.Category).ToArray()"
+                                      Width="100%"
+                                      Height="280px"
+                                      ChartOptions="_chartOptions" />
+                            <MudDivider Class="my-3" />
+                            <MudStack Spacing="1">
+                                @foreach (var item in _data.ExpensesByCategory.Take(6))
+                                {
+                                    <div class="d-flex justify-space-between align-center">
+                                        <MudText Typo="Typo.body2">@item.Category</MudText>
+                                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                            <MudText Typo="Typo.body2" Class="fw-bold">KES @item.TotalAmount.ToString("N0")</MudText>
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Text">
+                                                @item.PercentageOfTotal.ToString("N1")%
+                                            </MudChip>
+                                        </MudStack>
+                                    </div>
+                                }
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-8">No category data available</MudText>
+                        }
+                    </div>
+                </MudItem>
+
+                @* Expenses by Type Chart *@
+                <MudItem xs="12" md="6">
+                    <div class="dashboard-chart-card">
+                        <MudText Typo="Typo.h6" Class="mb-3">Expenses by Type</MudText>
+                        @if (_data.ExpensesByType.Any())
+                        {
+                            <MudChart ChartType="ChartType.Pie"
+                                      InputData="@_data.ExpensesByType.Select(e => e.TotalAmount).ToArray()"
+                                      InputLabels="@_data.ExpensesByType.Select(e => GetFriendlyTypeName(e.ExpenseType)).ToArray()"
+                                      Width="100%"
+                                      Height="280px"
+                                      ChartOptions="_typeChartOptions" />
+                            <MudDivider Class="my-3" />
+                            <MudStack Spacing="1">
+                                @foreach (var item in _data.ExpensesByType)
+                                {
+                                    <div class="d-flex justify-space-between align-center">
+                                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                            <MudIcon Icon="@GetTypeIcon(item.ExpenseType)" Size="Size.Small" Color="@GetTypeColor(item.ExpenseType)" />
+                                            <MudText Typo="Typo.body2">@GetFriendlyTypeName(item.ExpenseType)</MudText>
+                                        </MudStack>
+                                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                            <MudText Typo="Typo.body2" Class="fw-bold">KES @item.TotalAmount.ToString("N0")</MudText>
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Text">
+                                                @item.ExpenseCount items
+                                            </MudChip>
+                                        </MudStack>
+                                    </div>
+                                }
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-8">No type data available</MudText>
+                        }
+                    </div>
+                </MudItem>
+            </MudGrid>
+
+            @* Daily Expense Trend *@
+            <div class="dashboard-chart-card">
+                <MudText Typo="Typo.h6" Class="mb-3">Daily Expense Trend</MudText>
+                @if (_data.DailyExpenses.Any())
+                {
+                    <MudChart ChartType="ChartType.Line"
+                              ChartSeries="@_dailyTrendSeries"
+                              XAxisLabels="@_dailyTrendLabels"
+                              Width="100%"
+                              Height="300px"
+                              ChartOptions="_lineChartOptions" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-8">No daily trend data available</MudText>
+                }
+            </div>
+
+            @* Category Breakdown Table *@
+            <div class="admin-table-card pa-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudText Typo="Typo.h6">Category Breakdown</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined">
+                        @_data.ExpensesByCategory.Count categories
+                    </MudChip>
+                </MudStack>
+                @if (_data.ExpensesByCategory.Any())
+                {
+                    <MudTable Items="@_data.ExpensesByCategory" Dense="true" Hover="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>Category</MudTh>
+                            <MudTh Style="text-align: right;">Total Amount</MudTh>
+                            <MudTh Style="text-align: right;">Entries</MudTh>
+                            <MudTh Style="text-align: right;">Average</MudTh>
+                            <MudTh Style="text-align: right;">Share</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@GetCategoryIcon(context.Category)" Size="Size.Small" Color="Color.Secondary" />
+                                    <span>@context.Category</span>
+                                </MudStack>
+                            </MudTd>
+                            <MudTd Style="text-align: right;">
+                                <MudText Typo="Typo.body2" Class="fw-bold" Color="Color.Error">KES @context.TotalAmount.ToString("N0")</MudText>
+                            </MudTd>
+                            <MudTd Style="text-align: right;">@context.ExpenseCount</MudTd>
+                            <MudTd Style="text-align: right;">KES @context.AverageAmount.ToString("N0")</MudTd>
+                            <MudTd Style="text-align: right;">
+                                <MudProgressLinear Color="Color.Error" Size="Size.Small" Value="@context.PercentageOfTotal" Max="100" Style="width: 80px; display: inline-block;" />
+                                <MudText Typo="Typo.caption" Class="ml-2">@context.PercentageOfTotal.ToString("N1")%</MudText>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-4">No category data available</MudText>
+                }
+            </div>
+
+            @* Top Expense Items and Weekly Summary *@
+            <MudGrid>
+                @* Top Expense Items *@
+                <MudItem xs="12" md="7">
+                    <div class="admin-table-card pa-4">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                            <MudText Typo="Typo.h6">Top Expense Items</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined">
+                                Largest expenses
+                            </MudChip>
+                        </MudStack>
+                        @if (_data.TopExpenseItems.Any())
+                        {
+                            <MudTable Items="@_data.TopExpenseItems.Take(10)" Dense="true" Hover="true" Elevation="0">
+                                <HeaderContent>
+                                    <MudTh>Date</MudTh>
+                                    <MudTh>Item</MudTh>
+                                    <MudTh>Category</MudTh>
+                                    <MudTh Style="text-align: right;">Amount</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd>@context.Date.ToString("dd/MM")</MudTd>
+                                    <MudTd>
+                                        <MudText Typo="Typo.body2" Class="text-truncate" Style="max-width: 200px;">@context.Item</MudText>
+                                    </MudTd>
+                                    <MudTd>
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Text">
+                                            @context.Category
+                                        </MudChip>
+                                    </MudTd>
+                                    <MudTd Style="text-align: right;">
+                                        <MudText Typo="Typo.body2" Class="fw-bold" Color="Color.Error">KES @context.Amount.ToString("N0")</MudText>
+                                    </MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-4">No expense items available</MudText>
+                        }
+                    </div>
+                </MudItem>
+
+                @* Weekly Summary *@
+                <MudItem xs="12" md="5">
+                    <div class="admin-table-card pa-4">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                            <MudText Typo="Typo.h6">Weekly Summary</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined">
+                                @_data.WeeklyExpenses.Count weeks
+                            </MudChip>
+                        </MudStack>
+                        @if (_data.WeeklyExpenses.Any())
+                        {
+                            <MudTable Items="@_data.WeeklyExpenses" Dense="true" Hover="true" Elevation="0">
+                                <HeaderContent>
+                                    <MudTh>Week</MudTh>
+                                    <MudTh Style="text-align: right;">Amount</MudTh>
+                                    <MudTh Style="text-align: right;">Entries</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd>
+                                        <MudText Typo="Typo.caption">@context.WeekStart.ToString("dd/MM") - @context.WeekEnd.ToString("dd/MM")</MudText>
+                                    </MudTd>
+                                    <MudTd Style="text-align: right;">
+                                        <MudText Typo="Typo.body2" Class="fw-bold">KES @context.TotalAmount.ToString("N0")</MudText>
+                                    </MudTd>
+                                    <MudTd Style="text-align: right;">@context.ExpenseCount</MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-4">No weekly data available</MudText>
+                        }
+                    </div>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudStack>
+</MudContainer>
+
+@code {
+    private ExpenseDashboardData? _data;
+    private List<Domain.Entities.Quarry> _quarries = [];
+    private string? _selectedQuarryId;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+    private bool _loading = true;
+    private bool _includeAutoCalculated = true;
+    private string _userId = string.Empty;
+    private string _userRole = string.Empty;
+
+    // Chart data
+    private List<ChartSeries> _dailyTrendSeries = [];
+    private string[] _dailyTrendLabels = [];
+
+    private ChartOptions _chartOptions = new()
+    {
+        ChartPalette = ["#ff6b6b", "#ffd93d", "#6c5ce7", "#00b894", "#fd79a8", "#636e72"]
+    };
+
+    private ChartOptions _typeChartOptions = new()
+    {
+        ChartPalette = ["#00b894", "#e17055", "#fdcb6e", "#74b9ff"]
+    };
+
+    private ChartOptions _lineChartOptions = new()
+    {
+        ChartPalette = ["#ff6b6b"],
+        YAxisTicks = 5,
+        MaxNumYAxisTicks = 8,
+        InterpolationOption = InterpolationOption.Straight
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Get user info
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        _userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        _userRole = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? string.Empty;
+
+        // Set default date range (last 30 days)
+        _toDate = DateTime.Today;
+        _fromDate = DateTime.Today.AddDays(-29);
+
+        // Load quarries
+        await LoadQuarriesAsync();
+
+        // Load data
+        await LoadDataAsync();
+    }
+
+    private async Task LoadQuarriesAsync()
+    {
+        try
+        {
+            if (_userRole == "Administrator")
+            {
+                _quarries = await DbContext.Quarries
+                    .Where(q => q.IsActive)
+                    .OrderBy(q => q.QuarryName)
+                    .ToListAsync();
+            }
+            else
+            {
+                // Manager - load owned quarries and assigned quarries
+                var ownedQuarries = await DbContext.Quarries
+                    .Where(q => q.IsActive && q.ManagerId == _userId)
+                    .ToListAsync();
+
+                var assignedQuarryIds = await DbContext.UserQuarries
+                    .Where(uq => uq.UserId == _userId)
+                    .Select(uq => uq.QuarryId)
+                    .ToListAsync();
+
+                var assignedQuarries = await DbContext.Quarries
+                    .Where(q => q.IsActive && assignedQuarryIds.Contains(q.Id))
+                    .ToListAsync();
+
+                _quarries = ownedQuarries.Union(assignedQuarries)
+                    .DistinctBy(q => q.Id)
+                    .OrderBy(q => q.QuarryName)
+                    .ToList();
+            }
+
+            // Set default quarry
+            if (_quarries.Count == 1)
+            {
+                _selectedQuarryId = _quarries[0].Id;
+            }
+            else if (_quarries.Any() && _userRole != "Administrator")
+            {
+                _selectedQuarryId = _quarries[0].Id;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (!_fromDate.HasValue || !_toDate.HasValue)
+        {
+            Snackbar.Add("Please select a date range", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            _loading = true;
+            StateHasChanged();
+
+            _data = await ExpenseService.GetExpenseDashboardAsync(
+                _selectedQuarryId,
+                _fromDate.Value,
+                _toDate.Value,
+                _includeAutoCalculated
+            );
+
+            // Prepare chart data
+            PrepareChartData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void PrepareChartData()
+    {
+        if (_data == null || !_data.DailyExpenses.Any()) return;
+
+        // Daily trend chart
+        _dailyTrendLabels = _data.DailyExpenses.Select(d => d.Date.ToString("dd/MM")).ToArray();
+        _dailyTrendSeries =
+        [
+            new ChartSeries
+            {
+                Name = "Amount",
+                Data = _data.DailyExpenses.Select(d => d.TotalAmount).ToArray()
+            }
+        ];
+    }
+
+    private string GetFriendlyTypeName(string expenseType) => expenseType switch
+    {
+        "Manual" => "Manual Entries",
+        "Auto-Commission" => "Commissions",
+        "Auto-LoadersFee" => "Loaders Fees",
+        "Auto-LandRate" => "Land Rate Fees",
+        _ => expenseType
+    };
+
+    private string GetTypeIcon(string expenseType) => expenseType switch
+    {
+        "Manual" => Icons.Material.Filled.Edit,
+        "Auto-Commission" => Icons.Material.Filled.Percent,
+        "Auto-LoadersFee" => Icons.Material.Filled.Construction,
+        "Auto-LandRate" => Icons.Material.Filled.Landscape,
+        _ => Icons.Material.Filled.Receipt
+    };
+
+    private Color GetTypeColor(string expenseType) => expenseType switch
+    {
+        "Manual" => Color.Success,
+        "Auto-Commission" => Color.Warning,
+        "Auto-LoadersFee" => Color.Info,
+        "Auto-LandRate" => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private string GetCategoryIcon(string category) => category.ToLower() switch
+    {
+        "fuel" => Icons.Material.Filled.LocalGasStation,
+        "transportation hire" => Icons.Material.Filled.LocalShipping,
+        "maintenance and repairs" => Icons.Material.Filled.Build,
+        "commission" => Icons.Material.Filled.Percent,
+        "administrative" => Icons.Material.Filled.Business,
+        "marketing" => Icons.Material.Filled.Campaign,
+        "wages" => Icons.Material.Filled.People,
+        "loaders fees" => Icons.Material.Filled.Construction,
+        "consumables and utilities" => Icons.Material.Filled.ElectricalServices,
+        "bank charges" => Icons.Material.Filled.AccountBalance,
+        "cess and road fees" => Icons.Material.Filled.Traffic,
+        "miscellaneous" => Icons.Material.Filled.MoreHoriz,
+        "land rate" => Icons.Material.Filled.Landscape,
+        _ => Icons.Material.Filled.Receipt
+    };
+
+    private async Task ExportToExcelAsync()
+    {
+        if (_data == null)
+        {
+            Snackbar.Add("No data to export", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var allItems = await ExpenseService.GetAllExpenseItemsAsync(
+                _selectedQuarryId,
+                _fromDate!.Value,
+                _toDate!.Value,
+                _includeAutoCalculated
+            );
+
+            using var workbook = new ClosedXML.Excel.XLWorkbook();
+
+            // Summary Sheet
+            var summarySheet = workbook.Worksheets.Add("Summary");
+            summarySheet.Cell(1, 1).Value = "Expense Report Summary";
+            summarySheet.Cell(1, 1).Style.Font.Bold = true;
+            summarySheet.Cell(1, 1).Style.Font.FontSize = 16;
+            summarySheet.Cell(2, 1).Value = $"Period: {_fromDate:dd/MM/yyyy} - {_toDate:dd/MM/yyyy}";
+
+            summarySheet.Cell(4, 1).Value = "Metric";
+            summarySheet.Cell(4, 2).Value = "Value";
+            summarySheet.Range(4, 1, 4, 2).Style.Font.Bold = true;
+            summarySheet.Range(4, 1, 4, 2).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightCoral;
+
+            summarySheet.Cell(5, 1).Value = "Total Expenses (KES)";
+            summarySheet.Cell(5, 2).Value = _data.TotalExpenses;
+            summarySheet.Cell(6, 1).Value = "Expense Entries";
+            summarySheet.Cell(6, 2).Value = _data.ExpenseCount;
+            summarySheet.Cell(7, 1).Value = "Average Expense (KES)";
+            summarySheet.Cell(7, 2).Value = _data.AverageExpenseAmount;
+            summarySheet.Cell(8, 1).Value = "Average Daily (KES)";
+            summarySheet.Cell(8, 2).Value = _data.AverageDailyExpense;
+            summarySheet.Cell(9, 1).Value = "Top Category";
+            summarySheet.Cell(9, 2).Value = _data.TopCategory;
+            summarySheet.Cell(10, 1).Value = "Categories Used";
+            summarySheet.Cell(10, 2).Value = _data.UniqueCategories;
+            summarySheet.Cell(11, 1).Value = "Change from Previous Period";
+            summarySheet.Cell(11, 2).Value = $"{_data.ChangeFromPreviousPeriod:N1}%";
+
+            summarySheet.Columns().AdjustToContents();
+
+            // By Category Sheet
+            var categorySheet = workbook.Worksheets.Add("By Category");
+            categorySheet.Cell(1, 1).Value = "Category";
+            categorySheet.Cell(1, 2).Value = "Total Amount (KES)";
+            categorySheet.Cell(1, 3).Value = "Entries";
+            categorySheet.Cell(1, 4).Value = "Average (KES)";
+            categorySheet.Cell(1, 5).Value = "Share %";
+            categorySheet.Range(1, 1, 1, 5).Style.Font.Bold = true;
+            categorySheet.Range(1, 1, 1, 5).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightCoral;
+
+            var row = 2;
+            foreach (var item in _data.ExpensesByCategory)
+            {
+                categorySheet.Cell(row, 1).Value = item.Category;
+                categorySheet.Cell(row, 2).Value = item.TotalAmount;
+                categorySheet.Cell(row, 3).Value = item.ExpenseCount;
+                categorySheet.Cell(row, 4).Value = item.AverageAmount;
+                categorySheet.Cell(row, 5).Value = item.PercentageOfTotal;
+                row++;
+            }
+            categorySheet.Columns().AdjustToContents();
+
+            // By Type Sheet
+            var typeSheet = workbook.Worksheets.Add("By Type");
+            typeSheet.Cell(1, 1).Value = "Expense Type";
+            typeSheet.Cell(1, 2).Value = "Total Amount (KES)";
+            typeSheet.Cell(1, 3).Value = "Entries";
+            typeSheet.Cell(1, 4).Value = "Share %";
+            typeSheet.Range(1, 1, 1, 4).Style.Font.Bold = true;
+            typeSheet.Range(1, 1, 1, 4).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightGoldenrodYellow;
+
+            row = 2;
+            foreach (var item in _data.ExpensesByType)
+            {
+                typeSheet.Cell(row, 1).Value = GetFriendlyTypeName(item.ExpenseType);
+                typeSheet.Cell(row, 2).Value = item.TotalAmount;
+                typeSheet.Cell(row, 3).Value = item.ExpenseCount;
+                typeSheet.Cell(row, 4).Value = item.PercentageOfTotal;
+                row++;
+            }
+            typeSheet.Columns().AdjustToContents();
+
+            // Daily Trend Sheet
+            var dailySheet = workbook.Worksheets.Add("Daily Trend");
+            dailySheet.Cell(1, 1).Value = "Date";
+            dailySheet.Cell(1, 2).Value = "Total Amount (KES)";
+            dailySheet.Cell(1, 3).Value = "Entries";
+            dailySheet.Cell(1, 4).Value = "Categories";
+            dailySheet.Range(1, 1, 1, 4).Style.Font.Bold = true;
+            dailySheet.Range(1, 1, 1, 4).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightBlue;
+
+            row = 2;
+            foreach (var item in _data.DailyExpenses)
+            {
+                dailySheet.Cell(row, 1).Value = item.Date.ToString("dd/MM/yyyy");
+                dailySheet.Cell(row, 2).Value = item.TotalAmount;
+                dailySheet.Cell(row, 3).Value = item.ExpenseCount;
+                dailySheet.Cell(row, 4).Value = item.Categories;
+                row++;
+            }
+            dailySheet.Columns().AdjustToContents();
+
+            // Detailed Items Sheet
+            var detailSheet = workbook.Worksheets.Add("All Expenses");
+            detailSheet.Cell(1, 1).Value = "Date";
+            detailSheet.Cell(1, 2).Value = "Item";
+            detailSheet.Cell(1, 3).Value = "Category";
+            detailSheet.Cell(1, 4).Value = "Amount (KES)";
+            detailSheet.Cell(1, 5).Value = "Reference";
+            detailSheet.Cell(1, 6).Value = "Type";
+            detailSheet.Range(1, 1, 1, 6).Style.Font.Bold = true;
+            detailSheet.Range(1, 1, 1, 6).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightGray;
+
+            row = 2;
+            foreach (var item in allItems)
+            {
+                detailSheet.Cell(row, 1).Value = item.Date.ToString("dd/MM/yyyy");
+                detailSheet.Cell(row, 2).Value = item.Item;
+                detailSheet.Cell(row, 3).Value = item.Category;
+                detailSheet.Cell(row, 4).Value = item.Amount;
+                detailSheet.Cell(row, 5).Value = item.Reference;
+                detailSheet.Cell(row, 6).Value = GetFriendlyTypeName(item.ExpenseType);
+                row++;
+            }
+            detailSheet.Columns().AdjustToContents();
+
+            // Save and download
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var bytes = stream.ToArray();
+
+            var fileName = $"Expense_Report_{_fromDate:yyyyMMdd}_{_toDate:yyyyMMdd}.xlsx";
+            await JSRuntime.InvokeVoidAsync("downloadFile", fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Convert.ToBase64String(bytes));
+
+            Snackbar.Add("Excel report exported successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting to Excel: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ExportToPdfAsync()
+    {
+        if (_data == null)
+        {
+            Snackbar.Add("No data to export", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            // Get quarry name for the report title
+            var quarryName = _selectedQuarryId != null
+                ? _quarries.FirstOrDefault(q => q.Id == _selectedQuarryId)?.QuarryName ?? "All Quarries"
+                : "All Quarries";
+
+            // Set QuestPDF license
+            QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
+            var document = QuestPDF.Fluent.Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(QuestPDF.Helpers.PageSizes.A4);
+                    page.Margin(40);
+                    page.DefaultTextStyle(x => x.FontSize(10));
+
+                    // Header
+                    page.Header().Element(c =>
+                    {
+                        c.Row(row =>
+                        {
+                            row.RelativeItem().Column(col =>
+                            {
+                                col.Item().Text("EXPENSE REPORT").FontSize(20).Bold().FontColor(QuestPDF.Helpers.Colors.Red.Darken3);
+                                col.Item().Text(quarryName).FontSize(14).SemiBold();
+                                col.Item().Text($"Period: {_fromDate:dd MMM yyyy} - {_toDate:dd MMM yyyy}").FontSize(10).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1);
+                            });
+                            row.ConstantItem(100).AlignRight().Column(col =>
+                            {
+                                col.Item().Text("QDeskPro").FontSize(12).Bold().FontColor(QuestPDF.Helpers.Colors.Red.Darken2);
+                                col.Item().Text(DateTime.Now.ToString("dd/MM/yyyy HH:mm")).FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Medium);
+                            });
+                        });
+                    });
+
+                    // Content
+                    page.Content().PaddingVertical(15).Element(content =>
+                    {
+                        content.Column(col =>
+                        {
+                            // Summary Section
+                            col.Item().PaddingBottom(15).Element(e =>
+                            {
+                                e.Table(table =>
+                                {
+                                    table.ColumnsDefinition(columns =>
+                                    {
+                                        columns.RelativeColumn(1);
+                                        columns.RelativeColumn(1);
+                                        columns.RelativeColumn(1);
+                                        columns.RelativeColumn(1);
+                                    });
+
+                                    // Summary Cards Row
+                                    table.Cell().Border(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(10).Column(c =>
+                                    {
+                                        c.Item().Text("Total Expenses").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1);
+                                        c.Item().Text($"KES {_data.TotalExpenses:N0}").FontSize(16).Bold().FontColor(QuestPDF.Helpers.Colors.Red.Darken2);
+                                        c.Item().Text("total spent").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Medium);
+                                    });
+                                    table.Cell().Border(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(10).Column(c =>
+                                    {
+                                        c.Item().Text("Expense Entries").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1);
+                                        c.Item().Text(_data.ExpenseCount.ToString("N0")).FontSize(16).Bold().FontColor(QuestPDF.Helpers.Colors.Orange.Darken2);
+                                        c.Item().Text("records").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Medium);
+                                    });
+                                    table.Cell().Border(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(10).Column(c =>
+                                    {
+                                        c.Item().Text("Top Category").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1);
+                                        c.Item().Text(_data.TopCategory).FontSize(14).Bold().FontColor(QuestPDF.Helpers.Colors.Purple.Darken2);
+                                        c.Item().Text($"{_data.UniqueCategories} categories").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Medium);
+                                    });
+                                    table.Cell().Border(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(10).Column(c =>
+                                    {
+                                        c.Item().Text("Average Expense").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1);
+                                        c.Item().Text($"KES {_data.AverageExpenseAmount:N0}").FontSize(16).Bold().FontColor(QuestPDF.Helpers.Colors.Green.Darken2);
+                                        c.Item().Text("per entry").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Medium);
+                                    });
+                                });
+                            });
+
+                            // Expenses by Category
+                            col.Item().PaddingBottom(15).Element(e =>
+                            {
+                                e.Column(c =>
+                                {
+                                    c.Item().Text("Expenses by Category").FontSize(12).Bold().FontColor(QuestPDF.Helpers.Colors.Red.Darken3);
+                                    c.Item().PaddingTop(5).Table(table =>
+                                    {
+                                        table.ColumnsDefinition(columns =>
+                                        {
+                                            columns.RelativeColumn(2);
+                                            columns.RelativeColumn(1);
+                                            columns.RelativeColumn(1);
+                                            columns.RelativeColumn(1);
+                                        });
+
+                                        // Header
+                                        table.Header(header =>
+                                        {
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Red.Lighten4).Padding(5).Text("Category").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Red.Lighten4).Padding(5).AlignRight().Text("Amount").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Red.Lighten4).Padding(5).AlignRight().Text("Entries").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Red.Lighten4).Padding(5).AlignRight().Text("Share %").Bold();
+                                        });
+
+                                        // Rows
+                                        foreach (var item in _data.ExpensesByCategory)
+                                        {
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).Text(item.Category);
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"KES {item.TotalAmount:N0}");
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(item.ExpenseCount.ToString());
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"{item.PercentageOfTotal:N1}%");
+                                        }
+                                    });
+                                });
+                            });
+
+                            // Expenses by Type
+                            col.Item().PaddingBottom(15).Element(e =>
+                            {
+                                e.Column(c =>
+                                {
+                                    c.Item().Text("Expenses by Type").FontSize(12).Bold().FontColor(QuestPDF.Helpers.Colors.Orange.Darken3);
+                                    c.Item().PaddingTop(5).Table(table =>
+                                    {
+                                        table.ColumnsDefinition(columns =>
+                                        {
+                                            columns.RelativeColumn(2);
+                                            columns.RelativeColumn(1);
+                                            columns.RelativeColumn(1);
+                                            columns.RelativeColumn(1);
+                                        });
+
+                                        table.Header(header =>
+                                        {
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Orange.Lighten4).Padding(5).Text("Type").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Orange.Lighten4).Padding(5).AlignRight().Text("Amount").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Orange.Lighten4).Padding(5).AlignRight().Text("Entries").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Orange.Lighten4).Padding(5).AlignRight().Text("Share %").Bold();
+                                        });
+
+                                        foreach (var item in _data.ExpensesByType)
+                                        {
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).Text(GetFriendlyTypeName(item.ExpenseType));
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"KES {item.TotalAmount:N0}");
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(item.ExpenseCount.ToString());
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"{item.PercentageOfTotal:N1}%");
+                                        }
+                                    });
+                                });
+                            });
+
+                            // Top Expense Items
+                            col.Item().Element(e =>
+                            {
+                                e.Column(c =>
+                                {
+                                    c.Item().Text("Top Expense Items").FontSize(12).Bold().FontColor(QuestPDF.Helpers.Colors.Purple.Darken3);
+                                    c.Item().PaddingTop(5).Table(table =>
+                                    {
+                                        table.ColumnsDefinition(columns =>
+                                        {
+                                            columns.ConstantColumn(60);
+                                            columns.RelativeColumn(3);
+                                            columns.RelativeColumn(1);
+                                            columns.RelativeColumn(1);
+                                        });
+
+                                        table.Header(header =>
+                                        {
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Purple.Lighten4).Padding(5).Text("Date").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Purple.Lighten4).Padding(5).Text("Item").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Purple.Lighten4).Padding(5).Text("Category").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Purple.Lighten4).Padding(5).AlignRight().Text("Amount").Bold();
+                                        });
+
+                                        foreach (var item in _data.TopExpenseItems.Take(15))
+                                        {
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).Text(item.Date.ToString("dd/MM"));
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).Text(item.Item.Length > 40 ? item.Item[..40] + "..." : item.Item);
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).Text(item.Category);
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"KES {item.Amount:N0}");
+                                        }
+                                    });
+                                });
+                            });
+                        });
+                    });
+
+                    // Footer
+                    page.Footer().AlignCenter().Text(text =>
+                    {
+                        text.Span("Page ").FontSize(8);
+                        text.CurrentPageNumber().FontSize(8);
+                        text.Span(" of ").FontSize(8);
+                        text.TotalPages().FontSize(8);
+                    });
+                });
+            });
+
+            var pdfBytes = document.GeneratePdf();
+            var fileName = $"Expense_Report_{_fromDate:yyyyMMdd}_{_toDate:yyyyMMdd}.pdf";
+            await JSRuntime.InvokeVoidAsync("downloadFile", fileName, "application/pdf", Convert.ToBase64String(pdfBytes));
+
+            Snackbar.Add("PDF report exported successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting to PDF: {ex.Message}", Severity.Error);
+        }
+    }
+}

@@ -7,12 +7,35 @@ namespace QDeskPro.Features.Accounting.Services;
 
 /// <summary>
 /// Service for generating financial reports from accounting data.
+/// Aligned with IFRS for SMEs Third Edition (February 2025).
 /// </summary>
+/// <remarks>
+/// Per IFRS for SMEs Section 3.14, comparative information shall be disclosed for the preceding period
+/// for all amounts reported in the current period's financial statements.
+/// </remarks>
 public interface IFinancialReportService
 {
     Task<TrialBalanceReport> GenerateTrialBalanceAsync(string quarryId, DateTime asOfDate);
-    Task<ProfitLossReport> GenerateProfitLossAsync(string quarryId, DateTime from, DateTime to);
-    Task<BalanceSheetReport> GenerateBalanceSheetAsync(string quarryId, DateTime asOfDate);
+
+    /// <summary>
+    /// Generates Statement of Comprehensive Income (Profit & Loss).
+    /// Per IFRS for SMEs Section 5, includes option for comparative period data.
+    /// </summary>
+    /// <param name="quarryId">The quarry identifier.</param>
+    /// <param name="from">Period start date.</param>
+    /// <param name="to">Period end date.</param>
+    /// <param name="includeComparative">Whether to include prior period comparative data (IFRS requirement).</param>
+    Task<ProfitLossReport> GenerateProfitLossAsync(string quarryId, DateTime from, DateTime to, bool includeComparative = false);
+
+    /// <summary>
+    /// Generates Statement of Financial Position (Balance Sheet).
+    /// Per IFRS for SMEs Section 4, includes option for comparative period data.
+    /// </summary>
+    /// <param name="quarryId">The quarry identifier.</param>
+    /// <param name="asOfDate">The statement date.</param>
+    /// <param name="includeComparative">Whether to include prior period comparative data (IFRS requirement).</param>
+    Task<BalanceSheetReport> GenerateBalanceSheetAsync(string quarryId, DateTime asOfDate, bool includeComparative = false);
+
     Task<CashFlowReport> GenerateCashFlowAsync(string quarryId, DateTime from, DateTime to);
     Task<ARAgingReport> GenerateARAgingAsync(string quarryId, DateTime asOfDate);
     Task<APSummaryReport> GenerateAPSummaryAsync(string quarryId, DateTime asOfDate);
@@ -92,7 +115,7 @@ public class FinancialReportService : IFinancialReportService
         return report;
     }
 
-    public async Task<ProfitLossReport> GenerateProfitLossAsync(string quarryId, DateTime from, DateTime to)
+    public async Task<ProfitLossReport> GenerateProfitLossAsync(string quarryId, DateTime from, DateTime to, bool includeComparative = false)
     {
         var quarry = await _context.Quarries.FindAsync(quarryId);
 
@@ -105,6 +128,61 @@ public class FinancialReportService : IFinancialReportService
             GeneratedAt = DateTime.UtcNow
         };
 
+        // Get current period data
+        var currentPeriodData = await GetProfitLossDataForPeriodAsync(quarryId, from, to);
+        report.RevenueItems = currentPeriodData.RevenueItems;
+        report.CostOfSalesItems = currentPeriodData.CostOfSalesItems;
+        report.OperatingExpenses = currentPeriodData.OperatingExpenses;
+
+        // Calculate percentages for current period
+        if (report.TotalRevenue > 0)
+        {
+            foreach (var item in report.RevenueItems)
+                item.Percentage = (item.Amount / report.TotalRevenue) * 100;
+            foreach (var item in report.CostOfSalesItems)
+                item.Percentage = (item.Amount / report.TotalRevenue) * 100;
+            foreach (var item in report.OperatingExpenses)
+                item.Percentage = (item.Amount / report.TotalRevenue) * 100;
+        }
+
+        // Generate comparative period data if requested (IFRS requirement)
+        if (includeComparative)
+        {
+            // Calculate prior year same period
+            var comparativeFrom = from.AddYears(-1);
+            var comparativeTo = to.AddYears(-1);
+
+            report.ComparativePeriodStart = comparativeFrom;
+            report.ComparativePeriodEnd = comparativeTo;
+
+            var comparativeData = await GetProfitLossDataForPeriodAsync(quarryId, comparativeFrom, comparativeTo);
+            report.ComparativeRevenueItems = comparativeData.RevenueItems;
+            report.ComparativeCostOfSalesItems = comparativeData.CostOfSalesItems;
+            report.ComparativeOperatingExpenses = comparativeData.OperatingExpenses;
+
+            // Match comparative amounts to current period items
+            MatchComparativeAmounts(report.RevenueItems, report.ComparativeRevenueItems);
+            MatchComparativeAmounts(report.CostOfSalesItems, report.ComparativeCostOfSalesItems);
+            MatchComparativeAmounts(report.OperatingExpenses, report.ComparativeOperatingExpenses);
+
+            _logger.LogInformation("Generated Statement of Comprehensive Income with comparative for quarry {QuarryId} from {From} to {To}",
+                quarryId, from, to);
+        }
+        else
+        {
+            _logger.LogInformation("Generated Statement of Comprehensive Income for quarry {QuarryId} from {From} to {To}",
+                quarryId, from, to);
+        }
+
+        return report;
+    }
+
+    /// <summary>
+    /// Gets profit and loss data for a specific period.
+    /// </summary>
+    private async Task<(List<ProfitLossLineItem> RevenueItems, List<ProfitLossLineItem> CostOfSalesItems, List<ProfitLossLineItem> OperatingExpenses)>
+        GetProfitLossDataForPeriodAsync(string quarryId, DateTime from, DateTime to)
+    {
         // Get all journal entry lines for the period
         var journalLines = await _context.JournalEntryLines
             .Include(l => l.JournalEntry)
@@ -133,12 +211,10 @@ public class FinancialReportService : IFinancialReportService
             {
                 AccountCode = a.Account.AccountCode,
                 Description = a.Account.AccountName,
-                Amount = Math.Abs(a.NetAmount) // Revenue should be positive
+                Amount = Math.Abs(a.NetAmount)
             })
             .OrderBy(i => i.AccountCode)
             .ToList();
-
-        report.RevenueItems = revenueItems;
 
         // Cost of Sales items (Category = CostOfSales)
         var costOfSalesItems = accountTotals
@@ -152,8 +228,6 @@ public class FinancialReportService : IFinancialReportService
             .OrderBy(i => i.AccountCode)
             .ToList();
 
-        report.CostOfSalesItems = costOfSalesItems;
-
         // Operating Expenses (Category = Expenses)
         var operatingExpenses = accountTotals
             .Where(a => a.Account.Category == AccountCategory.Expenses && Math.Abs(a.NetAmount) > 0.01)
@@ -166,30 +240,28 @@ public class FinancialReportService : IFinancialReportService
             .OrderBy(i => i.AccountCode)
             .ToList();
 
-        report.OperatingExpenses = operatingExpenses;
-
-        // Calculate percentages
-        if (report.TotalRevenue > 0)
-        {
-            foreach (var item in report.RevenueItems)
-                item.Percentage = (item.Amount / report.TotalRevenue) * 100;
-            foreach (var item in report.CostOfSalesItems)
-                item.Percentage = (item.Amount / report.TotalRevenue) * 100;
-            foreach (var item in report.OperatingExpenses)
-                item.Percentage = (item.Amount / report.TotalRevenue) * 100;
-        }
-
-        _logger.LogInformation("Generated P&L for quarry {QuarryId} from {From} to {To}",
-            quarryId, from, to);
-
-        return report;
+        return (revenueItems, costOfSalesItems, operatingExpenses);
     }
 
-    public async Task<BalanceSheetReport> GenerateBalanceSheetAsync(string quarryId, DateTime asOfDate)
+    /// <summary>
+    /// Matches comparative amounts to current period items by account code.
+    /// Per IFRS for SMEs, comparative amounts should be presented alongside current amounts.
+    /// </summary>
+    private static void MatchComparativeAmounts(List<ProfitLossLineItem> currentItems, List<ProfitLossLineItem> comparativeItems)
+    {
+        foreach (var currentItem in currentItems)
+        {
+            var comparativeItem = comparativeItems.FirstOrDefault(c => c.AccountCode == currentItem.AccountCode);
+            if (comparativeItem != null)
+            {
+                currentItem.ComparativeAmount = comparativeItem.Amount;
+            }
+        }
+    }
+
+    public async Task<BalanceSheetReport> GenerateBalanceSheetAsync(string quarryId, DateTime asOfDate, bool includeComparative = false)
     {
         var quarry = await _context.Quarries.FindAsync(quarryId);
-        var accounts = await _accountingService.GetChartOfAccountsAsync(quarryId);
-        var balances = await _accountingService.GetAllAccountBalancesAsync(quarryId, asOfDate);
 
         var report = new BalanceSheetReport
         {
@@ -198,6 +270,75 @@ public class FinancialReportService : IFinancialReportService
             AsOfDate = asOfDate,
             GeneratedAt = DateTime.UtcNow
         };
+
+        // Get current period data
+        var currentData = await GetBalanceSheetDataForDateAsync(quarryId, asOfDate);
+        report.CurrentAssets = currentData.CurrentAssets;
+        report.NonCurrentAssets = currentData.NonCurrentAssets;
+        report.CurrentLiabilities = currentData.CurrentLiabilities;
+        report.NonCurrentLiabilities = currentData.NonCurrentLiabilities;
+        report.EquityItems = currentData.EquityItems;
+
+        // Calculate current period profit/loss
+        var periodStart = new DateTime(asOfDate.Year, 1, 1); // Start of fiscal year
+        var pnl = await GenerateProfitLossAsync(quarryId, periodStart, asOfDate);
+        report.CurrentPeriodProfitLoss = pnl.NetProfit;
+
+        // Generate comparative period data if requested (IFRS requirement)
+        if (includeComparative)
+        {
+            // Calculate prior year same date
+            var comparativeDate = asOfDate.AddYears(-1);
+            report.ComparativeDate = comparativeDate;
+
+            var comparativeData = await GetBalanceSheetDataForDateAsync(quarryId, comparativeDate);
+            report.ComparativeCurrentAssets = comparativeData.CurrentAssets;
+            report.ComparativeNonCurrentAssets = comparativeData.NonCurrentAssets;
+            report.ComparativeCurrentLiabilities = comparativeData.CurrentLiabilities;
+            report.ComparativeNonCurrentLiabilities = comparativeData.NonCurrentLiabilities;
+            report.ComparativeEquityItems = comparativeData.EquityItems;
+
+            // Calculate comparative period profit/loss
+            var comparativePeriodStart = new DateTime(comparativeDate.Year, 1, 1);
+            var comparativePnl = await GenerateProfitLossAsync(quarryId, comparativePeriodStart, comparativeDate);
+            report.ComparativePeriodProfitLoss = comparativePnl.NetProfit;
+
+            // Match comparative amounts to current period items
+            MatchBalanceSheetComparativeAmounts(report.CurrentAssets, report.ComparativeCurrentAssets);
+            MatchBalanceSheetComparativeAmounts(report.NonCurrentAssets, report.ComparativeNonCurrentAssets);
+            MatchBalanceSheetComparativeAmounts(report.CurrentLiabilities, report.ComparativeCurrentLiabilities);
+            MatchBalanceSheetComparativeAmounts(report.NonCurrentLiabilities, report.ComparativeNonCurrentLiabilities);
+            MatchBalanceSheetComparativeAmounts(report.EquityItems, report.ComparativeEquityItems);
+
+            _logger.LogInformation("Generated Statement of Financial Position with comparative for quarry {QuarryId} as of {AsOfDate}",
+                quarryId, asOfDate);
+        }
+        else
+        {
+            _logger.LogInformation("Generated Statement of Financial Position for quarry {QuarryId} as of {AsOfDate}",
+                quarryId, asOfDate);
+        }
+
+        return report;
+    }
+
+    /// <summary>
+    /// Gets balance sheet data for a specific date.
+    /// Per IFRS for SMEs Section 4.2, classifies assets and liabilities as current/non-current.
+    /// </summary>
+    private async Task<(List<BalanceSheetLineItem> CurrentAssets, List<BalanceSheetLineItem> NonCurrentAssets,
+        List<BalanceSheetLineItem> CurrentLiabilities, List<BalanceSheetLineItem> NonCurrentLiabilities,
+        List<BalanceSheetLineItem> EquityItems)>
+        GetBalanceSheetDataForDateAsync(string quarryId, DateTime asOfDate)
+    {
+        var accounts = await _accountingService.GetChartOfAccountsAsync(quarryId);
+        var balances = await _accountingService.GetAllAccountBalancesAsync(quarryId, asOfDate);
+
+        var currentAssets = new List<BalanceSheetLineItem>();
+        var nonCurrentAssets = new List<BalanceSheetLineItem>();
+        var currentLiabilities = new List<BalanceSheetLineItem>();
+        var nonCurrentLiabilities = new List<BalanceSheetLineItem>();
+        var equityItems = new List<BalanceSheetLineItem>();
 
         foreach (var account in accounts)
         {
@@ -214,43 +355,53 @@ public class FinancialReportService : IFinancialReportService
             switch (account.Category)
             {
                 case AccountCategory.Assets:
-                    // Current assets: Cash, Bank, Receivables (codes 1000-1499)
-                    if (int.Parse(account.AccountCode) < 1500)
-                        report.CurrentAssets.Add(line);
+                    // Current assets: Cash, Bank, Receivables, Prepayments, Inventories (codes 1000-1399)
+                    // Non-Current assets: PPE, Accumulated Depreciation (codes 1400-1999)
+                    if (int.Parse(account.AccountCode) < 1400)
+                        currentAssets.Add(line);
                     else
-                        report.NonCurrentAssets.Add(line);
+                        nonCurrentAssets.Add(line);
                     break;
 
                 case AccountCategory.Liabilities:
-                    // Current liabilities: Customer Deposits, Accrued (codes 2000-2299)
-                    if (int.Parse(account.AccountCode) < 2300)
-                        report.CurrentLiabilities.Add(line);
+                    // Current liabilities: Contract Liabilities, Trade Payables, Accrued, Tax (codes 2000-2499)
+                    // Non-Current liabilities: Borrowings (codes 2500-2999)
+                    if (int.Parse(account.AccountCode) < 2500)
+                        currentLiabilities.Add(line);
                     else
-                        report.NonCurrentLiabilities.Add(line);
+                        nonCurrentLiabilities.Add(line);
                     break;
 
                 case AccountCategory.Equity:
-                    report.EquityItems.Add(line);
+                    equityItems.Add(line);
                     break;
             }
         }
 
-        // Calculate current period profit/loss
-        var periodStart = new DateTime(asOfDate.Year, 1, 1); // Start of fiscal year
-        var pnl = await GenerateProfitLossAsync(quarryId, periodStart, asOfDate);
-        report.CurrentPeriodProfitLoss = pnl.NetProfit;
-
         // Sort items by account code
-        report.CurrentAssets = report.CurrentAssets.OrderBy(i => i.AccountCode).ToList();
-        report.NonCurrentAssets = report.NonCurrentAssets.OrderBy(i => i.AccountCode).ToList();
-        report.CurrentLiabilities = report.CurrentLiabilities.OrderBy(i => i.AccountCode).ToList();
-        report.NonCurrentLiabilities = report.NonCurrentLiabilities.OrderBy(i => i.AccountCode).ToList();
-        report.EquityItems = report.EquityItems.OrderBy(i => i.AccountCode).ToList();
+        currentAssets = currentAssets.OrderBy(i => i.AccountCode).ToList();
+        nonCurrentAssets = nonCurrentAssets.OrderBy(i => i.AccountCode).ToList();
+        currentLiabilities = currentLiabilities.OrderBy(i => i.AccountCode).ToList();
+        nonCurrentLiabilities = nonCurrentLiabilities.OrderBy(i => i.AccountCode).ToList();
+        equityItems = equityItems.OrderBy(i => i.AccountCode).ToList();
 
-        _logger.LogInformation("Generated Balance Sheet for quarry {QuarryId} as of {AsOfDate}",
-            quarryId, asOfDate);
+        return (currentAssets, nonCurrentAssets, currentLiabilities, nonCurrentLiabilities, equityItems);
+    }
 
-        return report;
+    /// <summary>
+    /// Matches comparative amounts to current period balance sheet items by account code.
+    /// Per IFRS for SMEs, comparative amounts should be presented alongside current amounts.
+    /// </summary>
+    private static void MatchBalanceSheetComparativeAmounts(List<BalanceSheetLineItem> currentItems, List<BalanceSheetLineItem> comparativeItems)
+    {
+        foreach (var currentItem in currentItems)
+        {
+            var comparativeItem = comparativeItems.FirstOrDefault(c => c.AccountCode == currentItem.AccountCode);
+            if (comparativeItem != null)
+            {
+                currentItem.ComparativeAmount = comparativeItem.Amount;
+            }
+        }
     }
 
     public async Task<CashFlowReport> GenerateCashFlowAsync(string quarryId, DateTime from, DateTime to)

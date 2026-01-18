@@ -79,7 +79,16 @@ public class ReportService
         report.Sales = sales;
         report.TotalQuantity = sales.Sum(s => s.Quantity);
         report.TotalSales = sales.Sum(s => s.GrossSaleAmount);
-        report.Unpaid = sales.Where(s => s.PaymentStatus != "Paid").Sum(s => s.GrossSaleAmount);
+
+        // CRITICAL FIX: Calculate unpaid based on PaymentReceivedDate, not current PaymentStatus
+        // A sale is unpaid for this report period if:
+        // 1. PaymentReceivedDate is null (never paid), OR
+        // 2. PaymentReceivedDate is after the report period end date (paid later, will be counted as Collection on that day)
+        // This prevents double-counting when an unpaid sale from Day 1 is paid on Day 2
+        report.Unpaid = sales.Where(s =>
+            !s.PaymentReceivedDate.HasValue ||
+            s.PaymentReceivedDate.Value.Date > toDate.Date
+        ).Sum(s => s.GrossSaleAmount);
         report.UnpaidOrders = report.Unpaid > 0;
 
         // 3. Get ALL Expenses from 4 Sources (CRITICAL)
@@ -280,7 +289,16 @@ public class ReportService
         report.Sales = sales;
         report.TotalQuantity = sales.Sum(s => s.Quantity);
         report.TotalSales = sales.Sum(s => s.GrossSaleAmount);
-        report.Unpaid = sales.Where(s => s.PaymentStatus != "Paid").Sum(s => s.GrossSaleAmount);
+
+        // CRITICAL FIX: Calculate unpaid based on PaymentReceivedDate, not current PaymentStatus
+        // A sale is unpaid for this report period if:
+        // 1. PaymentReceivedDate is null (never paid), OR
+        // 2. PaymentReceivedDate is after the report period end date (paid later, will be counted as Collection on that day)
+        // This prevents double-counting when an unpaid sale from Day 1 is paid on Day 2
+        report.Unpaid = sales.Where(s =>
+            !s.PaymentReceivedDate.HasValue ||
+            s.PaymentReceivedDate.Value.Date > toDate.Date
+        ).Sum(s => s.GrossSaleAmount);
         report.UnpaidOrders = report.Unpaid > 0;
 
         // 3. Get ALL Expenses from 4 Sources
@@ -386,6 +404,44 @@ public class ReportService
         report.Earnings = report.TotalSales - report.TotalExpenses;
         report.NetEarnings = (report.Earnings + report.OpeningBalance + report.TotalCollections + report.TotalPrepayments) - report.Unpaid;
         report.CashInHand = report.NetEarnings - report.Banked;
+
+        // 9. Update/Create Closing Balance for single-day reports (only if processing entire quarry, not per-clerk)
+        if (isSingleDay && string.IsNullOrWhiteSpace(userId))
+        {
+            var todayNote = await _context.DailyNotes
+                .Where(n => n.DateStamp == fromStamp)
+                .Where(n => n.QId == quarryId)
+                .Where(n => n.IsActive)
+                .FirstOrDefaultAsync();
+
+            if (todayNote != null)
+            {
+                // Update existing note
+                todayNote.ClosingBalance = report.CashInHand;
+                todayNote.DateModified = DateTime.UtcNow;
+                todayNote.ModifiedBy = "COB-Service";
+            }
+            else
+            {
+                // Create new note with closing balance
+                var newNote = new DailyNote
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    NoteDate = fromDate,
+                    DateStamp = fromStamp,
+                    QId = quarryId,
+                    quarryId = quarryId, // Legacy field
+                    ClosingBalance = report.CashInHand,
+                    Notes = "",
+                    IsActive = true,
+                    DateCreated = DateTime.UtcNow,
+                    CreatedBy = "COB-Service"
+                };
+                _context.DailyNotes.Add(newNote);
+            }
+
+            await _context.SaveChangesAsync();
+        }
 
         return report;
     }

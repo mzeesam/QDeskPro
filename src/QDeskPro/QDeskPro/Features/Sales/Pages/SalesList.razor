@@ -15,14 +15,28 @@
 
 <PageTitle>My Sales - QDeskPro</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
-    <MudText Typo="Typo.h4" Class="font-weight-bold mb-4">
-        <MudIcon Icon="@Icons.Material.Rounded.Receipt" Class="mr-2" />
-        My Sales
-    </MudText>
+<MudContainer MaxWidth="MaxWidth.Large" Class="sales-list-container py-4">
+    @* Modern Page Header *@
+    <div class="sales-list-header">
+        <div class="header-content">
+            <div class="header-icon-wrapper">
+                <MudIcon Icon="@Icons.Material.Rounded.Receipt" Size="Size.Large" />
+            </div>
+            <div class="header-text">
+                <h1>My Sales</h1>
+                <p>@_allSales.Count total records</p>
+            </div>
+        </div>
+        <div class="header-stats">
+            <div class="stat-badge">
+                <MudIcon Icon="@Icons.Material.Rounded.ShoppingCart" Size="Size.Small" />
+                <span>@_sales.Count</span>
+            </div>
+        </div>
+    </div>
 
     @* Search and Filter *@
-    <MudPaper Class="pa-4 mb-4" Elevation="0">
+    <div class="search-card">
         <MudTextField @bind-Value="_searchText"
                       Label="Search by Vehicle Registration"
                       Variant="Variant.Outlined"
@@ -30,29 +44,37 @@
                       AdornmentIcon="@Icons.Material.Rounded.Search"
                       OnKeyUp="OnSearchKeyUp"
                       Immediate="false"
-                      DebounceInterval="500" />
-    </MudPaper>
+                      DebounceInterval="500"
+                      Class="search-input" />
+    </div>
 
     @if (_loading)
     {
-        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+        <div class="loading-container">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+            <MudText Typo="Typo.body1" Class="mt-3" Color="Color.Secondary">Loading sales...</MudText>
+        </div>
     }
     else if (!_sales.Any())
     {
-        <MudPaper Class="pa-8 text-center" Elevation="0">
-            <MudIcon Icon="@Icons.Material.Rounded.Inbox" Size="Size.Large" Color="Color.Default" />
-            <MudText Typo="Typo.h6" Class="mt-2">No sales records to display</MudText>
+        <div class="empty-state-card">
+            <div class="empty-icon">
+                <MudIcon Icon="@Icons.Material.Rounded.Inbox" Size="Size.Large" />
+            </div>
+            <MudText Typo="Typo.h6" Class="mt-3">No sales records to display</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">Start by creating your first sale</MudText>
             <MudButton Variant="Variant.Filled"
                        Color="Color.Primary"
                        Href="/clerk/sales/new"
-                       Class="mt-4">
+                       StartIcon="@Icons.Material.Rounded.Add"
+                       Class="mt-4 create-btn">
                 Create New Sale
             </MudButton>
-        </MudPaper>
+        </div>
     }
     else
     {
-        <MudPaper Elevation="0">
+        <div class="sales-list">
             @foreach (var sale in _sales)
             {
                 var isEditable = IsEditableWithin72Hours(sale.SaleDate);
@@ -146,7 +168,7 @@
                     Load More
                 </MudButton>
             }
-        </MudPaper>
+        </div>
     }
 
     @* FAB for New Sale *@
@@ -158,13 +180,144 @@
 </MudContainer>
 
 <style>
+    /* Container */
+    .sales-list-container {
+        max-width: 900px;
+    }
+
+    /* Modern Header */
+    .sales-list-header {
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 8px 32px rgba(13, 71, 161, 0.3);
+    }
+
+    .header-content {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .header-icon-wrapper {
+        width: 56px;
+        height: 56px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(10px);
+    }
+
+    .header-text h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+    }
+
+    .header-text p {
+        margin: 4px 0 0 0;
+        opacity: 0.9;
+        font-size: 0.875rem;
+    }
+
+    .header-stats {
+        display: flex;
+        gap: 12px;
+    }
+
+    .stat-badge {
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 20px;
+        padding: 8px 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        backdrop-filter: blur(10px);
+    }
+
+    /* Search Card */
+    .search-card {
+        background: white;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 24px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        border: 1px solid #e2e8f0;
+    }
+
+    /* Loading State */
+    .loading-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 80px 20px;
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    /* Empty State */
+    .empty-state-card {
+        background: white;
+        border-radius: 16px;
+        padding: 60px 24px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        border: 1px solid #e2e8f0;
+    }
+
+    .empty-icon {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto;
+        color: #1976D2;
+    }
+
+    .create-btn {
+        border-radius: 8px;
+        text-transform: none;
+        font-weight: 600;
+        padding: 12px 24px;
+    }
+
+    /* Sales List */
+    .sales-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    /* Sale Card */
     .sale-card {
+        border-radius: 12px !important;
+        border: 1px solid #e2e8f0;
         border-left: 4px solid #1976D2;
         transition: all 0.2s ease;
+        overflow: hidden;
     }
 
     .sale-card:hover {
-        box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+    }
+
+    .sale-card.unpaid {
+        border-left-color: #F44336;
+        background: linear-gradient(135deg, rgba(244, 67, 54, 0.02) 0%, transparent 100%);
     }
 
     .unpaid-text {
@@ -180,6 +333,87 @@
     .paid-amount {
         color: #1976D2;
         font-weight: 700;
+    }
+
+    /* Load More Button */
+    .sales-list :deep(.mud-button-outlined) {
+        border-radius: 8px;
+        text-transform: none;
+        font-weight: 600;
+        padding: 12px;
+    }
+
+    /* FAB Styling */
+    :deep(.mud-fab) {
+        box-shadow: 0 8px 24px rgba(25, 118, 210, 0.4);
+    }
+
+    /* Dark Mode Support */
+    :global(.mud-theme-dark) .sales-list-header {
+        background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+    }
+
+    :global(.mud-theme-dark) .search-card {
+        background: #1e1e1e;
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .loading-container {
+        background: #1e1e1e;
+    }
+
+    :global(.mud-theme-dark) .empty-state-card {
+        background: #1e1e1e;
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .empty-icon {
+        background: linear-gradient(135deg, #1a237e 0%, #0d47a1 100%);
+    }
+
+    :global(.mud-theme-dark) .sale-card {
+        background: #1e1e1e;
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .paid-amount {
+        color: #90CAF9;
+    }
+
+    /* Mobile Responsiveness */
+    @@media (max-width: 600px) {
+        .sales-list-header {
+            flex-direction: column;
+            text-align: center;
+            gap: 16px;
+            padding: 20px;
+        }
+
+        .header-content {
+            flex-direction: column;
+        }
+
+        .header-icon-wrapper {
+            width: 48px;
+            height: 48px;
+        }
+
+        .header-text h1 {
+            font-size: 1.25rem;
+        }
+
+        .search-card {
+            padding: 12px;
+        }
+
+        .empty-state-card {
+            padding: 40px 16px;
+        }
+
+        .empty-icon {
+            width: 64px;
+            height: 64px;
+        }
     }
 </style>
 

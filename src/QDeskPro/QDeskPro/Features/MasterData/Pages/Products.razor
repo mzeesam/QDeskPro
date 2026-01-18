@@ -16,57 +16,100 @@
 <PageTitle>Products - QDeskPro</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
-    <MudStack Spacing="3">
-        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-            <MudText Typo="Typo.h4">Products</MudText>
-            <MudChip T="string" Color="Color.Info" Icon="@Icons.Material.Filled.Info">
-                View Only
-            </MudChip>
-        </MudStack>
+    <MudStack Spacing="4">
+        @* Page Header with Gradient *@
+        <div class="admin-header admin-header-products">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.Category" Size="Size.Large" Style="color: #FF5722;" />
+                    <div>
+                        <MudText Typo="Typo.h4" Class="admin-header-title">Products</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            View all available product types
+                        </MudText>
+                    </div>
+                </MudStack>
+                <MudChip T="string" Color="Color.Info" Icon="@Icons.Material.Filled.Info" Variant="Variant.Outlined">
+                    View Only
+                </MudChip>
+            </MudStack>
+        </div>
 
-        <MudAlert Severity="Severity.Info" Dense="true">
-            Products are shared across all quarries. To set prices for products at your quarry, use the <strong>Product Prices</strong> page.
-        </MudAlert>
+        @* Info Card *@
+        <div class="admin-info-card">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Info" Color="Color.Info" />
+                <MudText>Products are shared across all quarries. To set prices for products at your quarry, use the <strong>Product Prices</strong> page.</MudText>
+            </MudStack>
+        </div>
+
+        @* Stats Summary Row *@
+        <div class="admin-mini-stats-row" style="grid-template-columns: repeat(2, 1fr);">
+            <div class="admin-mini-stat admin-mini-stat-gradient-5">
+                <MudIcon Icon="@Icons.Material.Filled.Category" Size="Size.Large" Class="admin-mini-stat-icon" />
+                <div class="admin-mini-stat-content">
+                    <span class="admin-mini-stat-value">@_products.Count</span>
+                    <span class="admin-mini-stat-label">Total Products</span>
+                </div>
+            </div>
+            <div class="admin-mini-stat admin-mini-stat-gradient-4">
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Class="admin-mini-stat-icon" />
+                <div class="admin-mini-stat-content">
+                    <span class="admin-mini-stat-value">@_products.Count(p => p.IsActive)</span>
+                    <span class="admin-mini-stat-label">Active</span>
+                </div>
+            </div>
+        </div>
 
         @if (_loading)
         {
             <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
         }
 
-        <MudTable Items="_products"
-                 Hover="true"
-                 Breakpoint="Breakpoint.Sm"
-                 Dense="true"
-                 Loading="_loading"
-                 LoadingProgressColor="Color.Primary">
-            <HeaderContent>
-                <MudTh>Product Name</MudTh>
-                <MudTh>Description</MudTh>
-                <MudTh>Actions</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd DataLabel="Name">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                        <MudIcon Icon="@Icons.Material.Filled.Category" Color="Color.Primary" Size="Size.Small" />
-                        <MudText>@context.ProductName</MudText>
-                    </MudStack>
-                </MudTd>
-                <MudTd DataLabel="Description">
-                    @(string.IsNullOrWhiteSpace(context.Description) ? "-" : context.Description)
-                </MudTd>
-                <MudTd DataLabel="Actions">
-                    <MudIconButton Icon="@Icons.Material.Filled.Info"
-                                  Size="Size.Small"
-                                  Color="Color.Info"
-                                  OnClick="@(() => ShowDetails(context))" />
-                </MudTd>
-            </RowTemplate>
-            <NoRecordsContent>
-                <MudText Align="Align.Center" Class="pa-4">
-                    No products found in the system.
-                </MudText>
-            </NoRecordsContent>
-        </MudTable>
+        @* Table Card *@
+        <div class="admin-table-card">
+            <MudTable Items="_products"
+                     Hover="true"
+                     Breakpoint="Breakpoint.Sm"
+                     Dense="true"
+                     Loading="_loading"
+                     LoadingProgressColor="Color.Primary">
+                <HeaderContent>
+                    <MudTh>Product Name</MudTh>
+                    <MudTh>Description</MudTh>
+                    <MudTh>Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Name">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Category" Color="Color.Primary" Size="Size.Small" />
+                            <MudText>@context.ProductName</MudText>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Description">
+                        @(string.IsNullOrWhiteSpace(context.Description) ? "-" : context.Description)
+                    </MudTd>
+                    <MudTd DataLabel="Actions">
+                        <MudIconButton Icon="@Icons.Material.Filled.Info"
+                                      Size="Size.Small"
+                                      Color="Color.Info"
+                                      Class="admin-action-icon"
+                                      OnClick="@(() => ShowDetails(context))" />
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <div class="admin-empty-state">
+                        <div class="admin-empty-state-icon">
+                            <MudIcon Icon="@Icons.Material.Filled.Category" />
+                        </div>
+                        <MudText Typo="Typo.h6" Color="Color.Default">No products found</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                            Products will appear here once configured
+                        </MudText>
+                    </div>
+                </NoRecordsContent>
+            </MudTable>
+        </div>
     </MudStack>
 </MudContainer>
 

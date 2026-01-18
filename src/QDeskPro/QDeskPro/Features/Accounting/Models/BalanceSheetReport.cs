@@ -1,9 +1,14 @@
 namespace QDeskPro.Features.Accounting.Models;
 
 /// <summary>
-/// Balance Sheet Report - shows Assets, Liabilities, and Equity at a point in time.
+/// Statement of Financial Position (Balance Sheet) - shows Assets, Liabilities, and Equity at a point in time.
+/// Prepared in accordance with IFRS for SMEs Third Edition (February 2025).
 /// Assets = Liabilities + Equity (the accounting equation).
 /// </summary>
+/// <remarks>
+/// IFRS for SMEs Section 4.2 specifies minimum line items to be presented.
+/// This report follows the current/non-current classification approach.
+/// </remarks>
 public class BalanceSheetReport
 {
     /// <summary>
@@ -17,7 +22,7 @@ public class BalanceSheetReport
     public string QuarryName { get; set; } = string.Empty;
 
     /// <summary>
-    /// As-of date for the balance sheet.
+    /// As-of date for the statement of financial position.
     /// </summary>
     public DateTime AsOfDate { get; set; }
 
@@ -25,6 +30,29 @@ public class BalanceSheetReport
     /// Report generation timestamp.
     /// </summary>
     public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// IFRS-compliant report title.
+    /// </summary>
+    public string ReportTitle => "Statement of Financial Position";
+
+    /// <summary>
+    /// Accounting standard reference.
+    /// </summary>
+    public string AccountingStandard => "IFRS for SMEs Third Edition (2025)";
+
+    // ===== COMPARATIVE PERIOD SUPPORT (IFRS Requirement) =====
+
+    /// <summary>
+    /// Comparative period date (prior year same date).
+    /// IFRS for SMEs requires comparative information for the preceding period.
+    /// </summary>
+    public DateTime? ComparativeDate { get; set; }
+
+    /// <summary>
+    /// Whether comparative data is included in this report.
+    /// </summary>
+    public bool HasComparativeData => ComparativeDate.HasValue;
 
     // ===== ASSETS =====
 
@@ -53,6 +81,33 @@ public class BalanceSheetReport
     /// </summary>
     public double TotalAssets => TotalCurrentAssets + TotalNonCurrentAssets;
 
+    // ===== COMPARATIVE ASSETS (Prior Period) =====
+
+    /// <summary>
+    /// Comparative Current Assets (prior period).
+    /// </summary>
+    public List<BalanceSheetLineItem> ComparativeCurrentAssets { get; set; } = new();
+
+    /// <summary>
+    /// Comparative Non-Current Assets (prior period).
+    /// </summary>
+    public List<BalanceSheetLineItem> ComparativeNonCurrentAssets { get; set; } = new();
+
+    /// <summary>
+    /// Total Comparative Current Assets.
+    /// </summary>
+    public double TotalComparativeCurrentAssets => ComparativeCurrentAssets.Sum(a => a.Amount);
+
+    /// <summary>
+    /// Total Comparative Non-Current Assets.
+    /// </summary>
+    public double TotalComparativeNonCurrentAssets => ComparativeNonCurrentAssets.Sum(a => a.Amount);
+
+    /// <summary>
+    /// Total Comparative Assets.
+    /// </summary>
+    public double TotalComparativeAssets => TotalComparativeCurrentAssets + TotalComparativeNonCurrentAssets;
+
     // ===== LIABILITIES =====
 
     /// <summary>
@@ -80,6 +135,33 @@ public class BalanceSheetReport
     /// </summary>
     public double TotalLiabilities => TotalCurrentLiabilities + TotalNonCurrentLiabilities;
 
+    // ===== COMPARATIVE LIABILITIES (Prior Period) =====
+
+    /// <summary>
+    /// Comparative Current Liabilities (prior period).
+    /// </summary>
+    public List<BalanceSheetLineItem> ComparativeCurrentLiabilities { get; set; } = new();
+
+    /// <summary>
+    /// Comparative Non-Current Liabilities (prior period).
+    /// </summary>
+    public List<BalanceSheetLineItem> ComparativeNonCurrentLiabilities { get; set; } = new();
+
+    /// <summary>
+    /// Total Comparative Current Liabilities.
+    /// </summary>
+    public double TotalComparativeCurrentLiabilities => ComparativeCurrentLiabilities.Sum(l => l.Amount);
+
+    /// <summary>
+    /// Total Comparative Non-Current Liabilities.
+    /// </summary>
+    public double TotalComparativeNonCurrentLiabilities => ComparativeNonCurrentLiabilities.Sum(l => l.Amount);
+
+    /// <summary>
+    /// Total Comparative Liabilities.
+    /// </summary>
+    public double TotalComparativeLiabilities => TotalComparativeCurrentLiabilities + TotalComparativeNonCurrentLiabilities;
+
     // ===== EQUITY =====
 
     /// <summary>
@@ -96,6 +178,28 @@ public class BalanceSheetReport
     /// Total Equity = Equity Items + Current Period Profit/Loss.
     /// </summary>
     public double TotalEquity => EquityItems.Sum(e => e.Amount) + CurrentPeriodProfitLoss;
+
+    // ===== COMPARATIVE EQUITY (Prior Period) =====
+
+    /// <summary>
+    /// Comparative Equity items (prior period).
+    /// </summary>
+    public List<BalanceSheetLineItem> ComparativeEquityItems { get; set; } = new();
+
+    /// <summary>
+    /// Comparative period profit/(loss).
+    /// </summary>
+    public double ComparativePeriodProfitLoss { get; set; }
+
+    /// <summary>
+    /// Total Comparative Equity.
+    /// </summary>
+    public double TotalComparativeEquity => ComparativeEquityItems.Sum(e => e.Amount) + ComparativePeriodProfitLoss;
+
+    /// <summary>
+    /// Total Comparative Liabilities and Equity.
+    /// </summary>
+    public double TotalComparativeLiabilitiesAndEquity => TotalComparativeLiabilities + TotalComparativeEquity;
 
     // ===== VALIDATION =====
 
@@ -116,7 +220,8 @@ public class BalanceSheetReport
 }
 
 /// <summary>
-/// Individual line item in the Balance Sheet report.
+/// Individual line item in the Statement of Financial Position.
+/// Per IFRS for SMEs Section 4.2, each material class of similar items should be presented separately.
 /// </summary>
 public class BalanceSheetLineItem
 {
@@ -126,12 +231,23 @@ public class BalanceSheetLineItem
     public string AccountCode { get; set; } = string.Empty;
 
     /// <summary>
-    /// Display name (e.g., "Cash on Hand", "Customer Deposits").
+    /// Display name (e.g., "Cash and Cash Equivalents", "Trade and Other Payables").
+    /// Uses IFRS-compliant terminology.
     /// </summary>
     public string Description { get; set; } = string.Empty;
 
     /// <summary>
-    /// Amount for this line item.
+    /// Amount for this line item (current period).
     /// </summary>
     public double Amount { get; set; }
+
+    /// <summary>
+    /// Comparative amount (prior period) for IFRS compliance.
+    /// </summary>
+    public double ComparativeAmount { get; set; }
+
+    /// <summary>
+    /// Notes reference for disclosure cross-referencing.
+    /// </summary>
+    public string? NotesReference { get; set; }
 }

@@ -1,0 +1,27 @@
+@namespace QDeskPro.Features.AI.Components
+
+<div class="markdown-content">
+    @if (!string.IsNullOrEmpty(Content))
+    {
+        <MudMarkdown Value="@Content"
+                     OverrideHeaderTypo="@ScaleDownHeader"
+                     TableCellMinWidth="80"
+                     CodeBlockTheme="CodeBlockTheme.Github" />
+    }
+</div>
+
+@code {
+    [Parameter] public string Content { get; set; } = string.Empty;
+
+    // Scale down headers for chat context (h1->h5, h2->h6, etc.)
+    private static Typo ScaleDownHeader(Typo original) => original switch
+    {
+        Typo.h1 => Typo.h5,
+        Typo.h2 => Typo.h6,
+        Typo.h3 => Typo.subtitle1,
+        Typo.h4 => Typo.subtitle2,
+        Typo.h5 => Typo.body1,
+        Typo.h6 => Typo.body2,
+        _ => original
+    };
+}

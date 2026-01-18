@@ -11,10 +11,12 @@ namespace QDeskPro.Features.Prepayments.Services;
 public class PrepaymentService
 {
     private readonly AppDbContext _context;
+    private readonly ILogger<PrepaymentService> _logger;
 
-    public PrepaymentService(AppDbContext context)
+    public PrepaymentService(AppDbContext context, ILogger<PrepaymentService> logger)
     {
         _context = context;
+        _logger = logger;
     }
 
     /// <summary>
@@ -59,10 +61,14 @@ public class PrepaymentService
             _context.Prepayments.Add(prepayment);
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Prepayment created: {PrepaymentId} | Vehicle: {Vehicle} | Amount: {Amount:N0} | Payment: {PaymentMode} | Clerk: {ClerkName}",
+                prepayment.Id, prepayment.VehicleRegistration, prepayment.TotalAmountPaid, prepayment.PaymentMode, clerkName);
+
             return (true, "Prepayment recorded successfully", prepayment);
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to create prepayment for vehicle {Vehicle}", prepayment.VehicleRegistration);
             return (false, $"Error saving prepayment: {ex.Message}", null);
         }
     }
@@ -148,10 +154,14 @@ public class PrepaymentService
 
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Prepayment applied: {PrepaymentId} | Amount: {Amount:N0} | SaleId: {SaleId} | Status: {Status} | Remaining: {Remaining:N0}",
+                prepaymentId, amountToApply, saleId, prepayment.Status, prepayment.RemainingBalance);
+
             return (true, "Prepayment applied successfully");
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to apply prepayment {PrepaymentId} to sale {SaleId}", prepaymentId, saleId);
             return (false, $"Error applying prepayment: {ex.Message}");
         }
     }
@@ -239,10 +249,14 @@ public class PrepaymentService
 
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Prepayment refunded: {PrepaymentId} | Vehicle: {Vehicle} | RefundAmount: {RefundAmount:N0} | Reason: {Reason} | By: {UserId}",
+                prepaymentId, prepayment.VehicleRegistration, refundAmount, reason, userId);
+
             return (true, $"Refunded KES {refundAmount:N0}", refundAmount);
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to refund prepayment {PrepaymentId}", prepaymentId);
             return (false, $"Error refunding prepayment: {ex.Message}", 0);
         }
     }
@@ -269,10 +283,14 @@ public class PrepaymentService
 
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Prepayment updated: {PrepaymentId} | Vehicle: {Vehicle} | By: {UserId}",
+                prepayment.Id, existing.VehicleRegistration, userId);
+
             return (true, "Prepayment updated successfully");
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to update prepayment {PrepaymentId}", prepayment.Id);
             return (false, $"Error updating prepayment: {ex.Message}");
         }
     }
@@ -321,10 +339,14 @@ public class PrepaymentService
 
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Prepayment deleted: {PrepaymentId} | Vehicle: {Vehicle} | Amount: {Amount:N0} | By: {UserId}",
+                prepaymentId, prepayment.VehicleRegistration, prepayment.TotalAmountPaid, userId);
+
             return (true, "Prepayment deleted successfully");
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to delete prepayment {PrepaymentId}", prepaymentId);
             return (false, $"Error deleting prepayment: {ex.Message}");
         }
     }

@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using QDeskPro.Features.Expenses.Services
 @using QDeskPro.Features.Admin.Services
+@using QDeskPro.Features.Timeline.Components
 @using QDeskPro.Domain.Entities
 @attribute [Authorize(Roles = "Clerk")]
 @rendermode InteractiveServer
@@ -13,23 +14,46 @@
 
 <PageTitle>Expenses - QDeskPro</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
-    <MudText Typo="Typo.h4" Class="font-weight-bold mb-4">
-        <MudIcon Icon="@Icons.Material.Rounded.Receipt" Class="mr-2" />
-        Expenses
-    </MudText>
+<MudContainer MaxWidth="MaxWidth.Large" Class="expenses-container py-4">
+    @* Modern Page Header *@
+    <div class="expenses-header">
+        <div class="header-content">
+            <div class="header-icon-wrapper">
+                <MudIcon Icon="@Icons.Material.Rounded.Receipt" Size="Size.Large" />
+            </div>
+            <div class="header-text">
+                <h1>Expenses</h1>
+                <p>Track your daily expenses</p>
+            </div>
+        </div>
+        <div class="header-stats">
+            <div class="stat-badge">
+                <MudIcon Icon="@Icons.Material.Rounded.ListAlt" Size="Size.Small" />
+                <span>@_expenses.Count records</span>
+            </div>
+            <QuickNoteButton QuarryId="@_quarryId"
+                             EntityType="Expenses"
+                             EntityReference="@($"Expenses - {DateTime.Today:dd MMM yyyy}")"
+                             SuggestedTitle="Expense Note"
+                             TooltipText="Add note about expenses" />
+        </div>
+    </div>
 
     @if (_loading)
     {
-        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <div class="loading-container">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+            <MudText Typo="Typo.body1" Class="mt-3" Color="Color.Secondary">Loading expenses...</MudText>
+        </div>
     }
     else
     {
         @* Expense Entry Form *@
-        <MudPaper Class="pa-4 mb-4" Elevation="0">
-            <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">
-                @(_isEditMode ? "Update Expense" : "Add New Expense")
-            </MudText>
+        <div class="form-card @(_isEditMode ? "edit-mode" : "")">
+            <div class="form-header">
+                <MudIcon Icon="@(_isEditMode ? Icons.Material.Rounded.Edit : Icons.Material.Rounded.AddCircle)" Size="Size.Small" />
+                <span>@(_isEditMode ? "Update Expense" : "Add New Expense")</span>
+            </div>
 
             <MudForm @ref="_form" @bind-IsValid="_isValid">
                 <MudGrid>
@@ -82,106 +106,416 @@
                                       Variant="Variant.Outlined"
                                       Lines="2" />
                     </MudItem>
+
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_expense.Notes"
+                                      Label="Notes (Optional)"
+                                      Variant="Variant.Outlined"
+                                      Lines="2"
+                                      Placeholder="Add any additional notes..."
+                                      MaxLength="500" />
+                    </MudItem>
                 </MudGrid>
 
                 @* Action Buttons *@
-                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2" Class="mt-4">
+                <div class="form-actions">
                     @if (_isEditMode)
                     {
-                        <MudButton Variant="Variant.Text"
+                        <MudButton Variant="Variant.Outlined"
                                    Color="Color.Error"
                                    OnClick="DeleteExpense"
-                                   Disabled="_processing">
+                                   Disabled="_processing"
+                                   StartIcon="@Icons.Material.Rounded.Delete"
+                                   Class="action-btn">
                             Delete
                         </MudButton>
-                        <MudButton Variant="Variant.Text"
+                        <MudButton Variant="Variant.Outlined"
                                    OnClick="CancelEdit"
-                                   Disabled="_processing">
+                                   Disabled="_processing"
+                                   Class="action-btn">
                             Cancel
                         </MudButton>
                     }
                     <MudButton Variant="Variant.Filled"
-                               Color="Color.Primary"
+                               Color="@(_isEditMode ? Color.Warning : Color.Primary)"
                                Disabled="@(!_isValid || _processing)"
                                OnClick="SaveExpense"
-                               StartIcon="@Icons.Material.Rounded.Save">
+                               StartIcon="@Icons.Material.Rounded.Save"
+                               Class="action-btn save-btn">
                         @if (_processing)
                         {
                             <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
                         }
-                        @(_isEditMode ? "Update" : "Save")
+                        @(_isEditMode ? "Update Expense" : "Save Expense")
                     </MudButton>
-                </MudStack>
+                </div>
             </MudForm>
-        </MudPaper>
+        </div>
 
         @* Expense List *@
-        <MudPaper Class="pa-4" Elevation="0">
-            <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">Recent Expenses (Last 5 Days)</MudText>
+        <div class="list-card">
+            <div class="list-header">
+                <MudIcon Icon="@Icons.Material.Rounded.History" Size="Size.Small" />
+                <span>Recent Expenses (Last 5 Days)</span>
+            </div>
 
             @if (!_expenses.Any())
             {
-                <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info">
-                    No expenses recorded yet
-                </MudAlert>
+                <div class="empty-state">
+                    <div class="empty-icon">
+                        <MudIcon Icon="@Icons.Material.Rounded.Inbox" Size="Size.Large" />
+                    </div>
+                    <MudText Typo="Typo.h6" Class="mt-3">No expenses recorded yet</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">Add your first expense using the form above</MudText>
+                </div>
             }
             else
             {
-                <MudTable Items="@_expenses"
-                          T="Expense"
-                          Hover="true"
-                          Breakpoint="Breakpoint.Sm"
-                          Dense="true"
-                          Loading="@_loadingList"
-                          RowClass="cursor-pointer"
-                          OnRowClick="@(args => SelectExpenseForEdit(args.Item))">
-                    <HeaderContent>
-                        <MudTh>Date</MudTh>
-                        <MudTh>Description</MudTh>
-                        <MudTh>Category</MudTh>
-                        <MudTh Style="text-align: right">Amount</MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd DataLabel="Date">
-                            <MudStack Spacing="0">
-                                <MudText Typo="Typo.body2">@context.ExpenseDate?.ToString("dd/MM/yy")</MudText>
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.ExpenseDate?.ToString("hh:mm tt")</MudText>
-                            </MudStack>
-                        </MudTd>
-                        <MudTd DataLabel="Description">
-                            <MudStack Spacing="0">
-                                <MudText Typo="Typo.body2">@context.Item</MudText>
-                                @if (!string.IsNullOrWhiteSpace(context.TxnReference))
-                                {
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Ref: @context.TxnReference</MudText>
-                                }
-                            </MudStack>
-                        </MudTd>
-                        <MudTd DataLabel="Category">
-                            <MudChip T="string" Size="Size.Small" Color="Color.Default">@context.Category</MudChip>
-                        </MudTd>
-                        <MudTd DataLabel="Amount" Style="text-align: right">
-                            <MudText Typo="Typo.body1" Color="Color.Error" Class="font-weight-bold">
-                                KES @context.Amount.ToString("N1")
-                            </MudText>
-                        </MudTd>
-                    </RowTemplate>
-                    <PagerContent>
-                        <MudTablePager PageSizeOptions="new int[] { 12, 25, 50 }" />
-                    </PagerContent>
-                </MudTable>
+                <div class="table-wrapper">
+                    <MudTable Items="@_expenses"
+                              T="Expense"
+                              Hover="true"
+                              Breakpoint="Breakpoint.Sm"
+                              Dense="true"
+                              Loading="@_loadingList"
+                              LoadingProgressColor="Color.Primary"
+                              RowClass="expense-row"
+                              OnRowClick="@(args => SelectExpenseForEdit(args.Item))">
+                        <HeaderContent>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Description</MudTh>
+                            <MudTh>Category</MudTh>
+                            <MudTh Style="text-align: right">Amount</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Date">
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.body2" Class="font-weight-medium">@context.ExpenseDate?.ToString("dd/MM/yy")</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@context.ExpenseDate?.ToString("hh:mm tt")</MudText>
+                                </MudStack>
+                            </MudTd>
+                            <MudTd DataLabel="Description">
+                                <MudStack Spacing="0">
+                                    <MudText Typo="Typo.body2">@context.Item</MudText>
+                                    @if (!string.IsNullOrWhiteSpace(context.TxnReference))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Ref: @context.TxnReference</MudText>
+                                    }
+                                </MudStack>
+                            </MudTd>
+                            <MudTd DataLabel="Category">
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default" Class="category-chip">@context.Category</MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Amount" Style="text-align: right">
+                                <MudText Typo="Typo.body1" Color="Color.Error" Class="font-weight-bold amount-text">
+                                    KES @context.Amount.ToString("N1")
+                                </MudText>
+                            </MudTd>
+                        </RowTemplate>
+                        <PagerContent>
+                            <MudTablePager PageSizeOptions="new int[] { 12, 25, 50 }" />
+                        </PagerContent>
+                    </MudTable>
+                </div>
             }
-        </MudPaper>
+        </div>
     }
 </MudContainer>
 
 <style>
-    .cursor-pointer {
-        cursor: pointer;
+    /* Container */
+    .expenses-container {
+        max-width: 900px;
     }
 
-    .cursor-pointer:hover {
-        background-color: rgba(0, 0, 0, 0.04);
+    /* Modern Header - Red/Orange theme for expenses */
+    .expenses-header {
+        background: linear-gradient(135deg, #E53935 0%, #C62828 100%);
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 8px 32px rgba(198, 40, 40, 0.3);
+    }
+
+    .header-content {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .header-icon-wrapper {
+        width: 56px;
+        height: 56px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(10px);
+    }
+
+    .header-text h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+    }
+
+    .header-text p {
+        margin: 4px 0 0 0;
+        opacity: 0.9;
+        font-size: 0.875rem;
+    }
+
+    .header-stats {
+        display: flex;
+        gap: 12px;
+    }
+
+    .stat-badge {
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 20px;
+        padding: 8px 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        backdrop-filter: blur(10px);
+    }
+
+    /* Loading State */
+    .loading-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 80px 20px;
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    /* Form Card */
+    .form-card {
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        border: 1px solid #e2e8f0;
+        transition: all 0.3s ease;
+    }
+
+    .form-card.edit-mode {
+        border: 2px solid #F57C00;
+        box-shadow: 0 4px 16px rgba(245, 124, 0, 0.2);
+    }
+
+    .form-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .form-header .mud-icon-root {
+        color: #E53935;
+    }
+
+    .form-card.edit-mode .form-header {
+        color: #E65100;
+    }
+
+    .form-card.edit-mode .form-header .mud-icon-root {
+        color: #E65100;
+    }
+
+    .form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .action-btn {
+        border-radius: 8px;
+        text-transform: none;
+        font-weight: 600;
+    }
+
+    .save-btn {
+        min-width: 150px;
+    }
+
+    /* List Card */
+    .list-card {
+        background: white;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        border: 1px solid #e2e8f0;
+    }
+
+    .list-header {
+        background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+        padding: 16px 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+        color: #1a1a2e;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    /* Empty State */
+    .empty-state {
+        padding: 60px 24px;
+        text-align: center;
+    }
+
+    .empty-icon {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto;
+        color: #E53935;
+    }
+
+    /* Table Styling */
+    .table-wrapper {
+        padding: 16px;
+    }
+
+    .expense-row {
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .expense-row:hover {
+        background-color: rgba(229, 57, 53, 0.04) !important;
+    }
+
+    .category-chip {
+        font-size: 0.75rem;
+    }
+
+    .amount-text {
+        font-size: 1rem;
+    }
+
+    /* Dark Mode Support */
+    :global(.mud-theme-dark) .expenses-header {
+        background: linear-gradient(135deg, #E53935 0%, #C62828 100%);
+    }
+
+    :global(.mud-theme-dark) .loading-container {
+        background: #1e1e1e;
+    }
+
+    :global(.mud-theme-dark) .form-card {
+        background: #1e1e1e;
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .form-header {
+        background: linear-gradient(135deg, #2d2d2d 0%, #1e1e1e 100%);
+        border-color: #333;
+        color: #f1f5f9;
+    }
+
+    :global(.mud-theme-dark) .form-card.edit-mode .form-header {
+        background: linear-gradient(135deg, #4a3000 0%, #3d2800 100%);
+        color: #FFB74D;
+    }
+
+    :global(.mud-theme-dark) .form-actions {
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .list-card {
+        background: #1e1e1e;
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .list-header {
+        background: linear-gradient(135deg, #2d2d2d 0%, #1e1e1e 100%);
+        border-color: #333;
+        color: #f1f5f9;
+    }
+
+    :global(.mud-theme-dark) .empty-icon {
+        background: linear-gradient(135deg, #4a1a1a 0%, #3d1414 100%);
+    }
+
+    :global(.mud-theme-dark) .expense-row:hover {
+        background-color: rgba(229, 57, 53, 0.1) !important;
+    }
+
+    /* Mobile Responsiveness */
+    @@media (max-width: 600px) {
+        .expenses-header {
+            flex-direction: column;
+            text-align: center;
+            gap: 16px;
+            padding: 20px;
+        }
+
+        .header-content {
+            flex-direction: column;
+        }
+
+        .header-icon-wrapper {
+            width: 48px;
+            height: 48px;
+        }
+
+        .header-text h1 {
+            font-size: 1.25rem;
+        }
+
+        .form-header,
+        .list-header {
+            padding: 12px 16px;
+        }
+
+        .form-card :deep(.mud-form) {
+            padding: 16px;
+        }
+
+        .form-actions {
+            flex-direction: column;
+        }
+
+        .action-btn {
+            width: 100%;
+        }
+
+        .table-wrapper {
+            padding: 8px;
+        }
+
+        .empty-state {
+            padding: 40px 16px;
+        }
+
+        .empty-icon {
+            width: 64px;
+            height: 64px;
+        }
     }
 </style>
 

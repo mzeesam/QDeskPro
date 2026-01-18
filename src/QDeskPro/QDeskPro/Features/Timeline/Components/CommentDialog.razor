@@ -1,0 +1,292 @@
+@using MudBlazor
+@using QDeskPro.Features.Timeline.Services
+@using QDeskPro.Domain.Entities
+@inject TimelineService TimelineService
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@GetTypeIcon(_comment.CommentType)" Color="@GetTypeMudColor(_comment.CommentType)" />
+            <MudText Typo="Typo.h6">@(Comment == null ? "Add Entry" : "Edit Entry")</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_isValid">
+            <MudStack Spacing="3">
+                @* Type Selection *@
+                <MudSelect T="string"
+                           @bind-Value="_comment.CommentType"
+                           Label="Type"
+                           Variant="Variant.Outlined"
+                           Required="true"
+                           Immediate="true">
+                    <MudSelectItem Value="@("Note")">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Notes" Size="Size.Small" Color="Color.Info" />
+                            <span>Note</span>
+                        </MudStack>
+                    </MudSelectItem>
+                    <MudSelectItem Value="@("Reminder")">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.Alarm" Size="Size.Small" Color="Color.Warning" />
+                            <span>Reminder</span>
+                        </MudStack>
+                    </MudSelectItem>
+                    <MudSelectItem Value="@("Task")">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.TaskAlt" Size="Size.Small" Color="Color.Success" />
+                            <span>Task</span>
+                        </MudStack>
+                    </MudSelectItem>
+                </MudSelect>
+
+                @* Title (Optional) *@
+                <MudTextField @bind-Value="_comment.Title"
+                              Label="Title (Optional)"
+                              Variant="Variant.Outlined"
+                              MaxLength="200"
+                              Counter="200"
+                              Placeholder="Brief title for this entry..." />
+
+                @* Content (Required) *@
+                <MudTextField @bind-Value="_comment.Content"
+                              Label="Content"
+                              Variant="Variant.Outlined"
+                              Lines="4"
+                              MaxLength="2000"
+                              Counter="2000"
+                              Required="true"
+                              RequiredError="Content is required"
+                              Placeholder="Enter your note, reminder, or task details..." />
+
+                @* Due Date and Priority (for Reminders and Tasks) *@
+                @if (_comment.CommentType is "Reminder" or "Task")
+                {
+                    <MudGrid>
+                        <MudItem xs="12" sm="6">
+                            <MudDatePicker @bind-Date="_dueDate"
+                                           Label="Due Date"
+                                           Variant="Variant.Outlined"
+                                           MinDate="@DateTime.Today.AddDays(-1)"
+                                           Placeholder="Select due date..."
+                                           DateFormat="dd MMM yyyy"
+                                           PopoverClass="datepicker-above-dialog"
+                                           TransformOrigin="Origin.TopCenter"
+                                           AnchorOrigin="Origin.BottomCenter" />
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudSelect T="string"
+                                       @bind-Value="_comment.Priority"
+                                       Label="Priority"
+                                       Variant="Variant.Outlined">
+                                <MudSelectItem Value="@("Low")">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudIcon Icon="@Icons.Material.Filled.LowPriority" Size="Size.Small" Color="Color.Success" />
+                                        <span>Low</span>
+                                    </MudStack>
+                                </MudSelectItem>
+                                <MudSelectItem Value="@("Medium")">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudIcon Icon="@Icons.Material.Filled.PriorityHigh" Size="Size.Small" Color="Color.Warning" />
+                                        <span>Medium</span>
+                                    </MudStack>
+                                </MudSelectItem>
+                                <MudSelectItem Value="@("High")">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                        <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Color="Color.Error" />
+                                        <span>High</span>
+                                    </MudStack>
+                                </MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                    </MudGrid>
+                }
+
+                @* Link to Entity (Optional) *@
+                @if (IsQuickNote && !string.IsNullOrEmpty(_comment.LinkedEntityType))
+                {
+                    @* Show read-only context chip in quick note mode *@
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mt-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" Color="Color.Info" />
+                        <MudChip T="string" Color="Color.Info" Size="Size.Small" Variant="Variant.Outlined">
+                            @_comment.LinkedEntityType: @_comment.LinkedEntityReference
+                        </MudChip>
+                    </MudStack>
+                }
+                else
+                {
+                    <MudExpansionPanels Elevation="0">
+                        <MudExpansionPanel Text="Link to Entity (Optional)" Dense="true" MaxHeight="300">
+                            <MudStack Spacing="2">
+                                <MudSelect T="string"
+                                           @bind-Value="_comment.LinkedEntityType"
+                                           Label="Entity Type"
+                                           Variant="Variant.Outlined"
+                                           Clearable="true">
+                                    <MudSelectItem Value="@("")">None (Quarry-level)</MudSelectItem>
+                                    <MudSelectItem Value="@("Sale")">Sale</MudSelectItem>
+                                    <MudSelectItem Value="@("Expense")">Expense</MudSelectItem>
+                                    <MudSelectItem Value="@("FuelUsage")">Fuel Usage</MudSelectItem>
+                                    <MudSelectItem Value="@("Banking")">Banking</MudSelectItem>
+                                </MudSelect>
+
+                                @if (!string.IsNullOrEmpty(_comment.LinkedEntityType))
+                                {
+                                    <MudTextField @bind-Value="_comment.LinkedEntityReference"
+                                                  Label="Reference (e.g., Vehicle Reg, Description)"
+                                                  Variant="Variant.Outlined"
+                                                  MaxLength="200"
+                                                  Placeholder="Enter a reference to identify the linked item..." />
+                                }
+                            </MudStack>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
+            </MudStack>
+        </MudForm>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3" Dense="true">@_errorMessage</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">Cancel</MudButton>
+        <MudButton OnClick="Submit"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="@(!_isValid || _processing)">
+            @if (_processing)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @(Comment == null ? "Add" : "Save")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string QuarryId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string UserId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string AuthorName { get; set; } = string.Empty;
+
+    [Parameter]
+    public QuarryComment? Comment { get; set; }
+
+    [Parameter]
+    public bool IsQuickNote { get; set; }
+
+    private MudForm _form = null!;
+    private bool _isValid;
+    private bool _processing;
+    private string? _errorMessage;
+    private QuarryComment _comment = new();
+    private DateTime? _dueDate;
+
+    protected override void OnInitialized()
+    {
+        if (Comment != null)
+        {
+            // Clone for editing
+            _comment = new QuarryComment
+            {
+                Id = Comment.Id,
+                Title = Comment.Title,
+                Content = Comment.Content,
+                CommentType = Comment.CommentType,
+                Priority = Comment.Priority,
+                DueDate = Comment.DueDate,
+                LinkedEntityType = Comment.LinkedEntityType,
+                LinkedEntityId = Comment.LinkedEntityId,
+                LinkedEntityReference = Comment.LinkedEntityReference,
+                IsCompleted = Comment.IsCompleted,
+                CompletedDate = Comment.CompletedDate
+            };
+            _dueDate = Comment.DueDate;
+        }
+        else
+        {
+            _comment.CommentType = "Note";
+            _comment.Priority = "Medium";
+        }
+    }
+
+    private async Task Submit()
+    {
+        await _form.Validate();
+        if (!_isValid) return;
+
+        _processing = true;
+        _errorMessage = null;
+
+        try
+        {
+            // Set due date from picker
+            _comment.DueDate = _dueDate;
+
+            if (Comment == null)
+            {
+                // Create new
+                var result = await TimelineService.CreateCommentAsync(
+                    _comment, UserId, AuthorName, QuarryId);
+
+                if (result.Success)
+                {
+                    MudDialog.Close(DialogResult.Ok(result.Comment));
+                }
+                else
+                {
+                    _errorMessage = result.Message;
+                }
+            }
+            else
+            {
+                // Update existing
+                var result = await TimelineService.UpdateCommentAsync(_comment, UserId);
+
+                if (result.Success)
+                {
+                    MudDialog.Close(DialogResult.Ok(_comment));
+                }
+                else
+                {
+                    _errorMessage = result.Message;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private string GetTypeIcon(string? type) => type switch
+    {
+        "Note" => Icons.Material.Filled.Notes,
+        "Reminder" => Icons.Material.Filled.Alarm,
+        "Task" => Icons.Material.Filled.TaskAlt,
+        _ => Icons.Material.Filled.Comment
+    };
+
+    private Color GetTypeMudColor(string? type) => type switch
+    {
+        "Note" => Color.Info,
+        "Reminder" => Color.Warning,
+        "Task" => Color.Success,
+        _ => Color.Default
+    };
+}

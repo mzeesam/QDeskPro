@@ -1,0 +1,492 @@
+@page "/manager/timeline"
+@using Microsoft.AspNetCore.Authorization
+@using QDeskPro.Features.Timeline.Services
+@using QDeskPro.Features.Admin.Services
+@using QDeskPro.Features.MasterData.Services
+@using QDeskPro.Domain.Entities
+@using QDeskPro.Features.Timeline.Components
+@attribute [Authorize(Roles = "Administrator,Manager")]
+@rendermode InteractiveServer
+@inject TimelineService TimelineService
+@inject UserService UserService
+@inject MasterDataService MasterDataService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Timeline & Notes - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+    @if (_loading)
+    {
+        <div class="d-flex justify-center align-center" style="min-height: 400px;">
+            <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
+        </div>
+    }
+    else
+    {
+        @* Page Header *@
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4" Wrap="Wrap.Wrap">
+            <div>
+                <MudText Typo="Typo.h4" Class="font-weight-bold">Timeline & Notes</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Manage comments, reminders, and tasks for your quarry operations
+                </MudText>
+            </div>
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                @* Quarry Selector *@
+                <MudSelect T="string"
+                           @bind-Value="_selectedQuarryId"
+                           Label="Quarry"
+                           Variant="Variant.Outlined"
+                           Dense="true"
+                           Style="min-width: 200px;"
+                           Class="mr-2">
+                    @foreach (var quarry in _quarries)
+                    {
+                        <MudSelectItem Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="OpenAddDialog">
+                    Add Note
+                </MudButton>
+            </MudStack>
+        </MudStack>
+
+        @* Summary Cards *@
+        <MudGrid Class="mb-4" Spacing="3">
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="0" Class="pa-4" Style="border: 1px solid #e0e0e0; border-radius: 12px;">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudAvatar Color="Color.Info" Variant="Variant.Outlined" Size="Size.Large">
+                            <MudIcon Icon="@Icons.Material.Filled.Notes" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Notes</MudText>
+                            <MudText Typo="Typo.h5" Class="font-weight-bold">@_timeline.Values.Sum(c => c.Count(x => x.CommentType == "Note"))</MudText>
+                        </div>
+                    </MudStack>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="0" Class="pa-4" Style="border: 1px solid #e0e0e0; border-radius: 12px;">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudAvatar Color="Color.Warning" Variant="Variant.Outlined" Size="Size.Large">
+                            <MudIcon Icon="@Icons.Material.Filled.TaskAlt" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Pending Tasks</MudText>
+                            <MudText Typo="Typo.h5" Class="font-weight-bold">@_pendingTasks</MudText>
+                        </div>
+                    </MudStack>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="0" Class="pa-4" Style="border: 1px solid #e0e0e0; border-radius: 12px;">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudAvatar Color="Color.Secondary" Variant="Variant.Outlined" Size="Size.Large">
+                            <MudIcon Icon="@Icons.Material.Filled.Alarm" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Pending Reminders</MudText>
+                            <MudText Typo="Typo.h5" Class="font-weight-bold">@_pendingReminders</MudText>
+                        </div>
+                    </MudStack>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="0" Class="pa-4" Style="border: 1px solid #e0e0e0; border-radius: 12px;">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudAvatar Color="Color.Error" Variant="Variant.Outlined" Size="Size.Large">
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Overdue</MudText>
+                            <MudText Typo="Typo.h5" Class="font-weight-bold">@_overdueCount</MudText>
+                        </div>
+                    </MudStack>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        @* Filter Chips *@
+        <MudStack Row="true" Spacing="2" Class="mb-4" Wrap="Wrap.Wrap">
+            <MudChip T="string"
+                     Color="@(_filterType == null ? Color.Primary : Color.Default)"
+                     Variant="@(_filterType == null ? Variant.Filled : Variant.Outlined)"
+                     OnClick="@(() => SetFilter(null))">
+                All
+            </MudChip>
+            <MudChip T="string"
+                     Color="@(_filterType == "Note" ? Color.Info : Color.Default)"
+                     Variant="@(_filterType == "Note" ? Variant.Filled : Variant.Outlined)"
+                     OnClick="@(() => SetFilter("Note"))">
+                <MudIcon Icon="@Icons.Material.Filled.Notes" Size="Size.Small" Class="mr-1" /> Notes
+            </MudChip>
+            <MudChip T="string"
+                     Color="@(_filterType == "Reminder" ? Color.Warning : Color.Default)"
+                     Variant="@(_filterType == "Reminder" ? Variant.Filled : Variant.Outlined)"
+                     OnClick="@(() => SetFilter("Reminder"))">
+                <MudIcon Icon="@Icons.Material.Filled.Alarm" Size="Size.Small" Class="mr-1" /> Reminders
+            </MudChip>
+            <MudChip T="string"
+                     Color="@(_filterType == "Task" ? Color.Success : Color.Default)"
+                     Variant="@(_filterType == "Task" ? Variant.Filled : Variant.Outlined)"
+                     OnClick="@(() => SetFilter("Task"))">
+                <MudIcon Icon="@Icons.Material.Filled.TaskAlt" Size="Size.Small" Class="mr-1" /> Tasks
+            </MudChip>
+            <MudChip T="string"
+                     Color="@(_showPendingOnly ? Color.Error : Color.Default)"
+                     Variant="@(_showPendingOnly ? Variant.Filled : Variant.Outlined)"
+                     OnClick="TogglePendingOnly">
+                <MudIcon Icon="@Icons.Material.Filled.PendingActions" Size="Size.Small" Class="mr-1" /> Pending Only
+            </MudChip>
+        </MudStack>
+
+        @* Timeline View *@
+        @if (_timeline.Any())
+        {
+            <MudTimeline TimelineOrientation="TimelineOrientation.Vertical"
+                         TimelinePosition="TimelinePosition.Start"
+                         DisableModifiers="true">
+                @foreach (var dateGroup in _timeline)
+                {
+                    <MudTimelineItem Color="Color.Default" Size="Size.Small" Elevation="0">
+                        <ItemOpposite>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Style="min-width: 100px;">
+                                @GetDateLabel(dateGroup.Key)
+                            </MudText>
+                        </ItemOpposite>
+                        <ItemContent>
+                            <MudStack Spacing="2">
+                                @foreach (var comment in dateGroup.Value)
+                                {
+                                    <MudCard Elevation="0"
+                                             Class="pa-3 timeline-entry"
+                                             Style="@($"border: 1px solid #e0e0e0; border-radius: 8px; border-left: 4px solid {GetTypeColor(comment.CommentType)};")">
+                                        <MudStack Spacing="2">
+                                            @* Header *@
+                                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                                    <MudIcon Icon="@GetTypeIcon(comment.CommentType)"
+                                                             Color="@GetTypeMudColor(comment.CommentType)"
+                                                             Size="Size.Small" />
+                                                    <MudText Typo="Typo.subtitle2" Class="font-weight-medium">
+                                                        @(string.IsNullOrEmpty(comment.Title) ? comment.CommentType : comment.Title)
+                                                    </MudText>
+                                                    @if (comment.CommentType != "Note" && comment.IsCompleted)
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">
+                                                            Completed
+                                                        </MudChip>
+                                                    }
+                                                    @if (!string.IsNullOrEmpty(comment.Priority) && comment.CommentType != "Note")
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small" Color="@GetPriorityColor(comment.Priority)" Variant="Variant.Filled">
+                                                            @comment.Priority
+                                                        </MudChip>
+                                                    }
+                                                </MudStack>
+                                                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true">
+                                                    @if (comment.CommentType != "Note" && !comment.IsCompleted)
+                                                    {
+                                                        <MudMenuItem Icon="@Icons.Material.Filled.CheckCircle"
+                                                                     OnClick="@(() => MarkAsCompleted(comment.Id))">
+                                                            Mark Complete
+                                                        </MudMenuItem>
+                                                    }
+                                                    @if (comment.CommentType != "Note" && comment.IsCompleted)
+                                                    {
+                                                        <MudMenuItem Icon="@Icons.Material.Filled.Refresh"
+                                                                     OnClick="@(() => ReopenComment(comment.Id))">
+                                                            Reopen
+                                                        </MudMenuItem>
+                                                    }
+                                                    <MudMenuItem Icon="@Icons.Material.Filled.Edit"
+                                                                 OnClick="@(() => OpenEditDialog(comment))">
+                                                        Edit
+                                                    </MudMenuItem>
+                                                    <MudMenuItem Icon="@Icons.Material.Filled.Delete"
+                                                                 IconColor="Color.Error"
+                                                                 OnClick="@(() => DeleteComment(comment.Id))">
+                                                        Delete
+                                                    </MudMenuItem>
+                                                </MudMenu>
+                                            </MudStack>
+
+                                            @* Content *@
+                                            <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@comment.Content</MudText>
+
+                                            @* Footer Info *@
+                                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                                                <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+                                                    @if (!string.IsNullOrEmpty(comment.LinkedEntityType))
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Primary">
+                                                            <MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" Class="mr-1" />
+                                                            @comment.LinkedEntityType: @(comment.LinkedEntityReference ?? comment.LinkedEntityId)
+                                                        </MudChip>
+                                                    }
+                                                    @if (comment.DueDate.HasValue)
+                                                    {
+                                                        <MudText Typo="Typo.caption" Color="@(comment.DueDate.Value.Date < DateTime.Today && !comment.IsCompleted ? Color.Error : Color.Secondary)">
+                                                            <MudIcon Icon="@Icons.Material.Filled.Event" Size="Size.Small" Class="mr-1" Style="vertical-align: middle;" />
+                                                            Due: @comment.DueDate.Value.ToString("dd MMM yyyy")
+                                                        </MudText>
+                                                    }
+                                                </MudStack>
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                    @comment.AuthorName &bull; @comment.DateCreated.ToString("hh:mm tt")
+                                                </MudText>
+                                            </MudStack>
+                                        </MudStack>
+                                    </MudCard>
+                                }
+                            </MudStack>
+                        </ItemContent>
+                    </MudTimelineItem>
+                }
+            </MudTimeline>
+        }
+        else
+        {
+            <MudCard Elevation="0" Class="pa-6 text-center" Style="border: 1px dashed #e0e0e0; border-radius: 12px;">
+                <MudIcon Icon="@Icons.Material.Filled.SpeakerNotes" Size="Size.Large" Color="Color.Secondary" Class="mb-2" />
+                <MudText Typo="Typo.h6" Color="Color.Secondary">No entries found</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                    Start by adding your first note, reminder, or task
+                </MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenAddDialog">
+                    <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-2" /> Add First Entry
+                </MudButton>
+            </MudCard>
+        }
+    }
+</MudContainer>
+
+@code {
+    private bool _loading = true;
+    private string _userId = string.Empty;
+    private string _userFullName = string.Empty;
+    private List<Quarry> _quarries = new();
+    private string _selectedQuarryId = string.Empty;
+    private Dictionary<DateTime, List<QuarryComment>> _timeline = new();
+    private string? _filterType;
+    private bool _showPendingOnly;
+    private int _pendingTasks;
+    private int _pendingReminders;
+    private int _overdueCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserContext();
+        await LoadQuarries();
+        if (_quarries.Any())
+        {
+            _selectedQuarryId = _quarries.First().Id;
+            await LoadTimeline();
+        }
+        _loading = false;
+    }
+
+    private async Task LoadUserContext()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        _userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        _userFullName = user.FindFirst("FullName")?.Value ??
+                        user.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "Manager";
+    }
+
+    private async Task LoadQuarries()
+    {
+        _quarries = await MasterDataService.GetQuarriesForManagerAsync(_userId);
+    }
+
+    private async Task LoadTimeline()
+    {
+        if (string.IsNullOrEmpty(_selectedQuarryId)) return;
+
+        _timeline = await TimelineService.GetTimelineAsync(
+            _selectedQuarryId,
+            commentType: _filterType,
+            days: 60);
+
+        if (_showPendingOnly)
+        {
+            _timeline = _timeline
+                .ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => kvp.Value.Where(c => c.CommentType != "Note" && !c.IsCompleted).ToList())
+                .Where(kvp => kvp.Value.Any())
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        }
+
+        var counts = await TimelineService.GetPendingCountsAsync(_selectedQuarryId);
+        _pendingTasks = counts.Tasks;
+        _pendingReminders = counts.Reminders;
+        _overdueCount = counts.Overdue;
+    }
+
+    private async Task SetFilter(string? type)
+    {
+        _filterType = type;
+        await LoadTimeline();
+    }
+
+    private async Task TogglePendingOnly()
+    {
+        _showPendingOnly = !_showPendingOnly;
+        await LoadTimeline();
+    }
+
+    private string GetDateLabel(DateTime date)
+    {
+        if (date.Date == DateTime.Today)
+            return "Today";
+        if (date.Date == DateTime.Today.AddDays(-1))
+            return "Yesterday";
+        if (date.Date >= DateTime.Today.AddDays(-7))
+            return date.ToString("dddd");
+        return date.ToString("dd MMM yyyy");
+    }
+
+    private string GetTypeIcon(string type) => type switch
+    {
+        "Note" => Icons.Material.Filled.Notes,
+        "Reminder" => Icons.Material.Filled.Alarm,
+        "Task" => Icons.Material.Filled.TaskAlt,
+        _ => Icons.Material.Filled.Comment
+    };
+
+    private string GetTypeColor(string type) => type switch
+    {
+        "Note" => "#2196F3",       // Blue
+        "Reminder" => "#FF9800",   // Orange
+        "Task" => "#4CAF50",       // Green
+        _ => "#9E9E9E"
+    };
+
+    private Color GetTypeMudColor(string type) => type switch
+    {
+        "Note" => Color.Info,
+        "Reminder" => Color.Warning,
+        "Task" => Color.Success,
+        _ => Color.Default
+    };
+
+    private Color GetPriorityColor(string? priority) => priority switch
+    {
+        "High" => Color.Error,
+        "Medium" => Color.Warning,
+        "Low" => Color.Success,
+        _ => Color.Default
+    };
+
+    private async Task OpenAddDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            { "QuarryId", _selectedQuarryId },
+            { "UserId", _userId },
+            { "AuthorName", _userFullName }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true,
+            CloseButton = true
+        };
+
+        var dialog = await DialogService.ShowAsync<CommentDialog>("Add Note", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadTimeline();
+            Snackbar.Add("Entry added successfully!", Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(QuarryComment comment)
+    {
+        var parameters = new DialogParameters
+        {
+            { "QuarryId", _selectedQuarryId },
+            { "UserId", _userId },
+            { "AuthorName", _userFullName },
+            { "Comment", comment }
+        };
+
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true,
+            CloseButton = true
+        };
+
+        var dialog = await DialogService.ShowAsync<CommentDialog>("Edit Entry", parameters, options);
+        var result = await dialog.Result;
+
+        if (result != null && !result.Canceled)
+        {
+            await LoadTimeline();
+            Snackbar.Add("Entry updated successfully!", Severity.Success);
+        }
+    }
+
+    private async Task MarkAsCompleted(string commentId)
+    {
+        var result = await TimelineService.MarkAsCompletedAsync(commentId, _userId);
+        if (result.Success)
+        {
+            await LoadTimeline();
+            Snackbar.Add(result.Message, Severity.Success);
+        }
+        else
+        {
+            Snackbar.Add(result.Message, Severity.Error);
+        }
+    }
+
+    private async Task ReopenComment(string commentId)
+    {
+        var result = await TimelineService.ReopenAsync(commentId, _userId);
+        if (result.Success)
+        {
+            await LoadTimeline();
+            Snackbar.Add(result.Message, Severity.Success);
+        }
+        else
+        {
+            Snackbar.Add(result.Message, Severity.Error);
+        }
+    }
+
+    private async Task DeleteComment(string commentId)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Confirm Delete",
+            "Are you sure you want to delete this entry?",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (confirmed == true)
+        {
+            var result = await TimelineService.DeleteCommentAsync(commentId, _userId);
+            if (result.Success)
+            {
+                await LoadTimeline();
+                Snackbar.Add(result.Message, Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add(result.Message, Severity.Error);
+            }
+        }
+    }
+}

@@ -35,6 +35,11 @@ public class FuelUsage : BaseEntity
     /// </summary>
     public string? ApplicationUserId { get; set; }
 
+    /// <summary>
+    /// Optional notes for this fuel usage record
+    /// </summary>
+    public string? Notes { get; set; }
+
     // Calculated properties
 
     /// <summary>

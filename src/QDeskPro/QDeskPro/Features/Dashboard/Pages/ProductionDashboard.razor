@@ -1,0 +1,1036 @@
+@page "/manager/production"
+@page "/admin/production"
+@using QDeskPro.Features.Dashboard.Services
+@using QDeskPro.Features.Timeline.Components
+@using QDeskPro.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using QuestPDF.Fluent
+@inject ProductionAnalyticsService ProductionService
+@inject AppDbContext DbContext
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Policy = "RequireManagerOrAdmin")]
+@rendermode InteractiveServer
+
+<PageTitle>Production Dashboard - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Class="mt-4 mb-8">
+    <MudStack Spacing="4">
+        @* Header *@
+        <div class="admin-header admin-header-production">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.Factory" Size="Size.Large" Style="color: #667eea;" />
+                    <div>
+                        <MudText Typo="Typo.h4" Class="admin-header-title">Production Dashboard</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @if (_fromDate.HasValue && _toDate.HasValue)
+                            {
+                                <span>@_fromDate.Value.ToString("MMM dd") - @_toDate.Value.ToString("MMM dd, yyyy")</span>
+                            }
+                            else
+                            {
+                                <span>Analyze production metrics and trends</span>
+                            }
+                        </MudText>
+                    </div>
+                </MudStack>
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    @if (!string.IsNullOrEmpty(_selectedQuarryId))
+                    {
+                        <QuickNoteButton QuarryId="@_selectedQuarryId"
+                                         EntityType="Production"
+                                         EntityReference="@($"Production {_fromDate:dd MMM} - {_toDate:dd MMM yyyy}")"
+                                         SuggestedTitle="Production Note"
+                                         TooltipText="Add note about production metrics" />
+                    }
+                    <MudMenu Icon="@Icons.Material.Filled.FileDownload" Label="Export" Variant="Variant.Outlined" Color="Color.Primary">
+                        <MudMenuItem OnClick="ExportToExcelAsync">
+                            <MudIcon Icon="@Icons.Material.Filled.TableChart" Class="mr-2" /> Excel
+                        </MudMenuItem>
+                        <MudMenuItem OnClick="ExportToPdfAsync">
+                            <MudIcon Icon="@Icons.Material.Filled.PictureAsPdf" Class="mr-2" /> PDF
+                        </MudMenuItem>
+                    </MudMenu>
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.Refresh"
+                              OnClick="@(async () => await LoadDataAsync())"
+                              Disabled="_loading">
+                        Refresh
+                    </MudButton>
+                </MudStack>
+            </MudStack>
+        </div>
+
+        @* Filters Card *@
+        <div class="dashboard-filter-card">
+            <MudGrid>
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string"
+                              @bind-Value="_selectedQuarryId"
+                              Label="Quarry"
+                              Variant="Variant.Outlined"
+                              AnchorOrigin="Origin.BottomCenter"
+                              Dense="true"
+                              Disabled="_loading">
+                        @if (_userRole == "Administrator")
+                        {
+                            <MudSelectItem Value="@((string?)null)">All Quarries</MudSelectItem>
+                        }
+                        @foreach (var quarry in _quarries)
+                        {
+                            <MudSelectItem Value="@quarry.Id">@quarry.QuarryName</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudDatePicker @bind-Date="_fromDate"
+                                  Label="From Date"
+                                  Variant="Variant.Outlined"
+                                  MaxDate="DateTime.Today"
+                                  Dense="true"
+                                  Disabled="_loading" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudDatePicker @bind-Date="_toDate"
+                                  Label="To Date"
+                                  Variant="Variant.Outlined"
+                                  MinDate="_fromDate"
+                                  MaxDate="DateTime.Today"
+                                  Dense="true"
+                                  Disabled="_loading" />
+                </MudItem>
+                <MudItem xs="12" sm="2">
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              FullWidth="true"
+                              OnClick="@(async () => await LoadDataAsync())"
+                              Disabled="_loading"
+                              Class="mt-1">
+                        Apply
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </div>
+
+        @if (_loading)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+        }
+        else if (!_quarries.Any())
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="my-4">
+                No quarries found. Please contact your administrator to set up a quarry.
+            </MudAlert>
+        }
+        else if (_data != null)
+        {
+            @* Summary Metric Cards *@
+            <div class="admin-mini-stats-row">
+                <div class="admin-mini-stat admin-mini-stat-gradient-1">
+                    <MudIcon Icon="@Icons.Material.Filled.Inventory" Size="Size.Large" Class="admin-mini-stat-icon" />
+                    <div class="admin-mini-stat-content">
+                        <span class="admin-mini-stat-value">@_data.TotalQuantity.ToString("N0")</span>
+                        <span class="admin-mini-stat-label">Total Quantity</span>
+                    </div>
+                </div>
+                <div class="admin-mini-stat admin-mini-stat-gradient-4">
+                    <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Size="Size.Large" Class="admin-mini-stat-icon" />
+                    <div class="admin-mini-stat-content">
+                        <span class="admin-mini-stat-value">@_data.TotalOrders</span>
+                        <span class="admin-mini-stat-label">Total Orders</span>
+                    </div>
+                </div>
+                <div class="admin-mini-stat admin-mini-stat-gradient-2">
+                    <MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Large" Class="admin-mini-stat-icon" />
+                    <div class="admin-mini-stat-content">
+                        <span class="admin-mini-stat-value">@_data.UniqueClients</span>
+                        <span class="admin-mini-stat-label">Unique Clients</span>
+                    </div>
+                </div>
+                <div class="admin-mini-stat admin-mini-stat-gradient-3">
+                    <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Large" Class="admin-mini-stat-icon" />
+                    <div class="admin-mini-stat-content">
+                        <span class="admin-mini-stat-value">@_data.UniqueVehicles</span>
+                        <span class="admin-mini-stat-label">Unique Vehicles</span>
+                    </div>
+                </div>
+            </div>
+
+            @* Secondary Metrics *@
+            <div class="admin-info-card">
+                <MudGrid>
+                    <MudItem xs="6" sm="4" md="2">
+                        <MudStack Spacing="0" Class="text-center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Avg Daily</MudText>
+                            <MudText Typo="Typo.h6" Class="fw-bold">@_data.AverageDailyQuantity.ToString("N0")</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">pieces/day</MudText>
+                        </MudStack>
+                    </MudItem>
+                    <MudItem xs="6" sm="4" md="2">
+                        <MudStack Spacing="0" Class="text-center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Avg Order Size</MudText>
+                            <MudText Typo="Typo.h6" Class="fw-bold">@_data.AverageOrderSize.ToString("N0")</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">pieces/order</MudText>
+                        </MudStack>
+                    </MudItem>
+                    <MudItem xs="6" sm="4" md="2">
+                        <MudStack Spacing="0" Class="text-center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Revenue</MudText>
+                            <MudText Typo="Typo.h6" Class="fw-bold">KES @((_data.TotalRevenue / 1000000).ToString("N2"))M</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">gross sales</MudText>
+                        </MudStack>
+                    </MudItem>
+                    <MudItem xs="6" sm="4" md="2">
+                        <MudStack Spacing="0" Class="text-center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Products</MudText>
+                            <MudText Typo="Typo.h6" Class="fw-bold">@_data.ProductionByProduct.Count</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">types sold</MudText>
+                        </MudStack>
+                    </MudItem>
+                    <MudItem xs="6" sm="4" md="2">
+                        <MudStack Spacing="0" Class="text-center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Layers</MudText>
+                            <MudText Typo="Typo.h6" Class="fw-bold">@_data.ProductionByLayer.Count</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">active layers</MudText>
+                        </MudStack>
+                    </MudItem>
+                    <MudItem xs="6" sm="4" md="2">
+                        <MudStack Spacing="0" Class="text-center">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Destinations</MudText>
+                            <MudText Typo="Typo.h6" Class="fw-bold">@_data.ProductionByDestination.Count</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">counties</MudText>
+                        </MudStack>
+                    </MudItem>
+                </MudGrid>
+            </div>
+
+            @* Charts Row *@
+            <MudGrid>
+                @* Production by Product Chart *@
+                <MudItem xs="12" md="6">
+                    <div class="dashboard-chart-card">
+                        <MudText Typo="Typo.h6" Class="mb-3">Production by Product</MudText>
+                        @if (_data.ProductionByProduct.Any())
+                        {
+                            <MudChart ChartType="ChartType.Donut"
+                                      InputData="@_data.ProductionByProduct.Select(p => p.Quantity).ToArray()"
+                                      InputLabels="@_data.ProductionByProduct.Select(p => p.Category).ToArray()"
+                                      Width="100%"
+                                      Height="280px"
+                                      ChartOptions="_chartOptions" />
+                            <MudDivider Class="my-3" />
+                            <MudStack Spacing="1">
+                                @foreach (var item in _data.ProductionByProduct.Take(6))
+                                {
+                                    <div class="d-flex justify-space-between align-center">
+                                        <MudText Typo="Typo.body2">@item.Category</MudText>
+                                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                            <MudText Typo="Typo.body2" Class="fw-bold">@item.Quantity.ToString("N0")</MudText>
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">
+                                                @item.PercentageOfTotal.ToString("N1")%
+                                            </MudChip>
+                                        </MudStack>
+                                    </div>
+                                }
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-8">No product data available</MudText>
+                        }
+                    </div>
+                </MudItem>
+
+                @* Production by Layer Chart *@
+                <MudItem xs="12" md="6">
+                    <div class="dashboard-chart-card">
+                        <MudText Typo="Typo.h6" Class="mb-3">Production by Layer</MudText>
+                        @if (_data.ProductionByLayer.Any())
+                        {
+                            <MudChart ChartType="ChartType.Pie"
+                                      InputData="@_data.ProductionByLayer.Select(p => p.Quantity).ToArray()"
+                                      InputLabels="@_data.ProductionByLayer.Select(p => p.Category).ToArray()"
+                                      Width="100%"
+                                      Height="280px"
+                                      ChartOptions="_chartOptions" />
+                            <MudDivider Class="my-3" />
+                            <MudStack Spacing="1">
+                                @foreach (var item in _data.ProductionByLayer.Take(6))
+                                {
+                                    <div class="d-flex justify-space-between align-center">
+                                        <MudText Typo="Typo.body2">@item.Category</MudText>
+                                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                            <MudText Typo="Typo.body2" Class="fw-bold">@item.Quantity.ToString("N0")</MudText>
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">
+                                                @item.PercentageOfTotal.ToString("N1")%
+                                            </MudChip>
+                                        </MudStack>
+                                    </div>
+                                }
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-8">No layer data available</MudText>
+                        }
+                    </div>
+                </MudItem>
+            </MudGrid>
+
+            @* Daily Production Trend *@
+            <div class="dashboard-chart-card">
+                <MudText Typo="Typo.h6" Class="mb-3">Daily Production Trend</MudText>
+                @if (_data.DailyProduction.Any())
+                {
+                    <MudChart ChartType="ChartType.Line"
+                              ChartSeries="@_dailyTrendSeries"
+                              XAxisLabels="@_dailyTrendLabels"
+                              Width="100%"
+                              Height="300px"
+                              ChartOptions="_lineChartOptions" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-8">No daily trend data available</MudText>
+                }
+            </div>
+
+            @* Production by Destination *@
+            <div class="admin-table-card pa-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudText Typo="Typo.h6">Production by Destination</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">
+                        @_data.ProductionByDestination.Count counties
+                    </MudChip>
+                </MudStack>
+                @if (_data.ProductionByDestination.Any())
+                {
+                    <MudTable Items="@_data.ProductionByDestination.Take(15)" Dense="true" Hover="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>County</MudTh>
+                            <MudTh Style="text-align: right;">Quantity</MudTh>
+                            <MudTh Style="text-align: right;">Orders</MudTh>
+                            <MudTh Style="text-align: right;">Revenue</MudTh>
+                            <MudTh Style="text-align: right;">Share</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Category</MudTd>
+                            <MudTd Style="text-align: right;">@context.Quantity.ToString("N0")</MudTd>
+                            <MudTd Style="text-align: right;">@context.OrderCount</MudTd>
+                            <MudTd Style="text-align: right;">KES @context.Revenue.ToString("N0")</MudTd>
+                            <MudTd Style="text-align: right;">
+                                <MudProgressLinear Color="Color.Primary" Size="Size.Small" Value="@context.PercentageOfTotal" Max="100" Style="width: 80px; display: inline-block;" />
+                                <MudText Typo="Typo.caption" Class="ml-2">@context.PercentageOfTotal.ToString("N1")%</MudText>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-4">No destination data available</MudText>
+                }
+            </div>
+
+            @* Top Clients and Top Vehicles *@
+            <MudGrid>
+                @* Top Clients *@
+                <MudItem xs="12" md="6">
+                    <div class="admin-table-card pa-4">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                            <MudText Typo="Typo.h6">Top Clients</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined">
+                                @_data.ProductionByClient.Count total
+                            </MudChip>
+                        </MudStack>
+                        @if (_data.ProductionByClient.Any())
+                        {
+                            <MudTable Items="@_data.ProductionByClient.Take(10)" Dense="true" Hover="true" Elevation="0">
+                                <HeaderContent>
+                                    <MudTh>Client</MudTh>
+                                    <MudTh Style="text-align: right;">Quantity</MudTh>
+                                    <MudTh Style="text-align: right;">Orders</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd>
+                                        <MudText Typo="Typo.body2">@context.ClientName</MudText>
+                                    </MudTd>
+                                    <MudTd Style="text-align: right;">
+                                        <MudText Typo="Typo.body2" Class="fw-bold">@context.Quantity.ToString("N0")</MudText>
+                                    </MudTd>
+                                    <MudTd Style="text-align: right;">@context.OrderCount</MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-4">No client data available</MudText>
+                        }
+                    </div>
+                </MudItem>
+
+                @* Top Vehicles *@
+                <MudItem xs="12" md="6">
+                    <div class="admin-table-card pa-4">
+                        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+                            <MudText Typo="Typo.h6">Top Vehicles</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined">
+                                @_data.UniqueVehicles total
+                            </MudChip>
+                        </MudStack>
+                        @if (_data.TopVehicles.Any())
+                        {
+                            <MudTable Items="@_data.TopVehicles.Take(10)" Dense="true" Hover="true" Elevation="0">
+                                <HeaderContent>
+                                    <MudTh>Vehicle</MudTh>
+                                    <MudTh>Client</MudTh>
+                                    <MudTh Style="text-align: right;">Quantity</MudTh>
+                                    <MudTh Style="text-align: right;">Trips</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd>
+                                        <MudText Typo="Typo.body2" Class="fw-bold">@context.VehicleRegistration</MudText>
+                                    </MudTd>
+                                    <MudTd>
+                                        <MudText Typo="Typo.caption">@(context.ClientName ?? "-")</MudText>
+                                    </MudTd>
+                                    <MudTd Style="text-align: right;">@context.Quantity.ToString("N0")</MudTd>
+                                    <MudTd Style="text-align: right;">@context.OrderCount</MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-4">No vehicle data available</MudText>
+                        }
+                    </div>
+                </MudItem>
+            </MudGrid>
+
+            @* Product-Layer Matrix *@
+            <div class="admin-table-card pa-4">
+                <MudText Typo="Typo.h6" Class="mb-3">Product-Layer Matrix</MudText>
+                @if (_data.ProductLayerMatrix.Any())
+                {
+                    <MudTable Items="@_data.ProductLayerMatrix" Dense="true" Hover="true" Elevation="0" Striped="true">
+                        <HeaderContent>
+                            <MudTh>Product</MudTh>
+                            <MudTh>Layer</MudTh>
+                            <MudTh Style="text-align: right;">Quantity</MudTh>
+                            <MudTh Style="text-align: right;">Orders</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.ProductName</MudTd>
+                            <MudTd>@context.LayerLevel</MudTd>
+                            <MudTd Style="text-align: right;">@context.Quantity.ToString("N0")</MudTd>
+                            <MudTd Style="text-align: right;">@context.OrderCount</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="text-center py-4">No product-layer data available</MudText>
+                }
+            </div>
+        }
+    </MudStack>
+</MudContainer>
+
+@code {
+    private ProductionDashboardData? _data;
+    private List<Domain.Entities.Quarry> _quarries = [];
+    private string? _selectedQuarryId;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+    private bool _loading = true;
+    private string _userId = string.Empty;
+    private string _userRole = string.Empty;
+
+    // Chart data
+    private List<ChartSeries> _dailyTrendSeries = [];
+    private string[] _dailyTrendLabels = [];
+
+    private ChartOptions _chartOptions = new()
+    {
+        ChartPalette = ["#667eea", "#11998e", "#f093fb", "#4facfe", "#ff6b6b", "#ffd93d"]
+    };
+
+    private ChartOptions _lineChartOptions = new()
+    {
+        ChartPalette = ["#667eea"],
+        YAxisTicks = 5,
+        MaxNumYAxisTicks = 8,
+        InterpolationOption = InterpolationOption.Straight
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Get user info
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        _userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        _userRole = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? string.Empty;
+
+        // Set default date range (last 30 days)
+        _toDate = DateTime.Today;
+        _fromDate = DateTime.Today.AddDays(-29);
+
+        // Load quarries
+        await LoadQuarriesAsync();
+
+        // Load data
+        await LoadDataAsync();
+    }
+
+    private async Task LoadQuarriesAsync()
+    {
+        try
+        {
+            if (_userRole == "Administrator")
+            {
+                _quarries = await DbContext.Quarries
+                    .Where(q => q.IsActive)
+                    .OrderBy(q => q.QuarryName)
+                    .ToListAsync();
+            }
+            else
+            {
+                // Manager - load owned quarries and assigned quarries
+                var ownedQuarries = await DbContext.Quarries
+                    .Where(q => q.IsActive && q.ManagerId == _userId)
+                    .ToListAsync();
+
+                var assignedQuarryIds = await DbContext.UserQuarries
+                    .Where(uq => uq.UserId == _userId)
+                    .Select(uq => uq.QuarryId)
+                    .ToListAsync();
+
+                var assignedQuarries = await DbContext.Quarries
+                    .Where(q => q.IsActive && assignedQuarryIds.Contains(q.Id))
+                    .ToListAsync();
+
+                _quarries = ownedQuarries.Union(assignedQuarries)
+                    .DistinctBy(q => q.Id)
+                    .OrderBy(q => q.QuarryName)
+                    .ToList();
+            }
+
+            // Set default quarry
+            if (_quarries.Count == 1)
+            {
+                _selectedQuarryId = _quarries[0].Id;
+            }
+            else if (_quarries.Any() && _userRole != "Administrator")
+            {
+                _selectedQuarryId = _quarries[0].Id;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading quarries: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (!_fromDate.HasValue || !_toDate.HasValue)
+        {
+            Snackbar.Add("Please select a date range", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            _loading = true;
+            StateHasChanged();
+
+            _data = await ProductionService.GetProductionDashboardAsync(
+                _selectedQuarryId,
+                _fromDate.Value,
+                _toDate.Value
+            );
+
+            // Prepare chart data
+            PrepareChartData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error loading data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void PrepareChartData()
+    {
+        if (_data == null || !_data.DailyProduction.Any()) return;
+
+        // Daily trend chart
+        _dailyTrendLabels = _data.DailyProduction.Select(d => d.Date.ToString("dd/MM")).ToArray();
+        _dailyTrendSeries =
+        [
+            new ChartSeries
+            {
+                Name = "Quantity",
+                Data = _data.DailyProduction.Select(d => d.Quantity).ToArray()
+            }
+        ];
+    }
+
+    private async Task ExportToExcelAsync()
+    {
+        if (_data == null)
+        {
+            Snackbar.Add("No data to export", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var exportData = await ProductionService.GetProductionExportDataAsync(
+                _selectedQuarryId,
+                _fromDate!.Value,
+                _toDate!.Value
+            );
+
+            using var workbook = new ClosedXML.Excel.XLWorkbook();
+
+            // Summary Sheet
+            var summarySheet = workbook.Worksheets.Add("Summary");
+            summarySheet.Cell(1, 1).Value = "Production Report Summary";
+            summarySheet.Cell(1, 1).Style.Font.Bold = true;
+            summarySheet.Cell(1, 1).Style.Font.FontSize = 16;
+            summarySheet.Cell(2, 1).Value = $"Period: {_fromDate:dd/MM/yyyy} - {_toDate:dd/MM/yyyy}";
+
+            summarySheet.Cell(4, 1).Value = "Metric";
+            summarySheet.Cell(4, 2).Value = "Value";
+            summarySheet.Range(4, 1, 4, 2).Style.Font.Bold = true;
+            summarySheet.Range(4, 1, 4, 2).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightBlue;
+
+            summarySheet.Cell(5, 1).Value = "Total Quantity";
+            summarySheet.Cell(5, 2).Value = _data.TotalQuantity;
+            summarySheet.Cell(6, 1).Value = "Total Orders";
+            summarySheet.Cell(6, 2).Value = _data.TotalOrders;
+            summarySheet.Cell(7, 1).Value = "Total Revenue (KES)";
+            summarySheet.Cell(7, 2).Value = _data.TotalRevenue;
+            summarySheet.Cell(8, 1).Value = "Unique Clients";
+            summarySheet.Cell(8, 2).Value = _data.UniqueClients;
+            summarySheet.Cell(9, 1).Value = "Unique Vehicles";
+            summarySheet.Cell(9, 2).Value = _data.UniqueVehicles;
+            summarySheet.Cell(10, 1).Value = "Avg Daily Quantity";
+            summarySheet.Cell(10, 2).Value = _data.AverageDailyQuantity;
+            summarySheet.Cell(11, 1).Value = "Avg Order Size";
+            summarySheet.Cell(11, 2).Value = _data.AverageOrderSize;
+
+            summarySheet.Columns().AdjustToContents();
+
+            // By Product Sheet
+            var productSheet = workbook.Worksheets.Add("By Product");
+            productSheet.Cell(1, 1).Value = "Product";
+            productSheet.Cell(1, 2).Value = "Quantity";
+            productSheet.Cell(1, 3).Value = "Orders";
+            productSheet.Cell(1, 4).Value = "Revenue (KES)";
+            productSheet.Cell(1, 5).Value = "Share %";
+            productSheet.Range(1, 1, 1, 5).Style.Font.Bold = true;
+            productSheet.Range(1, 1, 1, 5).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightBlue;
+
+            var row = 2;
+            foreach (var item in _data.ProductionByProduct)
+            {
+                productSheet.Cell(row, 1).Value = item.Category;
+                productSheet.Cell(row, 2).Value = item.Quantity;
+                productSheet.Cell(row, 3).Value = item.OrderCount;
+                productSheet.Cell(row, 4).Value = item.Revenue;
+                productSheet.Cell(row, 5).Value = item.PercentageOfTotal;
+                row++;
+            }
+            productSheet.Columns().AdjustToContents();
+
+            // By Layer Sheet
+            var layerSheet = workbook.Worksheets.Add("By Layer");
+            layerSheet.Cell(1, 1).Value = "Layer";
+            layerSheet.Cell(1, 2).Value = "Quantity";
+            layerSheet.Cell(1, 3).Value = "Orders";
+            layerSheet.Cell(1, 4).Value = "Revenue (KES)";
+            layerSheet.Cell(1, 5).Value = "Share %";
+            layerSheet.Range(1, 1, 1, 5).Style.Font.Bold = true;
+            layerSheet.Range(1, 1, 1, 5).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightGreen;
+
+            row = 2;
+            foreach (var item in _data.ProductionByLayer)
+            {
+                layerSheet.Cell(row, 1).Value = item.Category;
+                layerSheet.Cell(row, 2).Value = item.Quantity;
+                layerSheet.Cell(row, 3).Value = item.OrderCount;
+                layerSheet.Cell(row, 4).Value = item.Revenue;
+                layerSheet.Cell(row, 5).Value = item.PercentageOfTotal;
+                row++;
+            }
+            layerSheet.Columns().AdjustToContents();
+
+            // By Destination Sheet
+            var destSheet = workbook.Worksheets.Add("By Destination");
+            destSheet.Cell(1, 1).Value = "County";
+            destSheet.Cell(1, 2).Value = "Quantity";
+            destSheet.Cell(1, 3).Value = "Orders";
+            destSheet.Cell(1, 4).Value = "Revenue (KES)";
+            destSheet.Cell(1, 5).Value = "Share %";
+            destSheet.Range(1, 1, 1, 5).Style.Font.Bold = true;
+            destSheet.Range(1, 1, 1, 5).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightYellow;
+
+            row = 2;
+            foreach (var item in _data.ProductionByDestination)
+            {
+                destSheet.Cell(row, 1).Value = item.Category;
+                destSheet.Cell(row, 2).Value = item.Quantity;
+                destSheet.Cell(row, 3).Value = item.OrderCount;
+                destSheet.Cell(row, 4).Value = item.Revenue;
+                destSheet.Cell(row, 5).Value = item.PercentageOfTotal;
+                row++;
+            }
+            destSheet.Columns().AdjustToContents();
+
+            // By Client Sheet
+            var clientSheet = workbook.Worksheets.Add("By Client");
+            clientSheet.Cell(1, 1).Value = "Client";
+            clientSheet.Cell(1, 2).Value = "Quantity";
+            clientSheet.Cell(1, 3).Value = "Orders";
+            clientSheet.Cell(1, 4).Value = "Revenue (KES)";
+            clientSheet.Cell(1, 5).Value = "Share %";
+            clientSheet.Range(1, 1, 1, 5).Style.Font.Bold = true;
+            clientSheet.Range(1, 1, 1, 5).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightPink;
+
+            row = 2;
+            foreach (var item in _data.ProductionByClient)
+            {
+                clientSheet.Cell(row, 1).Value = item.ClientName;
+                clientSheet.Cell(row, 2).Value = item.Quantity;
+                clientSheet.Cell(row, 3).Value = item.OrderCount;
+                clientSheet.Cell(row, 4).Value = item.Revenue;
+                clientSheet.Cell(row, 5).Value = item.PercentageOfTotal;
+                row++;
+            }
+            clientSheet.Columns().AdjustToContents();
+
+            // Detailed Sales Sheet
+            var detailSheet = workbook.Worksheets.Add("Detailed Sales");
+            detailSheet.Cell(1, 1).Value = "Date";
+            detailSheet.Cell(1, 2).Value = "Vehicle";
+            detailSheet.Cell(1, 3).Value = "Client";
+            detailSheet.Cell(1, 4).Value = "Phone";
+            detailSheet.Cell(1, 5).Value = "Destination";
+            detailSheet.Cell(1, 6).Value = "Product";
+            detailSheet.Cell(1, 7).Value = "Layer";
+            detailSheet.Cell(1, 8).Value = "Quantity";
+            detailSheet.Cell(1, 9).Value = "Price/Unit";
+            detailSheet.Cell(1, 10).Value = "Total (KES)";
+            detailSheet.Cell(1, 11).Value = "Status";
+            detailSheet.Cell(1, 12).Value = "Payment Mode";
+            detailSheet.Range(1, 1, 1, 12).Style.Font.Bold = true;
+            detailSheet.Range(1, 1, 1, 12).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightGray;
+
+            row = 2;
+            foreach (var item in exportData)
+            {
+                detailSheet.Cell(row, 1).Value = item.Date.ToString("dd/MM/yyyy");
+                detailSheet.Cell(row, 2).Value = item.VehicleRegistration;
+                detailSheet.Cell(row, 3).Value = item.ClientName;
+                detailSheet.Cell(row, 4).Value = item.ClientPhone;
+                detailSheet.Cell(row, 5).Value = item.Destination;
+                detailSheet.Cell(row, 6).Value = item.ProductName;
+                detailSheet.Cell(row, 7).Value = item.LayerLevel;
+                detailSheet.Cell(row, 8).Value = item.Quantity;
+                detailSheet.Cell(row, 9).Value = item.PricePerUnit;
+                detailSheet.Cell(row, 10).Value = item.TotalAmount;
+                detailSheet.Cell(row, 11).Value = item.PaymentStatus;
+                detailSheet.Cell(row, 12).Value = item.PaymentMode;
+                row++;
+            }
+            detailSheet.Columns().AdjustToContents();
+
+            // Save and download
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            var bytes = stream.ToArray();
+
+            var fileName = $"Production_Report_{_fromDate:yyyyMMdd}_{_toDate:yyyyMMdd}.xlsx";
+            await JSRuntime.InvokeVoidAsync("downloadFile", fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Convert.ToBase64String(bytes));
+
+            Snackbar.Add("Excel report exported successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting to Excel: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ExportToPdfAsync()
+    {
+        if (_data == null)
+        {
+            Snackbar.Add("No data to export", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            // Get quarry name for the report title
+            var quarryName = _selectedQuarryId != null
+                ? _quarries.FirstOrDefault(q => q.Id == _selectedQuarryId)?.QuarryName ?? "All Quarries"
+                : "All Quarries";
+
+            var exportData = await ProductionService.GetProductionExportDataAsync(
+                _selectedQuarryId,
+                _fromDate!.Value,
+                _toDate!.Value
+            );
+
+            // Set QuestPDF license
+            QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
+            var document = QuestPDF.Fluent.Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(QuestPDF.Helpers.PageSizes.A4);
+                    page.Margin(40);
+                    page.DefaultTextStyle(x => x.FontSize(10));
+
+                    // Header
+                    page.Header().Element(c =>
+                    {
+                        c.Row(row =>
+                        {
+                            row.RelativeItem().Column(col =>
+                            {
+                                col.Item().Text("PRODUCTION REPORT").FontSize(20).Bold().FontColor(QuestPDF.Helpers.Colors.Blue.Darken3);
+                                col.Item().Text(quarryName).FontSize(14).SemiBold();
+                                col.Item().Text($"Period: {_fromDate:dd MMM yyyy} - {_toDate:dd MMM yyyy}").FontSize(10).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1);
+                            });
+                            row.ConstantItem(100).AlignRight().Column(col =>
+                            {
+                                col.Item().Text("QDeskPro").FontSize(12).Bold().FontColor(QuestPDF.Helpers.Colors.Blue.Darken2);
+                                col.Item().Text(DateTime.Now.ToString("dd/MM/yyyy HH:mm")).FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Medium);
+                            });
+                        });
+                    });
+
+                    // Content
+                    page.Content().PaddingVertical(15).Element(content =>
+                    {
+                        content.Column(col =>
+                        {
+                            // Summary Section
+                            col.Item().PaddingBottom(15).Element(e =>
+                            {
+                                e.Table(table =>
+                                {
+                                    table.ColumnsDefinition(columns =>
+                                    {
+                                        columns.RelativeColumn(1);
+                                        columns.RelativeColumn(1);
+                                        columns.RelativeColumn(1);
+                                        columns.RelativeColumn(1);
+                                    });
+
+                                    // Summary Cards Row
+                                    table.Cell().Border(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(10).Column(c =>
+                                    {
+                                        c.Item().Text("Total Quantity").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1);
+                                        c.Item().Text(_data.TotalQuantity.ToString("N0")).FontSize(16).Bold().FontColor(QuestPDF.Helpers.Colors.Blue.Darken2);
+                                        c.Item().Text("pieces").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Medium);
+                                    });
+                                    table.Cell().Border(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(10).Column(c =>
+                                    {
+                                        c.Item().Text("Total Orders").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1);
+                                        c.Item().Text(_data.TotalOrders.ToString("N0")).FontSize(16).Bold().FontColor(QuestPDF.Helpers.Colors.Green.Darken2);
+                                        c.Item().Text("transactions").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Medium);
+                                    });
+                                    table.Cell().Border(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(10).Column(c =>
+                                    {
+                                        c.Item().Text("Unique Clients").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1);
+                                        c.Item().Text(_data.UniqueClients.ToString("N0")).FontSize(16).Bold().FontColor(QuestPDF.Helpers.Colors.Purple.Darken2);
+                                        c.Item().Text("customers").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Medium);
+                                    });
+                                    table.Cell().Border(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten2).Padding(10).Column(c =>
+                                    {
+                                        c.Item().Text("Total Revenue").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1);
+                                        c.Item().Text($"KES {(_data.TotalRevenue / 1000000):N2}M").FontSize(16).Bold().FontColor(QuestPDF.Helpers.Colors.Orange.Darken2);
+                                        c.Item().Text("gross sales").FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Medium);
+                                    });
+                                });
+                            });
+
+                            // Production by Product
+                            col.Item().PaddingBottom(15).Element(e =>
+                            {
+                                e.Column(c =>
+                                {
+                                    c.Item().Text("Production by Product").FontSize(12).Bold().FontColor(QuestPDF.Helpers.Colors.Blue.Darken3);
+                                    c.Item().PaddingTop(5).Table(table =>
+                                    {
+                                        table.ColumnsDefinition(columns =>
+                                        {
+                                            columns.RelativeColumn(2);
+                                            columns.RelativeColumn(1);
+                                            columns.RelativeColumn(1);
+                                            columns.RelativeColumn(1);
+                                        });
+
+                                        // Header
+                                        table.Header(header =>
+                                        {
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Blue.Lighten4).Padding(5).Text("Product").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Blue.Lighten4).Padding(5).AlignRight().Text("Quantity").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Blue.Lighten4).Padding(5).AlignRight().Text("Orders").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Blue.Lighten4).Padding(5).AlignRight().Text("Share %").Bold();
+                                        });
+
+                                        // Rows
+                                        foreach (var item in _data.ProductionByProduct)
+                                        {
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).Text(item.Category);
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(item.Quantity.ToString("N0"));
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(item.OrderCount.ToString());
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"{item.PercentageOfTotal:N1}%");
+                                        }
+                                    });
+                                });
+                            });
+
+                            // Production by Layer
+                            col.Item().PaddingBottom(15).Element(e =>
+                            {
+                                e.Column(c =>
+                                {
+                                    c.Item().Text("Production by Layer").FontSize(12).Bold().FontColor(QuestPDF.Helpers.Colors.Green.Darken3);
+                                    c.Item().PaddingTop(5).Table(table =>
+                                    {
+                                        table.ColumnsDefinition(columns =>
+                                        {
+                                            columns.RelativeColumn(2);
+                                            columns.RelativeColumn(1);
+                                            columns.RelativeColumn(1);
+                                            columns.RelativeColumn(1);
+                                        });
+
+                                        table.Header(header =>
+                                        {
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Green.Lighten4).Padding(5).Text("Layer").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Green.Lighten4).Padding(5).AlignRight().Text("Quantity").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Green.Lighten4).Padding(5).AlignRight().Text("Orders").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Green.Lighten4).Padding(5).AlignRight().Text("Share %").Bold();
+                                        });
+
+                                        foreach (var item in _data.ProductionByLayer)
+                                        {
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).Text(item.Category);
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(item.Quantity.ToString("N0"));
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(item.OrderCount.ToString());
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"{item.PercentageOfTotal:N1}%");
+                                        }
+                                    });
+                                });
+                            });
+
+                            // Top Destinations
+                            col.Item().PaddingBottom(15).Element(e =>
+                            {
+                                e.Column(c =>
+                                {
+                                    c.Item().Text("Top Destinations").FontSize(12).Bold().FontColor(QuestPDF.Helpers.Colors.Orange.Darken3);
+                                    c.Item().PaddingTop(5).Table(table =>
+                                    {
+                                        table.ColumnsDefinition(columns =>
+                                        {
+                                            columns.RelativeColumn(2);
+                                            columns.RelativeColumn(1);
+                                            columns.RelativeColumn(1);
+                                            columns.RelativeColumn(1);
+                                        });
+
+                                        table.Header(header =>
+                                        {
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Orange.Lighten4).Padding(5).Text("County").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Orange.Lighten4).Padding(5).AlignRight().Text("Quantity").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Orange.Lighten4).Padding(5).AlignRight().Text("Orders").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Orange.Lighten4).Padding(5).AlignRight().Text("Share %").Bold();
+                                        });
+
+                                        foreach (var item in _data.ProductionByDestination.Take(10))
+                                        {
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).Text(item.Category);
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(item.Quantity.ToString("N0"));
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(item.OrderCount.ToString());
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"{item.PercentageOfTotal:N1}%");
+                                        }
+                                    });
+                                });
+                            });
+
+                            // Top Clients
+                            col.Item().Element(e =>
+                            {
+                                e.Column(c =>
+                                {
+                                    c.Item().Text("Top Clients").FontSize(12).Bold().FontColor(QuestPDF.Helpers.Colors.Purple.Darken3);
+                                    c.Item().PaddingTop(5).Table(table =>
+                                    {
+                                        table.ColumnsDefinition(columns =>
+                                        {
+                                            columns.RelativeColumn(2);
+                                            columns.RelativeColumn(1);
+                                            columns.RelativeColumn(1);
+                                            columns.RelativeColumn(1);
+                                        });
+
+                                        table.Header(header =>
+                                        {
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Purple.Lighten4).Padding(5).Text("Client").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Purple.Lighten4).Padding(5).AlignRight().Text("Quantity").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Purple.Lighten4).Padding(5).AlignRight().Text("Orders").Bold();
+                                            header.Cell().Background(QuestPDF.Helpers.Colors.Purple.Lighten4).Padding(5).AlignRight().Text("Revenue").Bold();
+                                        });
+
+                                        foreach (var item in _data.ProductionByClient.Take(10))
+                                        {
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).Text(item.ClientName);
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(item.Quantity.ToString("N0"));
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text(item.OrderCount.ToString());
+                                            table.Cell().BorderBottom(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"KES {item.Revenue:N0}");
+                                        }
+                                    });
+                                });
+                            });
+                        });
+                    });
+
+                    // Footer
+                    page.Footer().AlignCenter().Text(text =>
+                    {
+                        text.Span("Page ").FontSize(8);
+                        text.CurrentPageNumber().FontSize(8);
+                        text.Span(" of ").FontSize(8);
+                        text.TotalPages().FontSize(8);
+                    });
+                });
+            });
+
+            var pdfBytes = document.GeneratePdf();
+            var fileName = $"Production_Report_{_fromDate:yyyyMMdd}_{_toDate:yyyyMMdd}.pdf";
+            await JSRuntime.InvokeVoidAsync("downloadFile", fileName, "application/pdf", Convert.ToBase64String(pdfBytes));
+
+            Snackbar.Add("PDF report exported successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error exporting to PDF: {ex.Message}", Severity.Error);
+        }
+    }
+}

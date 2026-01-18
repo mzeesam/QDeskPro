@@ -1,0 +1,284 @@
+@using QDeskPro.Features.Monitoring.Models
+@using QDeskPro.Shared.Serilog
+@inject InMemorySink LogSink
+@implements IDisposable
+
+<MudStack Spacing="2">
+    @* Filters *@
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="flex-wrap">
+        <MudSelect T="string" @bind-Value="_levelFilter" Label="Level" Variant="Variant.Outlined"
+                   Dense="true" Style="min-width: 120px;" Margin="Margin.Dense">
+            <MudSelectItem Value="@("All")">All Levels</MudSelectItem>
+            <MudSelectItem Value="@("Error")">Error</MudSelectItem>
+            <MudSelectItem Value="@("Warning")">Warning</MudSelectItem>
+            <MudSelectItem Value="@("Information")">Info</MudSelectItem>
+            <MudSelectItem Value="@("Debug")">Debug</MudSelectItem>
+        </MudSelect>
+
+        <MudTextField @bind-Value="_searchText" Label="Search" Variant="Variant.Outlined"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Dense="true" Margin="Margin.Dense" Style="min-width: 200px;"
+                      Immediate="true" DebounceInterval="300" />
+
+        <MudSpacer />
+
+        <MudStack Row="true" Spacing="1">
+            <MudIconButton Icon="@(_isPaused ? Icons.Material.Filled.PlayArrow : Icons.Material.Filled.Pause)"
+                           Size="Size.Small" OnClick="TogglePause"
+                           Title="@(_isPaused ? "Resume" : "Pause")" />
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                           OnClick="ClearLogs" Title="Clear" />
+        </MudStack>
+    </MudStack>
+
+    @* Log Entries *@
+    <div class="log-stream-container" style="height: @(Height)px; overflow-y: auto; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px;">
+        @if (FilteredLogs.Any())
+        {
+            <MudStack Spacing="0">
+                @foreach (var log in FilteredLogs)
+                {
+                    <div class="log-entry @log.LevelCssClass pa-1 rounded-sm mb-1" @onclick="() => SelectLog(log)"
+                         style="@($"cursor: pointer; border-left: 3px solid {GetBorderColor(log.Level)};")">
+                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                            <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary); min-width: 80px;">
+                                @log.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")
+                            </MudText>
+                            <MudText Typo="Typo.caption" Style="@($"color: {GetLevelColor(log.Level)}; min-width: 50px; font-weight: 600;")">
+                                @log.Level[..Math.Min(3, log.Level.Length)].ToUpper()
+                            </MudText>
+                            @if (!string.IsNullOrEmpty(log.Source))
+                            {
+                                <MudText Typo="Typo.caption" Style="color: var(--mud-palette-info); min-width: 100px;">
+                                    [@log.Source]
+                                </MudText>
+                            }
+                            <MudText Typo="Typo.caption" Style="flex: 1; word-break: break-word;">
+                                @TruncateMessage(log.Message)
+                            </MudText>
+                        </MudStack>
+                    </div>
+                }
+            </MudStack>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="pa-8">
+                @(_isPaused ? "Log stream paused" : "Waiting for logs...")
+            </MudText>
+        }
+    </div>
+</MudStack>
+
+@* Log Detail Dialog *@
+<MudDialog @bind-Visible="_showDetail" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Log Entry Details</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_selectedLog != null)
+        {
+            <MudStack Spacing="3">
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Timestamp</MudText>
+                        <MudText Typo="Typo.body2">@_selectedLog.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff")</MudText>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Level</MudText>
+                        <MudChip T="string" Color="@GetLevelChipColor(_selectedLog.Level)" Size="Size.Small">
+                            @_selectedLog.Level
+                        </MudChip>
+                    </MudItem>
+                    @if (!string.IsNullOrEmpty(_selectedLog.Source))
+                    {
+                        <MudItem xs="6">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Source</MudText>
+                            <MudText Typo="Typo.body2">@_selectedLog.Source</MudText>
+                        </MudItem>
+                    }
+                    @if (!string.IsNullOrEmpty(_selectedLog.UserId))
+                    {
+                        <MudItem xs="6">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">User ID</MudText>
+                            <MudText Typo="Typo.body2">@_selectedLog.UserId</MudText>
+                        </MudItem>
+                    }
+                    @if (!string.IsNullOrEmpty(_selectedLog.RequestId))
+                    {
+                        <MudItem xs="12">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Request ID</MudText>
+                            <MudText Typo="Typo.body2">@_selectedLog.RequestId</MudText>
+                        </MudItem>
+                    }
+                </MudGrid>
+
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Message</MudText>
+                    <MudPaper Elevation="0" Class="pa-3 rounded" Style="background-color: var(--mud-palette-background-grey);">
+                        <MudText Typo="Typo.body2" Style="white-space: pre-wrap; word-break: break-word;">
+                            @_selectedLog.Message
+                        </MudText>
+                    </MudPaper>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_selectedLog.Exception))
+                {
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Error">Exception</MudText>
+                        <MudPaper Elevation="0" Class="pa-3 rounded" Style="background-color: rgba(244, 67, 54, 0.08);">
+                            <MudText Typo="Typo.body2" Style="white-space: pre-wrap; word-break: break-word; font-family: monospace; font-size: 11px;">
+                                @_selectedLog.Exception
+                            </MudText>
+                        </MudPaper>
+                    </div>
+                }
+
+                @if (_selectedLog.Properties != null && _selectedLog.Properties.Any())
+                {
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Properties</MudText>
+                        <MudPaper Elevation="0" Class="pa-3 rounded" Style="background-color: var(--mud-palette-background-grey);">
+                            @foreach (var prop in _selectedLog.Properties)
+                            {
+                                <MudStack Row="true" Spacing="2">
+                                    <MudText Typo="Typo.caption" Style="font-weight: 600;">@prop.Key:</MudText>
+                                    <MudText Typo="Typo.caption">@prop.Value?.ToString()</MudText>
+                                </MudStack>
+                            }
+                        </MudPaper>
+                    </div>
+                }
+            </MudStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _showDetail = false">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    .log-entry {
+        transition: background-color 0.15s ease;
+    }
+    .log-entry:hover {
+        background-color: var(--mud-palette-action-default-hover);
+    }
+    .log-entry.log-error {
+        background-color: rgba(244, 67, 54, 0.05);
+    }
+    .log-entry.log-warning {
+        background-color: rgba(255, 152, 0, 0.05);
+    }
+    .log-stream-container::-webkit-scrollbar {
+        width: 8px;
+    }
+    .log-stream-container::-webkit-scrollbar-track {
+        background: var(--mud-palette-background-grey);
+    }
+    .log-stream-container::-webkit-scrollbar-thumb {
+        background: var(--mud-palette-text-disabled);
+        border-radius: 4px;
+    }
+</style>
+
+@code {
+    [Parameter] public int Height { get; set; } = 400;
+    [Parameter] public int MaxEntries { get; set; } = 100;
+
+    private List<LogEntry> _logs = new();
+    private bool _isPaused = false;
+    private bool _showDetail = false;
+    private LogEntry? _selectedLog;
+    private string _levelFilter = "All";
+    private string _searchText = "";
+
+    private IEnumerable<LogEntry> FilteredLogs =>
+        _logs.Where(l =>
+            (_levelFilter == "All" || l.Level.StartsWith(_levelFilter, StringComparison.OrdinalIgnoreCase)) &&
+            (string.IsNullOrEmpty(_searchText) ||
+             l.Message.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+             (l.Source?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+             (l.Exception?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false)))
+        .Take(MaxEntries);
+
+    protected override void OnInitialized()
+    {
+        // Load initial logs from sink
+        _logs = LogSink.GetRecentLogs(MaxEntries).ToList();
+
+        // Subscribe to new log entries
+        LogSink.LogReceived += OnLogReceived;
+    }
+
+    private void OnLogReceived(LogEntry entry)
+    {
+        if (!_isPaused)
+        {
+            InvokeAsync(() =>
+            {
+                _logs.Insert(0, entry);
+                while (_logs.Count > MaxEntries * 2)
+                {
+                    _logs.RemoveAt(_logs.Count - 1);
+                }
+                StateHasChanged();
+            });
+        }
+    }
+
+    private void TogglePause()
+    {
+        _isPaused = !_isPaused;
+    }
+
+    private void ClearLogs()
+    {
+        _logs.Clear();
+    }
+
+    private void SelectLog(LogEntry log)
+    {
+        _selectedLog = log;
+        _showDetail = true;
+    }
+
+    private string TruncateMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message)) return "";
+        var firstLine = message.Split('\n')[0];
+        return firstLine.Length > 150 ? firstLine[..147] + "..." : firstLine;
+    }
+
+    private string GetBorderColor(string level) => level.ToLower() switch
+    {
+        "error" or "fatal" => "var(--mud-palette-error)",
+        "warning" => "var(--mud-palette-warning)",
+        "information" or "info" => "var(--mud-palette-info)",
+        "debug" => "var(--mud-palette-secondary)",
+        _ => "transparent"
+    };
+
+    private string GetLevelColor(string level) => level.ToLower() switch
+    {
+        "error" or "fatal" => "var(--mud-palette-error)",
+        "warning" => "var(--mud-palette-warning)",
+        "information" or "info" => "var(--mud-palette-info)",
+        "debug" => "var(--mud-palette-secondary)",
+        _ => "var(--mud-palette-text-primary)"
+    };
+
+    private Color GetLevelChipColor(string level) => level.ToLower() switch
+    {
+        "error" or "fatal" => Color.Error,
+        "warning" => Color.Warning,
+        "information" or "info" => Color.Info,
+        "debug" => Color.Secondary,
+        _ => Color.Default
+    };
+
+    public void Dispose()
+    {
+        LogSink.LogReceived -= OnLogReceived;
+    }
+}

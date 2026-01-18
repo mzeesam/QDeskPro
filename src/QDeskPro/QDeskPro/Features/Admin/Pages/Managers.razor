@@ -18,28 +18,70 @@
 
 <PageTitle>Managers - QDeskPro</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
-    <MudStack Spacing="3">
-        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-            <MudText Typo="Typo.h4">Manager Management</MudText>
-            <MudButton Variant="Variant.Filled"
-                      Color="Color.Primary"
-                      StartIcon="@Icons.Material.Filled.Add"
-                      OnClick="OpenAddDialog">
-                New Manager
-            </MudButton>
-        </MudStack>
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudStack Spacing="4">
+        @* Page Header with Gradient *@
+        <div class="admin-header admin-header-managers">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.SupervisorAccount" Size="Size.Large" Style="color: #1976D2;" />
+                    <div>
+                        <MudText Typo="Typo.h4" Class="admin-header-title">Manager Management</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Create and manage system managers and their quarry assignments
+                        </MudText>
+                    </div>
+                </MudStack>
+                <MudButton Variant="Variant.Filled"
+                          Color="Color.Primary"
+                          StartIcon="@Icons.Material.Filled.Add"
+                          OnClick="OpenAddDialog"
+                          Class="admin-action-btn">
+                    New Manager
+                </MudButton>
+            </MudStack>
+        </div>
 
-        <MudAlert Severity="Severity.Info" Dense="true">
-            Managers can create and manage their own quarries and assign clerks to those quarries.
-        </MudAlert>
+        @* Stats Summary Row *@
+        <div class="admin-mini-stats-row">
+            <div class="admin-mini-stat admin-mini-stat-gradient-1">
+                <MudIcon Icon="@Icons.Material.Filled.SupervisorAccount" Size="Size.Large" Class="admin-mini-stat-icon" />
+                <div class="admin-mini-stat-content">
+                    <span class="admin-mini-stat-value">@_managers.Count</span>
+                    <span class="admin-mini-stat-label">Total Managers</span>
+                </div>
+            </div>
+            <div class="admin-mini-stat admin-mini-stat-gradient-4">
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Class="admin-mini-stat-icon" />
+                <div class="admin-mini-stat-content">
+                    <span class="admin-mini-stat-value">@_managers.Count(m => m.IsActive)</span>
+                    <span class="admin-mini-stat-label">Active</span>
+                </div>
+            </div>
+            <div class="admin-mini-stat admin-mini-stat-gradient-3">
+                <MudIcon Icon="@Icons.Material.Filled.Terrain" Size="Size.Large" Class="admin-mini-stat-icon" />
+                <div class="admin-mini-stat-content">
+                    <span class="admin-mini-stat-value">@_managerQuarries.Values.Sum(q => q.Count)</span>
+                    <span class="admin-mini-stat-label">Total Quarries</span>
+                </div>
+            </div>
+            <div class="admin-mini-stat admin-mini-stat-gradient-2">
+                <MudIcon Icon="@Icons.Material.Filled.Block" Size="Size.Large" Class="admin-mini-stat-icon" />
+                <div class="admin-mini-stat-content">
+                    <span class="admin-mini-stat-value">@_managers.Count(m => !m.IsActive)</span>
+                    <span class="admin-mini-stat-label">Inactive</span>
+                </div>
+            </div>
+        </div>
 
         @if (_loading)
         {
             <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
         }
 
-        <MudTable Items="_managers"
+        @* Table Card *@
+        <div class="admin-table-card">
+            <MudTable Items="_managers"
                  Hover="true"
                  Breakpoint="Breakpoint.Sm"
                  Dense="true"
@@ -135,11 +177,18 @@
                 </MudTd>
             </RowTemplate>
             <NoRecordsContent>
-                <MudText Align="Align.Center" Class="pa-4">
-                    No managers found. Click "New Manager" to create one.
-                </MudText>
+                <div class="admin-empty-state">
+                    <div class="admin-empty-state-icon">
+                        <MudIcon Icon="@Icons.Material.Filled.SupervisorAccount" />
+                    </div>
+                    <MudText Typo="Typo.h6" Color="Color.Default">No managers found</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                        Click "New Manager" to create your first manager account
+                    </MudText>
+                </div>
             </NoRecordsContent>
         </MudTable>
+        </div>
     </MudStack>
 </MudContainer>
 

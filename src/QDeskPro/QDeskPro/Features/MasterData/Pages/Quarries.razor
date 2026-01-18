@@ -17,31 +17,77 @@
 <PageTitle>Quarries - QDeskPro</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
-    <MudStack Spacing="3">
-        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-            <MudText Typo="Typo.h4">Quarry Management</MudText>
-            @if (_userRole == "Manager")
-            {
-                <MudButton Variant="Variant.Filled"
-                          Color="Color.Primary"
-                          StartIcon="@Icons.Material.Filled.Add"
-                          OnClick="OpenAddDialog">
-                    New Quarry
-                </MudButton>
-            }
-        </MudStack>
+    <MudStack Spacing="4">
+        @* Page Header with Gradient *@
+        <div class="admin-header admin-header-quarries">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.Terrain" Size="Size.Large" Style="color: #00897B;" />
+                    <div>
+                        <MudText Typo="Typo.h4" Class="admin-header-title">Quarry Management</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Manage your quarry locations and fee configurations
+                        </MudText>
+                    </div>
+                </MudStack>
+                @if (_userRole == "Manager")
+                {
+                    <MudButton Variant="Variant.Filled"
+                              Color="Color.Primary"
+                              StartIcon="@Icons.Material.Filled.Add"
+                              OnClick="OpenAddDialog"
+                              Class="admin-action-btn">
+                        New Quarry
+                    </MudButton>
+                }
+            </MudStack>
+        </div>
+
+        @* Stats Summary Row *@
+        <div class="admin-mini-stats-row">
+            <div class="admin-mini-stat admin-mini-stat-gradient-1">
+                <MudIcon Icon="@Icons.Material.Filled.Terrain" Size="Size.Large" Class="admin-mini-stat-icon" />
+                <div class="admin-mini-stat-content">
+                    <span class="admin-mini-stat-value">@_quarries.Count</span>
+                    <span class="admin-mini-stat-label">Total Quarries</span>
+                </div>
+            </div>
+            <div class="admin-mini-stat admin-mini-stat-gradient-4">
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Class="admin-mini-stat-icon" />
+                <div class="admin-mini-stat-content">
+                    <span class="admin-mini-stat-value">@_quarries.Count(q => q.IsActive)</span>
+                    <span class="admin-mini-stat-label">Active</span>
+                </div>
+            </div>
+            <div class="admin-mini-stat admin-mini-stat-gradient-3">
+                <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Large" Class="admin-mini-stat-icon" />
+                <div class="admin-mini-stat-content">
+                    <span class="admin-mini-stat-value">@_quarries.Count(q => q.DailyReportEnabled)</span>
+                    <span class="admin-mini-stat-label">Reports Enabled</span>
+                </div>
+            </div>
+            <div class="admin-mini-stat admin-mini-stat-gradient-2">
+                <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Large" Class="admin-mini-stat-icon" />
+                <div class="admin-mini-stat-content">
+                    <span class="admin-mini-stat-value">@_quarries.Count(q => q.InitialCapitalInvestment.HasValue)</span>
+                    <span class="admin-mini-stat-label">ROI Configured</span>
+                </div>
+            </div>
+        </div>
 
         @if (_loading)
         {
             <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
         }
 
-        <MudTable Items="_quarries"
-                 Hover="true"
-                 Breakpoint="Breakpoint.Sm"
-                 Dense="true"
-                 Loading="_loading"
-                 LoadingProgressColor="Color.Primary">
+        @* Table Card *@
+        <div class="admin-table-card">
+            <MudTable Items="_quarries"
+                     Hover="true"
+                     Breakpoint="Breakpoint.Sm"
+                     Dense="true"
+                     Loading="_loading"
+                     LoadingProgressColor="Color.Primary">
             <HeaderContent>
                 <MudTh>Quarry Name</MudTh>
                 <MudTh>Location</MudTh>
@@ -91,18 +137,28 @@
                 </MudTd>
             </RowTemplate>
             <NoRecordsContent>
-                <MudText Align="Align.Center" Class="pa-4">
+                <div class="admin-empty-state">
+                    <div class="admin-empty-state-icon">
+                        <MudIcon Icon="@Icons.Material.Filled.Terrain" />
+                    </div>
                     @if (_userRole == "Manager")
                     {
-                        <span>No quarries found. Click "New Quarry" to create one.</span>
+                        <MudText Typo="Typo.h6" Color="Color.Default">No quarries found</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                            Click "New Quarry" to create your first quarry
+                        </MudText>
                     }
                     else
                     {
-                        <span>No quarries found in the system.</span>
+                        <MudText Typo="Typo.h6" Color="Color.Default">No quarries in the system</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                            Quarries will appear here once created
+                        </MudText>
                     }
-                </MudText>
+                </div>
             </NoRecordsContent>
         </MudTable>
+        </div>
     </MudStack>
 </MudContainer>
 
@@ -187,7 +243,10 @@
                                           Variant="Variant.Outlined"
                                           MaxDate="@DateTime.Today"
                                           DateFormat="dd/MM/yyyy"
-                                          HelperText="When the quarry began operations" />
+                                          HelperText="When the quarry began operations"
+                                          PopoverClass="datepicker-above-dialog"
+                                          TransformOrigin="Origin.TopCenter"
+                                          AnchorOrigin="Origin.BottomCenter" />
 
                             <MudNumericField @bind-Value="_editModel.EstimatedMonthlyFixedCosts"
                                             Label="Estimated Monthly Fixed Costs"

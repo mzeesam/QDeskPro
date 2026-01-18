@@ -1,0 +1,112 @@
+@namespace QDeskPro.Features.AI.Components
+@using QDeskPro.Features.AI.Models
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@implements IAsyncDisposable
+
+<MudPaper Elevation="0" Class="chart-container pa-3">
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <MudText Typo="Typo.subtitle1" Class="mb-2 font-weight-medium">@Title</MudText>
+    }
+
+    <div style="height: @Height; position: relative;">
+        <canvas id="@_canvasId"></canvas>
+    </div>
+
+    <div class="d-flex justify-end mt-2">
+        <MudButton Size="Size.Small"
+                   Variant="Variant.Text"
+                   StartIcon="@Icons.Material.Filled.Image"
+                   OnClick="ExportAsImage"
+                   Disabled="@(!_chartCreated)">
+            Save Image
+        </MudButton>
+    </div>
+</MudPaper>
+
+@code {
+    [Parameter] public AIChartType ChartType { get; set; }
+    [Parameter] public List<string> Labels { get; set; } = [];
+    [Parameter] public List<ChartDataset> Datasets { get; set; } = [];
+    [Parameter] public AIChartOptions? Options { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string Height { get; set; } = "250px";
+
+    private readonly string _canvasId = $"ai-chart-{Guid.NewGuid():N}";
+    private bool _chartCreated;
+    private bool _disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Labels.Count > 0 && Datasets.Count > 0)
+        {
+            await CreateChartAsync();
+        }
+    }
+
+    private async Task CreateChartAsync()
+    {
+        if (_disposed) return;
+
+        try
+        {
+            var chartType = ChartType.ToString().ToLower();
+            var datasets = Datasets.Select(ds => new
+            {
+                label = ds.Label,
+                data = ds.Data,
+                backgroundColor = ds.BackgroundColor,
+                borderColor = ds.BorderColor
+            }).ToArray();
+
+            var options = new
+            {
+                showLegend = Options?.ShowLegend ?? true,
+                yAxisFormat = Options?.YAxisFormat ?? "number"
+            };
+
+            await JS.InvokeVoidAsync("QDeskAIChatCharts.createChart",
+                _canvasId, chartType, Labels, datasets, options);
+
+            _chartCreated = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to create chart: {ex.Message}");
+        }
+    }
+
+    private async Task ExportAsImage()
+    {
+        if (!_chartCreated) return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("QDeskAIChatCharts.exportChartAsImage",
+                _canvasId, Title ?? "chart");
+
+            Snackbar.Add("Chart image saved", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to export: {ex.Message}", Severity.Error);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (_chartCreated)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("QDeskAIChatCharts.destroyChart", _canvasId);
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+        }
+    }
+}

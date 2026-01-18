@@ -1,0 +1,230 @@
+@namespace QDeskPro.Features.AI.Components
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<MudPaper Elevation="0" Class="data-table-container pa-2">
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <MudText Typo="Typo.subtitle1" Class="mb-2 font-weight-medium">@Title</MudText>
+    }
+
+    @if (Rows.Count > 0)
+    {
+        <MudSimpleTable Dense="true" Hover="true" Striped="true" Class="chat-data-table">
+            <thead>
+                <tr>
+                    @foreach (var header in Headers)
+                    {
+                        <th class="@GetHeaderClass(header)">@FormatHeader(header)</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in Rows.Take(MaxRows))
+                {
+                    <tr class="@GetRowClass(row)">
+                        @foreach (var header in Headers)
+                        {
+                            <td class="@GetCellClass(header)">
+                                @FormatValue(row.GetValueOrDefault(header), header)
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+            @if (Rows.Count > 0)
+            {
+                <tfoot>
+                    <tr class="total-row">
+                        <td colspan="@GetTotalColSpan()"><strong>Total</strong></td>
+                        @foreach (var header in GetNumericHeaders())
+                        {
+                            <td class="text-right"><strong>@FormatTotal(header)</strong></td>
+                        }
+                    </tr>
+                </tfoot>
+            }
+        </MudSimpleTable>
+
+        @if (Rows.Count > MaxRows)
+        {
+            <MudText Typo="Typo.caption" Class="text-muted mt-2">
+                Showing @MaxRows of @Rows.Count rows
+            </MudText>
+        }
+
+        @if (Exportable)
+        {
+            <div class="d-flex justify-end mt-2 gap-2">
+                <MudButton Size="Size.Small"
+                           Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Filled.Download"
+                           OnClick="ExportToExcel"
+                           Disabled="@_exporting">
+                    @if (_exporting)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Export Excel
+                </MudButton>
+            </div>
+        }
+    }
+    else
+    {
+        <MudText Typo="Typo.body2" Class="text-muted text-center pa-4">
+            No data available
+        </MudText>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public List<string> Headers { get; set; } = new();
+    [Parameter] public List<Dictionary<string, object?>> Rows { get; set; } = new();
+    [Parameter] public string Currency { get; set; } = "KES";
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public bool Exportable { get; set; } = true;
+    [Parameter] public string? ToolName { get; set; }
+    [Parameter] public int MaxRows { get; set; } = 20;
+
+    private bool _exporting;
+
+    private static string FormatHeader(string header)
+    {
+        return header.Replace("_", " ");
+    }
+
+    private string FormatValue(object? value, string header)
+    {
+        if (value == null) return "-";
+
+        if (IsMoneyColumn(header) && double.TryParse(value.ToString(), out var amount))
+        {
+            return string.Format("{0} {1:N0}", Currency, amount);
+        }
+
+        if (IsQuantityColumn(header) && double.TryParse(value.ToString(), out var qty))
+        {
+            return string.Format("{0:N0}", qty);
+        }
+
+        if (header.Contains("Date", StringComparison.OrdinalIgnoreCase) &&
+            DateTime.TryParse(value.ToString(), out var date))
+        {
+            return date.ToString("dd MMM yyyy");
+        }
+
+        return value.ToString() ?? "-";
+    }
+
+    private static bool IsMoneyColumn(string header)
+    {
+        return header.Contains("Amount", StringComparison.OrdinalIgnoreCase) ||
+               header.Contains("Revenue", StringComparison.OrdinalIgnoreCase) ||
+               header.Contains("Total", StringComparison.OrdinalIgnoreCase) ||
+               header.Contains("Price", StringComparison.OrdinalIgnoreCase) ||
+               header.Contains("Commission", StringComparison.OrdinalIgnoreCase) ||
+               header.Contains("Fee", StringComparison.OrdinalIgnoreCase) ||
+               header.Contains("Balance", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsQuantityColumn(string header)
+    {
+        return header.Contains("Quantity", StringComparison.OrdinalIgnoreCase) ||
+               header.Contains("Orders", StringComparison.OrdinalIgnoreCase) ||
+               header.Contains("Count", StringComparison.OrdinalIgnoreCase) ||
+               header.Contains("Stock", StringComparison.OrdinalIgnoreCase) ||
+               header.Contains("Machines", StringComparison.OrdinalIgnoreCase) ||
+               header.Contains("Loaders", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetHeaderClass(string header)
+    {
+        return IsMoneyColumn(header) || IsQuantityColumn(header) ? "text-right" : "";
+    }
+
+    private static string GetCellClass(string header)
+    {
+        return IsMoneyColumn(header) || IsQuantityColumn(header) ? "text-right" : "";
+    }
+
+    private string GetRowClass(Dictionary<string, object?> row)
+    {
+        if (ToolName == "get_unpaid_orders")
+        {
+            return "unpaid-row";
+        }
+
+        if (row.TryGetValue("Status", out var status) &&
+            status?.ToString()?.Equals("NotPaid", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return "unpaid-row";
+        }
+
+        return "";
+    }
+
+    private int GetTotalColSpan()
+    {
+        var numericCount = Headers.Count(h => IsMoneyColumn(h) || IsQuantityColumn(h));
+        return Headers.Count - numericCount;
+    }
+
+    private IEnumerable<string> GetNumericHeaders()
+    {
+        return Headers.Where(h => IsMoneyColumn(h) || IsQuantityColumn(h));
+    }
+
+    private string FormatTotal(string header)
+    {
+        var total = Rows
+            .Select(r => r.GetValueOrDefault(header))
+            .Where(v => v != null)
+            .Sum(v => double.TryParse(v?.ToString(), out var d) ? d : 0);
+
+        if (IsMoneyColumn(header))
+        {
+            return string.Format("{0} {1:N0}", Currency, total);
+        }
+
+        return string.Format("{0:N0}", total);
+    }
+
+    private async Task ExportToExcel()
+    {
+        _exporting = true;
+        StateHasChanged();
+
+        try
+        {
+            var csv = new System.Text.StringBuilder();
+            csv.AppendLine(string.Join(",", Headers.Select(h => "\"" + FormatHeader(h) + "\"")));
+
+            foreach (var row in Rows)
+            {
+                var values = Headers.Select(h =>
+                {
+                    var val = row.GetValueOrDefault(h)?.ToString() ?? "";
+                    return "\"" + val.Replace("\"", "\"\"") + "\"";
+                });
+                csv.AppendLine(string.Join(",", values));
+            }
+
+            var fileName = (Title?.Replace(" ", "_") ?? "export") + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".csv";
+            var bytes = System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+            var base64 = Convert.ToBase64String(bytes);
+
+            await JS.InvokeVoidAsync("downloadFile", fileName, base64, "text/csv");
+            Snackbar.Add("Data exported successfully", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Export failed: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _exporting = false;
+            StateHasChanged();
+        }
+    }
+}

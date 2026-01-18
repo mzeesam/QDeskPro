@@ -1,0 +1,416 @@
+@page "/admin/observability"
+@attribute [Authorize(Policy = "RequireAdministrator")]
+@using Microsoft.AspNetCore.Authorization
+@using QDeskPro.Features.Monitoring.Services
+@using QDeskPro.Features.Monitoring.Models
+@using QDeskPro.Features.Monitoring.Components
+@inject MonitoringHealthService HealthService
+@inject MetricsCollectorService MetricsService
+@inject SecurityAuditService SecurityService
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@implements IDisposable
+
+<PageTitle>System Observability - QDeskPro</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4">
+    <MudStack Spacing="4">
+        @* Header *@
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+            <div>
+                <MudText Typo="Typo.h4" Class="font-weight-bold">System Observability</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Real-time monitoring and diagnostics
+                </MudText>
+            </div>
+            <MudStack Row="true" Spacing="2">
+                <MudChip T="string" Color="@(_isLive ? Color.Success : Color.Default)"
+                         Icon="@(_isLive ? Icons.Material.Filled.FiberManualRecord : Icons.Material.Outlined.PauseCircle)"
+                         Size="Size.Small">
+                    @(_isLive ? "Live" : "Paused")
+                </MudChip>
+                <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                               Color="Color.Primary"
+                               OnClick="RefreshData"
+                               Disabled="_loading" />
+            </MudStack>
+        </MudStack>
+
+        @* Quick Stats Cards *@
+        <MudGrid Spacing="3">
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="0" Class="border rounded-lg">
+                    <MudCardContent Class="d-flex align-center gap-3 pa-4">
+                        <MudAvatar Color="@GetHealthColor(_healthStatus?.OverallStatus)"
+                                   Size="Size.Large" Variant="Variant.Outlined">
+                            <MudIcon Icon="@Icons.Material.Filled.HealthAndSafety" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Health Status</MudText>
+                            <MudText Typo="Typo.h6" Class="font-weight-bold">
+                                @(_healthStatus?.OverallStatus ?? "Loading...")
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @(_healthStatus?.Checks.Count ?? 0) checks
+                            </MudText>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="0" Class="border rounded-lg">
+                    <MudCardContent Class="d-flex align-center gap-3 pa-4">
+                        <MudAvatar Color="Color.Primary" Size="Size.Large" Variant="Variant.Outlined">
+                            <MudIcon Icon="@Icons.Material.Filled.Api" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Requests (1h)</MudText>
+                            <MudText Typo="Typo.h6" Class="font-weight-bold">
+                                @(_requestMetrics?.TotalRequests.ToString("N0") ?? "0")
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @(_requestMetrics?.AvgResponseTimeMs.ToString("N0") ?? "0") ms avg
+                            </MudText>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="0" Class="border rounded-lg">
+                    <MudCardContent Class="d-flex align-center gap-3 pa-4">
+                        <MudAvatar Color="@(_requestMetrics?.ErrorRatePercent > 5 ? Color.Error : Color.Success)"
+                                   Size="Size.Large" Variant="Variant.Outlined">
+                            <MudIcon Icon="@Icons.Material.Filled.BugReport" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Errors</MudText>
+                            <MudText Typo="Typo.h6" Class="font-weight-bold">
+                                @(_requestMetrics?.ErrorCount ?? 0)
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @(_requestMetrics?.ErrorRatePercent.ToString("N1") ?? "0")% error rate
+                            </MudText>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Elevation="0" Class="border rounded-lg">
+                    <MudCardContent Class="d-flex align-center gap-3 pa-4">
+                        <MudAvatar Color="Color.Info" Size="Size.Large" Variant="Variant.Outlined">
+                            <MudIcon Icon="@Icons.Material.Filled.Timer" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Uptime</MudText>
+                            <MudText Typo="Typo.h6" Class="font-weight-bold">
+                                @FormatUptime(_healthStatus?.Uptime)
+                            </MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                @(_healthStatus?.MemoryUsageMB.ToString("N0") ?? "0") MB memory
+                            </MudText>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        @* Main Content Panels *@
+        <MudGrid Spacing="3">
+            @* Health Status Panel *@
+            <MudItem xs="12" md="6">
+                <MudCard Elevation="0" Class="border rounded-lg" Style="height: 100%;">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                                <MudText Typo="Typo.h6">Health Checks</MudText>
+                                <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                           Href="/admin/system-health">View All</MudButton>
+                            </MudStack>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @if (_healthStatus?.Checks != null)
+                        {
+                            <MudStack Spacing="2">
+                                @foreach (var check in _healthStatus.Checks.Take(5))
+                                {
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center"
+                                              Class="pa-2 rounded" Style="background-color: var(--mud-palette-background-grey);">
+                                        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                                            <MudIcon Icon="@GetHealthIcon(check.Status)"
+                                                     Color="@GetHealthColor(check.Status)" Size="Size.Small" />
+                                            <MudText Typo="Typo.body2">@check.Name</MudText>
+                                        </MudStack>
+                                        <MudChip T="string" Color="@GetHealthColor(check.Status)" Size="Size.Small">
+                                            @check.Status
+                                        </MudChip>
+                                    </MudStack>
+                                }
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            @* Request Metrics Panel *@
+            <MudItem xs="12" md="6">
+                <MudCard Elevation="0" Class="border rounded-lg" Style="height: 100%;">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Top Endpoints</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @if (_requestMetrics?.ByEndpoint != null && _requestMetrics.ByEndpoint.Any())
+                        {
+                            <MudStack Spacing="2">
+                                @foreach (var endpoint in _requestMetrics.ByEndpoint.Take(5))
+                                {
+                                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center"
+                                              Class="pa-2 rounded" Style="background-color: var(--mud-palette-background-grey);">
+                                        <div>
+                                            <MudChip T="string" Size="Size.Small" Color="@GetMethodColor(endpoint.Method)">
+                                                @endpoint.Method
+                                            </MudChip>
+                                            <MudText Typo="Typo.body2" Class="d-inline ml-2">
+                                                @TruncateEndpoint(endpoint.Endpoint)
+                                            </MudText>
+                                        </div>
+                                        <MudStack Row="true" Spacing="2">
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @endpoint.RequestCount req
+                                            </MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                @endpoint.AvgResponseTimeMs.ToString("N0") ms
+                                            </MudText>
+                                        </MudStack>
+                                    </MudStack>
+                                }
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="pa-4">
+                                No request data available yet
+                            </MudText>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        @* Security Events Panel *@
+        <MudCard Elevation="0" Class="border rounded-lg">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h6">Recent Security Events</MudText>
+                        <MudStack Row="true" Spacing="2">
+                            @if (_securitySummary != null)
+                            {
+                                <MudChip T="string" Color="Color.Success" Size="Size.Small">
+                                    @_securitySummary.SuccessfulLogins logins
+                                </MudChip>
+                                @if (_securitySummary.FailedLogins > 0)
+                                {
+                                    <MudChip T="string" Color="Color.Error" Size="Size.Small">
+                                        @_securitySummary.FailedLogins failed
+                                    </MudChip>
+                                }
+                            }
+                        </MudStack>
+                    </MudStack>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (_securityEvents != null && _securityEvents.Any())
+                {
+                    <MudSimpleTable Dense="true" Hover="true" Style="overflow-x: auto;">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Event</th>
+                                <th>User</th>
+                                <th>IP Address</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var evt in _securityEvents.Take(10))
+                            {
+                                <tr>
+                                    <td>
+                                        <MudText Typo="Typo.caption">
+                                            @evt.Timestamp.ToLocalTime().ToString("HH:mm:ss")
+                                        </MudText>
+                                    </td>
+                                    <td>
+                                        <MudChip T="string" Size="Size.Small" Color="@GetEventTypeColor(evt.EventType)">
+                                            @evt.EventType
+                                        </MudChip>
+                                    </td>
+                                    <td>
+                                        <MudText Typo="Typo.body2">
+                                            @(evt.UserEmail ?? evt.UserId ?? "-")
+                                        </MudText>
+                                    </td>
+                                    <td>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @(evt.IpAddress ?? "-")
+                                        </MudText>
+                                    </td>
+                                    <td>
+                                        <MudIcon Icon="@(evt.IsSuccess ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)"
+                                                 Color="@(evt.IsSuccess ? Color.Success : Color.Error)" Size="Size.Small" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="pa-4">
+                        No security events recorded yet
+                    </MudText>
+                }
+            </MudCardContent>
+        </MudCard>
+
+        @* Live Log Stream *@
+        <MudCard Elevation="0" Class="border rounded-lg">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.h6">Live Log Stream</MudText>
+                        <MudStack Row="true" Spacing="2">
+                            <MudIconButton Icon="@(_isLive ? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow)"
+                                           Size="Size.Small" OnClick="ToggleLive" />
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                       Href="/admin/logs">Full Log Viewer</MudButton>
+                        </MudStack>
+                    </MudStack>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <LogStreamViewer Height="300" MaxEntries="50" />
+            </MudCardContent>
+        </MudCard>
+    </MudStack>
+</MudContainer>
+
+@code {
+    private bool _loading = true;
+    private bool _isLive = true;
+    private Timer? _refreshTimer;
+    private HealthStatus? _healthStatus;
+    private RequestMetrics? _requestMetrics;
+    private SecurityEventSummary? _securitySummary;
+    private List<SecurityEvent>? _securityEvents;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshData();
+
+        // Auto-refresh every 30 seconds
+        _refreshTimer = new Timer(async _ =>
+        {
+            if (_isLive)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshData();
+                    StateHasChanged();
+                });
+            }
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private async Task RefreshData()
+    {
+        _loading = true;
+        try
+        {
+            _healthStatus = await HealthService.GetDetailedHealthAsync();
+            _requestMetrics = MetricsService.GetMetrics();
+            _securitySummary = SecurityService.GetSummary(24);
+            _securityEvents = SecurityService.GetRecentEvents(10);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to refresh data: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ToggleLive()
+    {
+        _isLive = !_isLive;
+    }
+
+    private string FormatUptime(TimeSpan? uptime)
+    {
+        if (uptime == null) return "N/A";
+        var ts = uptime.Value;
+        if (ts.TotalDays >= 1)
+            return $"{(int)ts.TotalDays}d {ts.Hours}h";
+        return $"{ts.Hours}h {ts.Minutes}m";
+    }
+
+    private Color GetHealthColor(string? status) => status?.ToLower() switch
+    {
+        "healthy" => Color.Success,
+        "degraded" => Color.Warning,
+        "unhealthy" => Color.Error,
+        _ => Color.Default
+    };
+
+    private string GetHealthIcon(string? status) => status?.ToLower() switch
+    {
+        "healthy" => Icons.Material.Filled.CheckCircle,
+        "degraded" => Icons.Material.Filled.Warning,
+        "unhealthy" => Icons.Material.Filled.Error,
+        _ => Icons.Material.Filled.HelpOutline
+    };
+
+    private Color GetMethodColor(string method) => method.ToUpper() switch
+    {
+        "GET" => Color.Info,
+        "POST" => Color.Success,
+        "PUT" => Color.Warning,
+        "DELETE" => Color.Error,
+        "PATCH" => Color.Secondary,
+        _ => Color.Default
+    };
+
+    private Color GetEventTypeColor(string eventType) => eventType switch
+    {
+        "Login" => Color.Success,
+        "Logout" => Color.Info,
+        "FailedLogin" => Color.Error,
+        "PermissionDenied" => Color.Warning,
+        "RateLimited" => Color.Warning,
+        "PasswordReset" or "PasswordChange" => Color.Primary,
+        _ => Color.Default
+    };
+
+    private string TruncateEndpoint(string endpoint)
+    {
+        return endpoint.Length > 40 ? endpoint[..37] + "..." : endpoint;
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+}

@@ -12,6 +12,7 @@
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthStateProvider
 @inject LocalStorageService LocalStorage
+@inject TokenRefreshService TokenRefresh
 
 <PageTitle>Sign In - QDeskPro</PageTitle>
 
@@ -616,6 +617,10 @@
                     {
                         await customAuthProvider.MarkUserAsAuthenticated(result.Token);
                     }
+
+                    // Start proactive token refresh timer
+                    // ROLLBACK: Comment out this line if token refresh causes issues
+                    TokenRefresh.StartRefreshTimer();
 
                     Logger.LogInformation("User {Email} logged in successfully with JWT", Input.Email);
 

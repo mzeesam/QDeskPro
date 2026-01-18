@@ -17,11 +17,15 @@ using QDeskPro.Data.Seed;
 using QDeskPro.Domain.Entities;
 using QDeskPro.Api;
 using QDeskPro.Shared.Middleware;
+using QDeskPro.Shared.Serilog;
 using Serilog;
 using Serilog.Events;
 using QDeskPro.Domain.Models.AI;
 using QDeskPro.Domain.Services.AI;
 using System.Threading.RateLimiting;
+
+// Create InMemorySink for observability dashboard (must be created before logger)
+var inMemorySink = new InMemorySink(maxBufferSize: 1000);
 
 // Configure Serilog with structured logging
 Log.Logger = new LoggerConfiguration()
@@ -37,6 +41,8 @@ Log.Logger = new LoggerConfiguration()
         rollingInterval: RollingInterval.Day,
         retainedFileCountLimit: 30,
         outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+    // In-memory sink for observability dashboard
+    .WriteTo.Sink(inMemorySink)
     // Security audit log - separate file for security events (login, logout, failed attempts, etc.)
     .WriteTo.Logger(lc => lc
         .Filter.ByIncludingOnly(e =>
@@ -63,6 +69,9 @@ try
 
     // Add Aspire service defaults (OpenTelemetry, health checks, resilience)
     builder.AddServiceDefaults();
+
+    // Register InMemorySink as singleton for observability dashboard access
+    builder.Services.AddSingleton(inMemorySink);
 
     builder.Host.UseSerilog();
 
@@ -139,6 +148,25 @@ try
     builder.Services.AddRazorComponents()
         .AddInteractiveServerComponents();
 
+    // Configure SignalR circuit options for better session stability
+    // ROLLBACK: Remove this section if authentication issues arise
+    builder.Services.AddServerSideBlazor()
+        .AddCircuitOptions(options =>
+        {
+            // Increase disconnect timeout to 3 minutes (default is 3 seconds)
+            options.DisconnectedCircuitMaxRetained = 100;
+            options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(3);
+            // Increase JS interop timeout for slower connections
+            options.JSInteropDefaultCallTimeout = TimeSpan.FromSeconds(60);
+        })
+        .AddHubOptions(options =>
+        {
+            // Increase timeouts for better connection stability
+            options.ClientTimeoutInterval = TimeSpan.FromMinutes(2);
+            options.HandshakeTimeout = TimeSpan.FromSeconds(30);
+            options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+        });
+
     builder.Services.AddCascadingAuthenticationState();
     builder.Services.AddScoped<IdentityRedirectManager>();
 
@@ -153,6 +181,9 @@ try
     builder.Services.AddScoped<QDeskPro.Domain.Services.JwtTokenService>();
     builder.Services.AddScoped<QDeskPro.Shared.Services.LocalStorageService>();
     builder.Services.AddScoped<AuthenticationStateProvider, QDeskPro.Shared.Services.CustomAuthenticationStateProvider>();
+    // Token refresh service for proactive token renewal
+    // ROLLBACK: Comment out this line if authentication issues arise
+    builder.Services.AddScoped<QDeskPro.Shared.Services.TokenRefreshService>();
 
     // Register HttpClient for API calls from interactive components
     builder.Services.AddScoped(sp =>
@@ -189,9 +220,10 @@ try
             // Strict would be more secure but may break OAuth flows
             cookieOptions.Cookie.SameSite = SameSiteMode.Lax;
 
-            // Security: Cookie expiration (30 days for "Remember Me")
-            cookieOptions.ExpireTimeSpan = TimeSpan.FromDays(30);
-            cookieOptions.SlidingExpiration = true; // Renew on activity
+            // Permanent session: 90 days absolute expiration (no sliding)
+            cookieOptions.ExpireTimeSpan = TimeSpan.FromDays(90);
+            cookieOptions.SlidingExpiration = false; // Absolute expiration, no renewal
+            cookieOptions.Cookie.MaxAge = TimeSpan.FromDays(90); // Cookie max age matches
 
             // Paths
             cookieOptions.LoginPath = "/Account/Login";
@@ -401,6 +433,8 @@ try
     builder.Services.AddScoped<QDeskPro.Features.Dashboard.Services.LiveOperationsService>();
     builder.Services.AddScoped<QDeskPro.Features.Dashboard.Services.DataAnalyticsService>();
     builder.Services.AddScoped<QDeskPro.Features.Dashboard.Services.ROIAnalysisService>();
+    builder.Services.AddScoped<QDeskPro.Features.Dashboard.Services.ProductionAnalyticsService>();
+    builder.Services.AddScoped<QDeskPro.Features.Dashboard.Services.ExpenseAnalyticsService>();
     builder.Services.AddScoped<QDeskPro.Features.AI.Services.PredictiveAnalyticsService>();
     builder.Services.AddScoped<QDeskPro.Features.Sales.Services.SaleService>();
     builder.Services.AddScoped<QDeskPro.Features.Prepayments.Services.PrepaymentService>();
@@ -411,9 +445,11 @@ try
     builder.Services.AddScoped<QDeskPro.Features.Reports.Services.ManagerReportService>();
     builder.Services.AddScoped<QDeskPro.Features.Reports.Services.ExcelExportService>();
     builder.Services.AddScoped<QDeskPro.Features.Reports.Services.ReportExportService>();
+    builder.Services.AddScoped<QDeskPro.Features.Reports.Services.IReportHistoryService, QDeskPro.Features.Reports.Services.ReportHistoryService>();
     builder.Services.AddScoped<QDeskPro.Features.MasterData.Services.MasterDataService>();
     builder.Services.AddScoped<QDeskPro.Features.MasterData.Services.DataManagementService>();
     builder.Services.AddScoped<QDeskPro.Features.Admin.Services.UserService>();
+    builder.Services.AddScoped<QDeskPro.Features.Timeline.Services.TimelineService>();
 
     // Register Accounting services
     builder.Services.AddScoped<QDeskPro.Features.Accounting.Services.IAccountingService, QDeskPro.Features.Accounting.Services.AccountingService>();
@@ -430,6 +466,12 @@ try
     builder.Services.AddHostedService(provider =>
         (QDeskPro.Features.Reports.Services.EmailQueueService)provider.GetRequiredService<QDeskPro.Features.Reports.Services.IEmailQueue>());
 
+    // Register Close of Business background service (runs daily at 11:55 PM)
+    builder.Services.AddHostedService<QDeskPro.Domain.Services.CloseOfBusinessService>();
+
+    // Register Log Streaming service for observability dashboard
+    builder.Services.AddHostedService<QDeskPro.Features.Monitoring.Services.LogStreamingService>();
+
     // Configure AI settings
     builder.Services.Configure<AIConfiguration>(
         builder.Configuration.GetSection(AIConfiguration.SectionName));
@@ -439,6 +481,7 @@ try
     builder.Services.AddScoped<ISalesQueryService, SalesQueryService>();
     builder.Services.AddScoped<IChatCompletionService, ChatCompletionService>();
     builder.Services.AddScoped<QDeskPro.Features.AI.Services.ISalesAnalyticsService, QDeskPro.Features.AI.Services.SalesAnalyticsService>();
+    builder.Services.AddScoped<QDeskPro.Features.AI.Services.IContentParserService, QDeskPro.Features.AI.Services.ContentParserService>();
 
     // Add global exception handler
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -457,17 +500,43 @@ try
         .AddCheck<QDeskPro.Shared.HealthChecks.DatabaseHealthCheck>(
             "database",
             failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy,
-            tags: new[] { "db", "sql" });
+            tags: new[] { "db", "sql" })
+        .AddCheck<QDeskPro.Shared.HealthChecks.DiskSpaceHealthCheck>(
+            "disk",
+            failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded,
+            tags: new[] { "system", "disk" })
+        .AddCheck<QDeskPro.Shared.HealthChecks.MemoryHealthCheck>(
+            "memory",
+            failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded,
+            tags: new[] { "system", "memory" });
+
+    // Register monitoring services for dashboard
+    builder.Services.AddScoped<QDeskPro.Features.Monitoring.Services.MonitoringHealthService>();
+    builder.Services.AddSingleton<QDeskPro.Features.Monitoring.Services.MetricsCollectorService>();
+    builder.Services.AddSingleton<QDeskPro.Features.Monitoring.Services.SecurityAuditService>();
 
     var app = builder.Build();
 
-    // Seed the database
+    // Apply pending migrations and seed the database
     using (var scope = app.Services.CreateScope())
     {
-        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // Ensure database is created
-        await context.Database.EnsureCreatedAsync();
-        // Seed data
+        var services = scope.ServiceProvider;
+        var context = services.GetRequiredService<AppDbContext>();
+        var logger = services.GetRequiredService<ILogger<Program>>();
+
+        try
+        {
+            logger.LogInformation("Applying database migrations...");
+            await context.Database.MigrateAsync();
+            logger.LogInformation("Database migrations applied successfully");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "An error occurred while applying database migrations");
+            throw; // Fail fast - don't start app with broken database
+        }
+
+        // Seed data after migrations are applied
         await SeedData.SeedAsync(app.Services);
     }
 
@@ -572,6 +641,9 @@ try
 
     // Map API endpoints (rate limiting applied at endpoint group level)
     app.MapApiEndpoints();
+
+    // Map SignalR hubs for observability dashboard
+    app.MapHub<QDeskPro.Features.Monitoring.Hubs.LogStreamHub>("/hubs/logs");
 
     // Map Aspire default endpoints (health checks: /health, /alive)
     app.MapDefaultEndpoints();

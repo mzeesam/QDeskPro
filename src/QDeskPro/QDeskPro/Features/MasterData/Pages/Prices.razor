@@ -17,17 +17,32 @@
 <PageTitle>Product Prices - QDeskPro</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
-    <MudStack Spacing="3">
-        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-            <MudText Typo="Typo.h4">Product Prices</MudText>
-        </MudStack>
+    <MudStack Spacing="4">
+        @* Page Header with Gradient *@
+        <div class="admin-header admin-header-prices">
+            <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudIcon Icon="@Icons.Material.Filled.Sell" Size="Size.Large" Style="color: #4CAF50;" />
+                    <div>
+                        <MudText Typo="Typo.h4" Class="admin-header-title">Product Prices</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Configure selling prices for each product at your quarry
+                        </MudText>
+                    </div>
+                </MudStack>
+            </MudStack>
+        </div>
 
-        <MudAlert Severity="Severity.Info" Dense="true">
-            Set the selling price for each product at your quarry. These prices will be used when recording sales.
-        </MudAlert>
+        @* Info Card *@
+        <div class="admin-info-card">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Info" Color="Color.Info" />
+                <MudText>Set the selling price for each product at your quarry. These prices will be used when recording sales.</MudText>
+            </MudStack>
+        </div>
 
-        @* Quarry Selector *@
-        <MudPaper Class="pa-4">
+        @* Quarry Selector Card *@
+        <div class="admin-filter-card">
             <MudGrid>
                 <MudItem xs="12" sm="8">
                     <MudSelect T="string"
@@ -48,12 +63,13 @@
                               StartIcon="@Icons.Material.Filled.Add"
                               OnClick="OpenAddDialog"
                               FullWidth="true"
+                              Class="admin-action-btn"
                               Disabled="@(string.IsNullOrEmpty(_selectedQuarryId) || _userRole == "Administrator")">
                         Set Price
                     </MudButton>
                 </MudItem>
             </MudGrid>
-        </MudPaper>
+        </div>
 
         @if (string.IsNullOrEmpty(_selectedQuarryId))
         {
@@ -68,76 +84,118 @@
                 <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
             }
 
-            <MudTable Items="_productPrices"
-                     Hover="true"
-                     Breakpoint="Breakpoint.Sm"
-                     Dense="true"
-                     Loading="_loading"
-                     LoadingProgressColor="Color.Primary">
-                <HeaderContent>
-                    <MudTh>Product</MudTh>
-                    <MudTh Style="text-align: right">Price per Unit</MudTh>
-                    <MudTh>Last Updated</MudTh>
-                    <MudTh>Actions</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Product">
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                            <MudIcon Icon="@Icons.Material.Filled.Category" Color="Color.Primary" Size="Size.Small" />
-                            <MudText>@context.Product?.ProductName</MudText>
-                        </MudStack>
-                    </MudTd>
-                    <MudTd DataLabel="Price" Style="text-align: right">
-                        <MudText Typo="Typo.body1" Color="Color.Success">
-                            <strong>KES @context.Price.ToString("N2")</strong>
-                        </MudText>
-                    </MudTd>
-                    <MudTd DataLabel="Updated">
-                        @if (context.DateModified.HasValue)
-                        {
-                            <MudText Typo="Typo.caption">@context.DateModified.Value.ToString("dd MMM yyyy HH:mm")</MudText>
-                        }
-                        else
-                        {
-                            <MudText Typo="Typo.caption">@context.DateCreated.ToString("dd MMM yyyy HH:mm")</MudText>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="Actions">
-                        <MudStack Row="true" Spacing="1">
-                            @if (_userRole == "Manager" && _canEditCurrentQuarry)
+            @* Stats Summary Row *@
+            @if (_productPrices.Any())
+            {
+                <div class="admin-mini-stats-row" style="grid-template-columns: repeat(3, 1fr);">
+                    <div class="admin-mini-stat admin-mini-stat-gradient-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Sell" Size="Size.Large" Class="admin-mini-stat-icon" />
+                        <div class="admin-mini-stat-content">
+                            <span class="admin-mini-stat-value">@_productPrices.Count</span>
+                            <span class="admin-mini-stat-label">Products Priced</span>
+                        </div>
+                    </div>
+                    <div class="admin-mini-stat admin-mini-stat-gradient-3">
+                        <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Size="Size.Large" Class="admin-mini-stat-icon" />
+                        <div class="admin-mini-stat-content">
+                            <span class="admin-mini-stat-value">KES @_productPrices.Max(p => p.Price).ToString("N0")</span>
+                            <span class="admin-mini-stat-label">Highest Price</span>
+                        </div>
+                    </div>
+                    <div class="admin-mini-stat admin-mini-stat-gradient-1">
+                        <MudIcon Icon="@Icons.Material.Filled.TrendingDown" Size="Size.Large" Class="admin-mini-stat-icon" />
+                        <div class="admin-mini-stat-content">
+                            <span class="admin-mini-stat-value">KES @_productPrices.Min(p => p.Price).ToString("N0")</span>
+                            <span class="admin-mini-stat-label">Lowest Price</span>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* Table Card *@
+            <div class="admin-table-card">
+                <MudTable Items="_productPrices"
+                         Hover="true"
+                         Breakpoint="Breakpoint.Sm"
+                         Dense="true"
+                         Loading="_loading"
+                         LoadingProgressColor="Color.Primary">
+                    <HeaderContent>
+                        <MudTh>Product</MudTh>
+                        <MudTh Style="text-align: right">Price per Unit</MudTh>
+                        <MudTh>Last Updated</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Product">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudIcon Icon="@Icons.Material.Filled.Category" Color="Color.Primary" Size="Size.Small" />
+                                <MudText>@context.Product?.ProductName</MudText>
+                            </MudStack>
+                        </MudTd>
+                        <MudTd DataLabel="Price" Style="text-align: right">
+                            <MudText Typo="Typo.body1" Color="Color.Success">
+                                <strong>KES @context.Price.ToString("N2")</strong>
+                            </MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Updated">
+                            @if (context.DateModified.HasValue)
                             {
-                                <MudIconButton Icon="@Icons.Material.Filled.Edit"
-                                              Size="Size.Small"
-                                              Color="Color.Primary"
-                                              OnClick="@(() => OpenEditDialog(context))" />
-                                <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                                              Size="Size.Small"
-                                              Color="Color.Error"
-                                              OnClick="@(() => DeletePriceAsync(context))" />
+                                <MudText Typo="Typo.caption">@context.DateModified.Value.ToString("dd MMM yyyy HH:mm")</MudText>
                             }
-                        </MudStack>
-                    </MudTd>
-                </RowTemplate>
-                <NoRecordsContent>
-                    <MudText Align="Align.Center" Class="pa-4">
-                        @if (_userRole == "Manager" && _canEditCurrentQuarry)
-                        {
-                            <span>No prices set for this quarry. Click "Set Price" to add product pricing.</span>
-                        }
-                        else
-                        {
-                            <span>No prices set for this quarry.</span>
-                        }
-                    </MudText>
-                </NoRecordsContent>
-            </MudTable>
+                            else
+                            {
+                                <MudText Typo="Typo.caption">@context.DateCreated.ToString("dd MMM yyyy HH:mm")</MudText>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Actions">
+                            <MudStack Row="true" Spacing="1">
+                                @if (_userRole == "Manager" && _canEditCurrentQuarry)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                                  Size="Size.Small"
+                                                  Color="Color.Primary"
+                                                  Class="admin-action-icon"
+                                                  OnClick="@(() => OpenEditDialog(context))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                  Size="Size.Small"
+                                                  Color="Color.Error"
+                                                  Class="admin-action-icon"
+                                                  OnClick="@(() => DeletePriceAsync(context))" />
+                                }
+                            </MudStack>
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <div class="admin-empty-state">
+                            <div class="admin-empty-state-icon">
+                                <MudIcon Icon="@Icons.Material.Filled.Sell" />
+                            </div>
+                            <MudText Typo="Typo.h6" Color="Color.Default">No prices configured</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                                @if (_userRole == "Manager" && _canEditCurrentQuarry)
+                                {
+                                    <span>Click "Set Price" to configure product pricing for this quarry</span>
+                                }
+                                else
+                                {
+                                    <span>No product prices have been set for this quarry</span>
+                                }
+                            </MudText>
+                        </div>
+                    </NoRecordsContent>
+                </MudTable>
+            </div>
 
             @* Show products without prices *@
             @if (_productsWithoutPrices.Any() && _userRole == "Manager" && _canEditCurrentQuarry)
             {
-                <MudAlert Severity="Severity.Warning" Dense="true">
-                    <strong>Products without prices:</strong> @string.Join(", ", _productsWithoutPrices.Select(p => p.ProductName))
-                </MudAlert>
+                <div class="admin-warning-card">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" />
+                        <MudText><strong>Products without prices:</strong> @string.Join(", ", _productsWithoutPrices.Select(p => p.ProductName))</MudText>
+                    </MudStack>
+                </div>
             }
         }
     </MudStack>

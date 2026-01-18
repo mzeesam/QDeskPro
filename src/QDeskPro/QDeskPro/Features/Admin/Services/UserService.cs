@@ -93,6 +93,37 @@ public class UserService
         }
     }
 
+    /// <summary>
+    /// Get users created by a manager who are not assigned to any quarry
+    /// </summary>
+    public async Task<List<ApplicationUser>> GetUnassignedUsersByManagerAsync(string managerId)
+    {
+        try
+        {
+            // Get all user IDs that have active quarry assignments
+            var assignedUserIds = await _context.UserQuarries
+                .Where(uq => uq.IsActive)
+                .Select(uq => uq.UserId)
+                .Distinct()
+                .ToListAsync();
+
+            // Get users created by this manager who have no quarry assignments
+            var unassignedUsers = await _context.Users
+                .Where(u => u.CreatedByManagerId == managerId)
+                .Where(u => u.IsActive)
+                .Where(u => !assignedUserIds.Contains(u.Id))
+                .OrderBy(u => u.FullName)
+                .ToListAsync();
+
+            return unassignedUsers;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving unassigned users for manager {ManagerId}", managerId);
+            return new List<ApplicationUser>();
+        }
+    }
+
     // Get user by ID
     public async Task<ApplicationUser?> GetUserByIdAsync(string userId)
     {

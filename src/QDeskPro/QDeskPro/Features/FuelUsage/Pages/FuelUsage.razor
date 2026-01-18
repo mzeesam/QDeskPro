@@ -13,23 +13,41 @@
 
 <PageTitle>Fuel Usage - QDeskPro</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
-    <MudText Typo="Typo.h4" Class="font-weight-bold mb-4">
-        <MudIcon Icon="@Icons.Material.Rounded.LocalGasStation" Class="mr-2" />
-        Fuel Usage Tracking
-    </MudText>
+<MudContainer MaxWidth="MaxWidth.Large" Class="fuel-container py-4">
+    @* Modern Page Header *@
+    <div class="fuel-header">
+        <div class="header-content">
+            <div class="header-icon-wrapper">
+                <MudIcon Icon="@Icons.Material.Rounded.LocalGasStation" Size="Size.Large" />
+            </div>
+            <div class="header-text">
+                <h1>Fuel Usage</h1>
+                <p>Track daily fuel consumption</p>
+            </div>
+        </div>
+        <div class="header-stats">
+            <div class="stat-badge">
+                <MudIcon Icon="@Icons.Material.Rounded.ListAlt" Size="Size.Small" />
+                <span>@_usages.Count records</span>
+            </div>
+        </div>
+    </div>
 
     @if (_loading)
     {
-        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <div class="loading-container">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+            <MudText Typo="Typo.body1" Class="mt-3" Color="Color.Secondary">Loading fuel usage records...</MudText>
+        </div>
     }
     else
     {
         @* Fuel Usage Entry Form *@
-        <MudPaper Class="pa-4 mb-4" Elevation="0">
-            <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">
-                @(_isEditMode ? "Update Fuel Usage" : "Record Fuel Usage")
-            </MudText>
+        <div class="form-card @(_isEditMode ? "edit-mode" : "")">
+            <div class="form-header">
+                <MudIcon Icon="@(_isEditMode ? Icons.Material.Rounded.Edit : Icons.Material.Rounded.AddCircle)" Size="Size.Small" />
+                <span>@(_isEditMode ? "Update Fuel Usage" : "Record Fuel Usage")</span>
+            </div>
 
             <MudForm @ref="_form" @bind-IsValid="_isValid">
                 <MudGrid>
@@ -45,46 +63,59 @@
                     </MudItem>
 
                     <MudItem xs="12" sm="6">
-                        <MudNumericField Value="_fuelUsage.OldStock"
+                        <MudNumericField T="double"
+                                         @bind-Value="_fuelUsage.OldStock"
+                                         @bind-Value:after="CalculateFuelBalance"
                                          Label="Old Stock (B/F)"
                                          Variant="Variant.Outlined"
                                          Min="0"
                                          Required="true"
                                          Adornment="Adornment.End"
-                                         AdornmentText="liters"
-                                         ValueChanged="@((double val) => { _fuelUsage.OldStock = val; CalculateFuelBalance(); })" />
+                                         AdornmentText="liters" />
                     </MudItem>
 
                     <MudItem xs="12" sm="6">
-                        <MudNumericField Value="_fuelUsage.NewStock"
+                        <MudNumericField T="double"
+                                         @bind-Value="_fuelUsage.NewStock"
+                                         @bind-Value:after="CalculateFuelBalance"
                                          Label="New Stock Added"
                                          Variant="Variant.Outlined"
                                          Min="0"
                                          Adornment="Adornment.End"
-                                         AdornmentText="liters"
-                                         ValueChanged="@((double val) => { _fuelUsage.NewStock = val; CalculateFuelBalance(); })" />
+                                         AdornmentText="liters" />
                     </MudItem>
 
                     <MudItem xs="12" sm="6">
-                        <MudNumericField Value="_fuelUsage.MachinesLoaded"
+                        <MudNumericField T="double"
+                                         @bind-Value="_fuelUsage.MachinesLoaded"
+                                         @bind-Value:after="CalculateFuelBalance"
                                          Label="Machines Loaded"
                                          Variant="Variant.Outlined"
                                          Min="0"
                                          Required="true"
                                          Adornment="Adornment.End"
-                                         AdornmentText="liters"
-                                         ValueChanged="@((double val) => { _fuelUsage.MachinesLoaded = val; CalculateFuelBalance(); })" />
+                                         AdornmentText="liters" />
                     </MudItem>
 
                     <MudItem xs="12" sm="6">
-                        <MudNumericField Value="_fuelUsage.WheelLoadersLoaded"
+                        <MudNumericField T="double"
+                                         @bind-Value="_fuelUsage.WheelLoadersLoaded"
+                                         @bind-Value:after="CalculateFuelBalance"
                                          Label="Wheel Loaders Loaded"
                                          Variant="Variant.Outlined"
                                          Min="0"
                                          Required="true"
                                          Adornment="Adornment.End"
-                                         AdornmentText="liters"
-                                         ValueChanged="@((double val) => { _fuelUsage.WheelLoadersLoaded = val; CalculateFuelBalance(); })" />
+                                         AdornmentText="liters" />
+                    </MudItem>
+
+                    <MudItem xs="12">
+                        <MudTextField @bind-Value="_fuelUsage.Notes"
+                                      Label="Notes (Optional)"
+                                      Variant="Variant.Outlined"
+                                      Lines="2"
+                                      Placeholder="Add any additional notes..."
+                                      MaxLength="500" />
                     </MudItem>
                 </MudGrid>
 
@@ -125,18 +156,20 @@
                 }
 
                 @* Action Buttons *@
-                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2" Class="mt-4">
+                <div class="form-actions">
                     @if (_isEditMode)
                     {
                         <MudButton Variant="Variant.Text"
                                    Color="Color.Error"
                                    OnClick="DeleteFuelUsage"
-                                   Disabled="_processing">
+                                   Disabled="_processing"
+                                   Class="action-btn">
                             Delete
                         </MudButton>
                         <MudButton Variant="Variant.Text"
                                    OnClick="CancelEdit"
-                                   Disabled="_processing">
+                                   Disabled="_processing"
+                                   Class="action-btn">
                             Cancel
                         </MudButton>
                     }
@@ -144,104 +177,385 @@
                                Color="Color.Primary"
                                Disabled="@(!_isValid || _processing || _balance < 0)"
                                OnClick="SaveFuelUsage"
-                               StartIcon="@Icons.Material.Rounded.Save">
+                               StartIcon="@Icons.Material.Rounded.Save"
+                               Class="save-btn">
                         @if (_processing)
                         {
                             <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
                         }
                         @(_isEditMode ? "Update" : "Save")
                     </MudButton>
-                </MudStack>
+                </div>
             </MudForm>
-        </MudPaper>
+        </div>
 
         @* Fuel Usage History *@
-        <MudPaper Class="pa-4" Elevation="0">
-            <MudText Typo="Typo.h6" Class="font-weight-bold mb-3">Fuel Usage History (Last 14 Days)</MudText>
+        <div class="list-card">
+            <div class="list-header">
+                <MudIcon Icon="@Icons.Material.Rounded.History" Size="Size.Small" />
+                <span>Fuel Usage History (Last 14 Days)</span>
+            </div>
 
             @if (!_usages.Any())
             {
-                <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Rounded.Info">
-                    No fuel usage records yet
-                </MudAlert>
+                <div class="empty-state">
+                    <div class="empty-icon">
+                        <MudIcon Icon="@Icons.Material.Rounded.LocalGasStation" Size="Size.Large" />
+                    </div>
+                    <MudText Typo="Typo.h6" Class="mt-3">No Records Yet</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Record your first fuel usage above</MudText>
+                </div>
             }
             else
             {
-                <MudTable Items="@_usages"
-                          T="QDeskPro.Domain.Entities.FuelUsage"
-                          Hover="true"
-                          Breakpoint="Breakpoint.Sm"
-                          Dense="true"
-                          Loading="@_loadingList"
-                          RowClass="cursor-pointer"
-                          OnRowClick="@(args => SelectFuelUsageForEdit(args.Item))">
-                    <HeaderContent>
-                        <MudTh>Date</MudTh>
-                        <MudTh Style="text-align: right">Old Stock</MudTh>
-                        <MudTh Style="text-align: right">New Stock</MudTh>
-                        <MudTh Style="text-align: right">Total</MudTh>
-                        <MudTh Style="text-align: right">Machines</MudTh>
-                        <MudTh Style="text-align: right">W/Loaders</MudTh>
-                        <MudTh Style="text-align: right">Balance</MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd DataLabel="Date">
-                            <MudText Typo="Typo.body2">@context.UsageDate?.ToString("dd/MM/yy")</MudText>
-                        </MudTd>
-                        <MudTd DataLabel="Old Stock" Style="text-align: right">
-                            <MudText Typo="Typo.body2">@context.OldStock.ToString("N1")</MudText>
-                        </MudTd>
-                        <MudTd DataLabel="New Stock" Style="text-align: right">
-                            <MudText Typo="Typo.body2">@context.NewStock.ToString("N1")</MudText>
-                        </MudTd>
-                        <MudTd DataLabel="Total" Style="text-align: right">
-                            <MudText Typo="Typo.body2" Class="font-weight-medium">@context.TotalStock.ToString("N1")</MudText>
-                        </MudTd>
-                        <MudTd DataLabel="Machines" Style="text-align: right">
-                            <MudText Typo="Typo.body2">@context.MachinesLoaded.ToString("N1")</MudText>
-                        </MudTd>
-                        <MudTd DataLabel="W/Loaders" Style="text-align: right">
-                            <MudText Typo="Typo.body2">@context.WheelLoadersLoaded.ToString("N1")</MudText>
-                        </MudTd>
-                        <MudTd DataLabel="Balance" Style="text-align: right">
-                            <MudText Typo="Typo.body1" Color="Color.Success" Class="font-weight-bold">
-                                @context.Balance.ToString("N1")
-                            </MudText>
-                        </MudTd>
-                    </RowTemplate>
-                    <PagerContent>
-                        <MudTablePager PageSizeOptions="new int[] { 12, 25, 50 }" />
-                    </PagerContent>
-                </MudTable>
+                <div class="table-wrapper">
+                    <MudTable Items="@_usages"
+                              T="QDeskPro.Domain.Entities.FuelUsage"
+                              Hover="true"
+                              Breakpoint="Breakpoint.Sm"
+                              Dense="true"
+                              Loading="@_loadingList"
+                              RowClass="cursor-pointer"
+                              OnRowClick="@(args => SelectFuelUsageForEdit(args.Item))">
+                        <HeaderContent>
+                            <MudTh>Date</MudTh>
+                            <MudTh Style="text-align: right">Old Stock</MudTh>
+                            <MudTh Style="text-align: right">New Stock</MudTh>
+                            <MudTh Style="text-align: right">Total</MudTh>
+                            <MudTh Style="text-align: right">Machines</MudTh>
+                            <MudTh Style="text-align: right">W/Loaders</MudTh>
+                            <MudTh Style="text-align: right">Balance</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Date">
+                                <MudText Typo="Typo.body2">@context.UsageDate?.ToString("dd/MM/yy")</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Old Stock" Style="text-align: right">
+                                <MudText Typo="Typo.body2">@context.OldStock.ToString("N1")</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="New Stock" Style="text-align: right">
+                                <MudText Typo="Typo.body2">@context.NewStock.ToString("N1")</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Total" Style="text-align: right">
+                                <MudText Typo="Typo.body2" Class="font-weight-medium">@context.TotalStock.ToString("N1")</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Machines" Style="text-align: right">
+                                <MudText Typo="Typo.body2">@context.MachinesLoaded.ToString("N1")</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="W/Loaders" Style="text-align: right">
+                                <MudText Typo="Typo.body2">@context.WheelLoadersLoaded.ToString("N1")</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Balance" Style="text-align: right">
+                                <MudText Typo="Typo.body1" Color="Color.Success" Class="font-weight-bold">
+                                    @context.Balance.ToString("N1")
+                                </MudText>
+                            </MudTd>
+                        </RowTemplate>
+                        <PagerContent>
+                            <MudTablePager PageSizeOptions="new int[] { 12, 25, 50 }" />
+                        </PagerContent>
+                    </MudTable>
+                </div>
             }
-        </MudPaper>
+        </div>
     }
 </MudContainer>
 
 <style>
-    .cursor-pointer {
-        cursor: pointer;
+    /* Modern Page Header - Green/Teal Theme */
+    .fuel-header {
+        background: linear-gradient(135deg, #00897B 0%, #00695C 100%);
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 8px 32px rgba(0, 105, 92, 0.3);
     }
 
-    .cursor-pointer:hover {
-        background-color: rgba(0, 0, 0, 0.04);
+    .header-content {
+        display: flex;
+        align-items: center;
+        gap: 16px;
     }
 
+    .header-icon-wrapper {
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .header-text h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        margin: 0;
+        letter-spacing: -0.5px;
+    }
+
+    .header-text p {
+        margin: 4px 0 0 0;
+        opacity: 0.9;
+        font-size: 0.9rem;
+    }
+
+    .header-stats {
+        display: flex;
+        gap: 12px;
+    }
+
+    .stat-badge {
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 20px;
+        padding: 8px 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.875rem;
+    }
+
+    /* Loading State */
+    .loading-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 80px 20px;
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Form Card */
+    .form-card {
+        background: white;
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        border: 1px solid #E0E6ED;
+        transition: all 0.3s ease;
+    }
+
+    .form-card.edit-mode {
+        border-color: #00897B;
+        box-shadow: 0 4px 20px rgba(0, 137, 123, 0.15);
+    }
+
+    .form-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #E0E6ED;
+    }
+
+    .form-header .mud-icon-root {
+        color: #00897B;
+    }
+
+    .form-card.edit-mode .form-header {
+        color: #00897B;
+    }
+
+    /* Calculated Fields Cards */
     .calc-card {
         border-radius: 12px;
         border: 1px solid #E0E6ED;
         background: #F5F7FA;
+        transition: all 0.2s ease;
+    }
+
+    .calc-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
 
     .balance-card {
-        border: 2px solid #4CAF50;
-        background: linear-gradient(135deg, rgba(76, 175, 80, 0.1) 0%, rgba(76, 175, 80, 0.05) 100%);
+        border: 2px solid #00897B;
+        background: linear-gradient(135deg, rgba(0, 137, 123, 0.1) 0%, rgba(0, 137, 123, 0.05) 100%);
     }
 
     .ltrs-suffix {
         font-size: 0.875rem;
         font-weight: normal;
         color: #666;
+    }
+
+    /* Form Actions */
+    .form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid #E0E6ED;
+    }
+
+    .action-btn {
+        min-width: 100px;
+    }
+
+    .save-btn {
+        min-width: 120px;
+        background: linear-gradient(135deg, #00897B 0%, #00695C 100%) !important;
+    }
+
+    .save-btn:hover {
+        box-shadow: 0 4px 12px rgba(0, 137, 123, 0.4);
+    }
+
+    /* List Card */
+    .list-card {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        border: 1px solid #E0E6ED;
+        overflow: hidden;
+    }
+
+    .list-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #1a1a2e;
+        padding: 20px 24px;
+        background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+        border-bottom: 1px solid #E0E6ED;
+    }
+
+    .list-header .mud-icon-root {
+        color: #00897B;
+    }
+
+    .table-wrapper {
+        padding: 0;
+    }
+
+    /* Empty State */
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        text-align: center;
+    }
+
+    .empty-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, rgba(0, 137, 123, 0.1) 0%, rgba(0, 137, 123, 0.05) 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .empty-icon .mud-icon-root {
+        color: #00897B;
+    }
+
+    /* Table Styles */
+    .cursor-pointer {
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+    }
+
+    .cursor-pointer:hover {
+        background-color: rgba(0, 137, 123, 0.08) !important;
+    }
+
+    /* Dark Mode Support */
+    :global(.mud-theme-dark) .fuel-header {
+        background: linear-gradient(135deg, #00695C 0%, #004D40 100%);
+    }
+
+    :global(.mud-theme-dark) .loading-container,
+    :global(.mud-theme-dark) .form-card,
+    :global(.mud-theme-dark) .list-card {
+        background: #1e1e1e;
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .form-header,
+    :global(.mud-theme-dark) .list-header {
+        color: #f1f5f9;
+        border-color: #333;
+        background: linear-gradient(135deg, #252525 0%, #1e1e1e 100%);
+    }
+
+    :global(.mud-theme-dark) .form-actions {
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .calc-card {
+        background: #252525;
+        border-color: #333;
+    }
+
+    :global(.mud-theme-dark) .balance-card {
+        border-color: #00897B;
+        background: linear-gradient(135deg, rgba(0, 137, 123, 0.2) 0%, rgba(0, 137, 123, 0.1) 100%);
+    }
+
+    :global(.mud-theme-dark) .ltrs-suffix {
+        color: #94a3b8;
+    }
+
+    :global(.mud-theme-dark) .empty-icon {
+        background: linear-gradient(135deg, rgba(0, 137, 123, 0.2) 0%, rgba(0, 137, 123, 0.1) 100%);
+    }
+
+    :global(.mud-theme-dark) .cursor-pointer:hover {
+        background-color: rgba(0, 137, 123, 0.15) !important;
+    }
+
+    /* Mobile Responsiveness */
+    @@media (max-width: 600px) {
+        .fuel-header {
+            flex-direction: column;
+            gap: 16px;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .header-content {
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .header-text h1 {
+            font-size: 1.5rem;
+        }
+
+        .header-stats {
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .form-card,
+        .list-card {
+            border-radius: 12px;
+        }
+
+        .form-actions {
+            flex-direction: column;
+        }
+
+        .form-actions .mud-button-root {
+            width: 100%;
+        }
     }
 </style>
 

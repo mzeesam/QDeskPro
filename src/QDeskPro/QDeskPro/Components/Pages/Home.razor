@@ -45,30 +45,32 @@
                         }
                         else if (context.User.IsInRole("Manager"))
                         {
-                            <MudButton Variant="Variant.Filled"
-                                       Color="Color.Primary"
-                                       Size="Size.Medium"
-                                       Href="manager/dashboard"
-                                       StartIcon="@Icons.Material.Rounded.Today"
-                                       Class="hero-btn-primary">
-                                Today
-                            </MudButton>
-                            <MudButton Variant="Variant.Outlined"
-                                       Color="Color.Primary"
-                                       Size="Size.Medium"
-                                       Href="manager/analytics"
-                                       StartIcon="@Icons.Material.Rounded.Analytics"
-                                       Class="hero-btn-secondary">
-                                View Analytics
-                            </MudButton>
-                            <MudButton Variant="Variant.Outlined"
-                                       Color="Color.Primary"
-                                       Size="Size.Medium"
-                                       Href="manager/reports"
-                                       StartIcon="@Icons.Material.Rounded.Assessment"
-                                       Class="hero-btn-secondary">
-                                Reports
-                            </MudButton>
+                            <div class="hero-buttons-manager">
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           Size="Size.Medium"
+                                           Href="manager/dashboard"
+                                           StartIcon="@Icons.Material.Rounded.Today"
+                                           Class="hero-btn-primary hero-btn-responsive">
+                                    Today
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined"
+                                           Color="Color.Primary"
+                                           Size="Size.Medium"
+                                           Href="manager/data-analytics"
+                                           StartIcon="@Icons.Material.Rounded.Analytics"
+                                           Class="hero-btn-secondary hero-btn-responsive">
+                                    Analytics
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined"
+                                           Color="Color.Primary"
+                                           Size="Size.Medium"
+                                           Href="manager/reports"
+                                           StartIcon="@Icons.Material.Rounded.Assessment"
+                                           Class="hero-btn-secondary hero-btn-responsive">
+                                    Reports
+                                </MudButton>
+                            </div>
                         }
                         else
                         {
@@ -260,9 +262,6 @@
         <MudStack AlignItems="AlignItems.Center" Spacing="2">
             <MudText Typo="Typo.body2" Color="Color.Secondary">
                 QDeskPro - Quarry Management System
-            </MudText>
-            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                Built with Blazor & MudBlazor | .NET 10
             </MudText>
         </MudStack>
     </MudContainer>
@@ -521,6 +520,22 @@
         border-top: 1px solid #e0e6ed;
     }
 
+    /* Manager Buttons Container - Responsive */
+    .hero-buttons-manager {
+        display: flex;
+        flex-direction: row;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        margin-top: 8px;
+    }
+
+    .hero-btn-responsive {
+        min-width: 120px;
+        flex: 0 0 auto;
+    }
+
     /* Responsive */
     @@media (max-width: 960px) {
         .hero-section {
@@ -584,6 +599,41 @@
 
         .feature-card {
             padding: 24px 20px;
+        }
+
+        /* Stack manager buttons vertically on small mobile */
+        .hero-buttons-manager {
+            flex-direction: column;
+            width: 100%;
+            gap: 10px;
+        }
+
+        .hero-btn-responsive {
+            width: 100%;
+            min-width: unset;
+        }
+
+        .hero-btn-responsive .mud-button-label {
+            justify-content: center;
+        }
+    }
+
+    /* Tablet (between 600px and 768px) - 2 columns layout */
+    @@media (min-width: 601px) and (max-width: 768px) {
+        .hero-buttons-manager {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .hero-buttons-manager .hero-btn-primary {
+            grid-column: 1 / -1;
+        }
+
+        .hero-btn-responsive {
+            width: 100%;
         }
     }
 </style>

@@ -125,3 +125,7 @@ src/QDeskPro/QDeskPro/nul
 
 # Build output (root folder only)
 /QDeskPro/
+
+# Publish output folders
+publishQDeskPro/
+**/publishQDeskPro/

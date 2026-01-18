@@ -1194,6 +1194,23 @@ public class ManagerReportService
     /// </summary>
     public async Task<byte[]> ExportToPdfAsync(string? quarryId, DateTime fromDate, DateTime toDate, string reportType)
     {
+        // Route to type-specific PDF generation based on reportType
+        switch (reportType.ToLower())
+        {
+            case "fuel":
+                return await ExportFuelPdfAsync(quarryId, fromDate, toDate);
+            case "banking":
+                return await ExportBankingPdfAsync(quarryId, fromDate, toDate);
+            case "sales":
+                return await ExportSalesPdfAsync(quarryId, fromDate, toDate);
+            case "expenses":
+                return await ExportExpensesPdfAsync(quarryId, fromDate, toDate);
+            case "comprehensive":
+            default:
+                // Fall through to existing comprehensive implementation
+                break;
+        }
+
         using var scope = _scopeFactory.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
@@ -1779,6 +1796,592 @@ public class ManagerReportService
             row.RelativeItem().PaddingLeft(8).Text(title).FontSize(11).Bold().FontColor(color);
         });
     }
+
+    #region Type-Specific PDF Export Methods
+
+    /// <summary>
+    /// Export Fuel Usage report to PDF
+    /// </summary>
+    private async Task<byte[]> ExportFuelPdfAsync(string? quarryId, DateTime fromDate, DateTime toDate)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var fuelData = await GetFuelReportAsync(quarryId, fromDate, toDate);
+        var quarryName = "All Quarries";
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            var quarry = await context.Quarries.FindAsync(quarryId);
+            quarryName = quarry?.QuarryName ?? "Unknown";
+        }
+
+        var dateRange = $"{fromDate:dd MMM yyyy} - {toDate:dd MMM yyyy}";
+        var warningColor = "#FF9800";
+        var successColor = "#4CAF50";
+        var primaryColor = "#1976D2";
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(10));
+
+                // Header
+                page.Header().Column(col =>
+                {
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(titleCol =>
+                        {
+                            titleCol.Item().Text("QDesk Fuel Usage Report")
+                                .FontSize(20).Bold().FontColor(primaryColor);
+                            titleCol.Item().Text($"{quarryName}")
+                                .FontSize(12).FontColor(Colors.Grey.Darken2);
+                            titleCol.Item().Text($"Period: {dateRange} | Generated: {DateTime.Now:dd MMM yyyy HH:mm}")
+                                .FontSize(9).FontColor(Colors.Grey.Medium);
+                        });
+                    });
+                    col.Item().PaddingTop(10).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                });
+
+                // Content
+                page.Content().PaddingTop(15).Column(col =>
+                {
+                    // Summary Cards
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Padding(5).Element(e => ComposeStatsCard(e,
+                            "Total Received", $"{fuelData.TotalReceived:N1} L",
+                            "Fuel received", successColor, true));
+                        row.RelativeItem().Padding(5).Element(e => ComposeStatsCard(e,
+                            "Machines Usage", $"{fuelData.MachinesUsage:N1} L",
+                            "Excavators", warningColor, false));
+                        row.RelativeItem().Padding(5).Element(e => ComposeStatsCard(e,
+                            "W/Loaders Usage", $"{fuelData.WheelLoadersUsage:N1} L",
+                            "Wheel loaders", warningColor, false));
+                        row.RelativeItem().Padding(5).Element(e => ComposeStatsCard(e,
+                            "Current Balance", $"{fuelData.CurrentBalance:N1} L",
+                            "Available", successColor, true));
+                    });
+
+                    col.Item().PaddingTop(15);
+
+                    // Fuel Records Table
+                    if (fuelData.FuelRecords.Count > 0)
+                    {
+                        col.Item().Element(e => SectionHeader(e, "Fuel Usage Details", warningColor));
+
+                        col.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(columns =>
+                            {
+                                columns.ConstantColumn(80);  // Date
+                                columns.RelativeColumn(1);   // Old Stock
+                                columns.RelativeColumn(1);   // New Stock
+                                columns.RelativeColumn(1);   // Total
+                                columns.RelativeColumn(1);   // Machines
+                                columns.RelativeColumn(1);   // W/Loaders
+                                columns.RelativeColumn(1);   // Balance
+                            });
+
+                            table.Header(header =>
+                            {
+                                header.Cell().Background(warningColor).Padding(5).Text("Date").FontColor(Colors.White).Bold();
+                                header.Cell().Background(warningColor).Padding(5).AlignRight().Text("Old Stock").FontColor(Colors.White).Bold();
+                                header.Cell().Background(warningColor).Padding(5).AlignRight().Text("New Stock").FontColor(Colors.White).Bold();
+                                header.Cell().Background(warningColor).Padding(5).AlignRight().Text("Total").FontColor(Colors.White).Bold();
+                                header.Cell().Background(warningColor).Padding(5).AlignRight().Text("Machines").FontColor(Colors.White).Bold();
+                                header.Cell().Background(warningColor).Padding(5).AlignRight().Text("W/Loaders").FontColor(Colors.White).Bold();
+                                header.Cell().Background(warningColor).Padding(5).AlignRight().Text("Balance").FontColor(Colors.White).Bold();
+                            });
+
+                            foreach (var fuel in fuelData.FuelRecords)
+                            {
+                                var idx = fuelData.FuelRecords.IndexOf(fuel);
+                                var bgColor = idx % 2 == 0 ? Colors.White : Colors.Grey.Lighten4;
+
+                                table.Cell().Background(bgColor).Padding(4).Text(fuel.Date.ToString("dd/MM/yy"));
+                                table.Cell().Background(bgColor).Padding(4).AlignRight().Text($"{fuel.OldStock:N1}");
+                                table.Cell().Background(bgColor).Padding(4).AlignRight().Text($"{fuel.NewStock:N1}");
+                                table.Cell().Background(bgColor).Padding(4).AlignRight().Text($"{fuel.TotalStock:N1}");
+                                table.Cell().Background(bgColor).Padding(4).AlignRight().Text($"{fuel.MachinesLoaded:N1}");
+                                table.Cell().Background(bgColor).Padding(4).AlignRight().Text($"{fuel.WheelLoadersLoaded:N1}");
+                                table.Cell().Background(successColor).Padding(4).AlignRight().Text($"{fuel.Balance:N1}").FontColor(Colors.White).Bold();
+                            }
+                        });
+                    }
+                    else
+                    {
+                        col.Item().PaddingTop(20).AlignCenter().Text("No fuel usage records found for this period.")
+                            .FontSize(12).FontColor(Colors.Grey.Medium);
+                    }
+                });
+
+                // Footer
+                page.Footer().Row(row =>
+                {
+                    row.RelativeItem().Text("QDesk Fuel Usage Report")
+                        .FontSize(8).FontColor(Colors.Grey.Darken1);
+                    row.RelativeItem().AlignCenter().Text(text =>
+                    {
+                        text.DefaultTextStyle(TextStyle.Default.FontSize(8).FontColor(Colors.Grey.Darken1));
+                        text.Span("Page ");
+                        text.CurrentPageNumber();
+                        text.Span(" of ");
+                        text.TotalPages();
+                    });
+                    row.RelativeItem().AlignRight().Text($"Generated: {DateTime.Now:dd/MM/yyyy HH:mm}")
+                        .FontSize(8).FontColor(Colors.Grey.Darken1);
+                });
+            });
+        });
+
+        using var stream = new MemoryStream();
+        document.GeneratePdf(stream);
+        return stream.ToArray();
+    }
+
+    /// <summary>
+    /// Export Banking report to PDF
+    /// </summary>
+    private async Task<byte[]> ExportBankingPdfAsync(string? quarryId, DateTime fromDate, DateTime toDate)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var bankingData = await GetBankingReportAsync(quarryId, fromDate, toDate);
+        var quarryName = "All Quarries";
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            var quarry = await context.Quarries.FindAsync(quarryId);
+            quarryName = quarry?.QuarryName ?? "Unknown";
+        }
+
+        var dateRange = $"{fromDate:dd MMM yyyy} - {toDate:dd MMM yyyy}";
+        var primaryColor = "#1976D2";
+        var successColor = "#4CAF50";
+        var infoColor = "#2196F3";
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(10));
+
+                // Header
+                page.Header().Column(col =>
+                {
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(titleCol =>
+                        {
+                            titleCol.Item().Text("QDesk Banking Report")
+                                .FontSize(20).Bold().FontColor(primaryColor);
+                            titleCol.Item().Text($"{quarryName}")
+                                .FontSize(12).FontColor(Colors.Grey.Darken2);
+                            titleCol.Item().Text($"Period: {dateRange} | Generated: {DateTime.Now:dd MMM yyyy HH:mm}")
+                                .FontSize(9).FontColor(Colors.Grey.Medium);
+                        });
+                    });
+                    col.Item().PaddingTop(10).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                });
+
+                // Content
+                page.Content().PaddingTop(15).Column(col =>
+                {
+                    // Summary Cards
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Padding(5).Element(e => ComposeStatsCard(e,
+                            "Total Banked", $"KES {bankingData.TotalBanked:N0}",
+                            $"{bankingData.TotalRecords} deposits", successColor, true));
+                        row.RelativeItem().Padding(5).Element(e => ComposeStatsCard(e,
+                            "Average per Day", $"KES {bankingData.AveragePerDay:N0}",
+                            "Daily average", infoColor, true));
+                        row.RelativeItem().Padding(5).Element(e => ComposeStatsCard(e,
+                            "Total Transactions", $"{bankingData.TotalRecords}",
+                            "Bank deposits", primaryColor, true));
+                    });
+
+                    col.Item().PaddingTop(15);
+
+                    // Banking Records Table
+                    if (bankingData.BankingRecords.Count > 0)
+                    {
+                        col.Item().Element(e => SectionHeader(e, "Banking Details", infoColor));
+
+                        col.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(columns =>
+                            {
+                                columns.ConstantColumn(80);  // Date
+                                columns.RelativeColumn(2);   // Description
+                                columns.RelativeColumn(1.5f);// Reference
+                                columns.ConstantColumn(100); // Amount
+                            });
+
+                            table.Header(header =>
+                            {
+                                header.Cell().Background(infoColor).Padding(5).Text("Date").FontColor(Colors.White).Bold();
+                                header.Cell().Background(infoColor).Padding(5).Text("Description").FontColor(Colors.White).Bold();
+                                header.Cell().Background(infoColor).Padding(5).Text("Reference").FontColor(Colors.White).Bold();
+                                header.Cell().Background(infoColor).Padding(5).AlignRight().Text("Amount").FontColor(Colors.White).Bold();
+                            });
+
+                            foreach (var banking in bankingData.BankingRecords)
+                            {
+                                var idx = bankingData.BankingRecords.IndexOf(banking);
+                                var bgColor = idx % 2 == 0 ? Colors.White : Colors.Grey.Lighten4;
+
+                                table.Cell().Background(bgColor).Padding(4).Text(banking.Date.ToString("dd/MM/yy"));
+                                table.Cell().Background(bgColor).Padding(4).Text(banking.Description ?? "-");
+                                table.Cell().Background(bgColor).Padding(4).Text(banking.Reference ?? "-");
+                                table.Cell().Background(bgColor).Padding(4).AlignRight().Text($"KES {banking.Amount:N0}");
+                            }
+
+                            // Total row
+                            table.Cell().ColumnSpan(3).Background(Colors.Grey.Lighten3).Padding(5).Text("TOTAL").Bold();
+                            table.Cell().Background(Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"KES {bankingData.TotalBanked:N0}").Bold();
+                        });
+                    }
+                    else
+                    {
+                        col.Item().PaddingTop(20).AlignCenter().Text("No banking records found for this period.")
+                            .FontSize(12).FontColor(Colors.Grey.Medium);
+                    }
+                });
+
+                // Footer
+                page.Footer().Row(row =>
+                {
+                    row.RelativeItem().Text("QDesk Banking Report")
+                        .FontSize(8).FontColor(Colors.Grey.Darken1);
+                    row.RelativeItem().AlignCenter().Text(text =>
+                    {
+                        text.DefaultTextStyle(TextStyle.Default.FontSize(8).FontColor(Colors.Grey.Darken1));
+                        text.Span("Page ");
+                        text.CurrentPageNumber();
+                        text.Span(" of ");
+                        text.TotalPages();
+                    });
+                    row.RelativeItem().AlignRight().Text($"Generated: {DateTime.Now:dd/MM/yyyy HH:mm}")
+                        .FontSize(8).FontColor(Colors.Grey.Darken1);
+                });
+            });
+        });
+
+        using var stream = new MemoryStream();
+        document.GeneratePdf(stream);
+        return stream.ToArray();
+    }
+
+    /// <summary>
+    /// Export Sales report to PDF
+    /// </summary>
+    private async Task<byte[]> ExportSalesPdfAsync(string? quarryId, DateTime fromDate, DateTime toDate)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var salesData = await GetSalesReportAsync(quarryId, fromDate, toDate);
+        var quarryName = "All Quarries";
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            var quarry = await context.Quarries.FindAsync(quarryId);
+            quarryName = quarry?.QuarryName ?? "Unknown";
+        }
+
+        var dateRange = $"{fromDate:dd MMM yyyy} - {toDate:dd MMM yyyy}";
+        var primaryColor = "#1976D2";
+        var successColor = "#4CAF50";
+        var warningColor = "#FF9800";
+        var errorColor = "#F44336";
+
+        var totalExpenses = salesData.TotalCommission + salesData.TotalLoadersFee + salesData.TotalLandRateFee;
+        var earnings = salesData.TotalSales - totalExpenses;
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4.Landscape());
+                page.Margin(25);
+                page.DefaultTextStyle(x => x.FontSize(9));
+
+                // Header
+                page.Header().Column(col =>
+                {
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(titleCol =>
+                        {
+                            titleCol.Item().Text("QDesk Sales Report")
+                                .FontSize(20).Bold().FontColor(primaryColor);
+                            titleCol.Item().Text($"{quarryName}")
+                                .FontSize(12).FontColor(Colors.Grey.Darken2);
+                            titleCol.Item().Text($"Period: {dateRange} | Generated: {DateTime.Now:dd MMM yyyy HH:mm}")
+                                .FontSize(9).FontColor(Colors.Grey.Medium);
+                        });
+                    });
+
+                    col.Item().PaddingTop(8);
+
+                    // Stats Cards
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                            "Total Revenue", $"KES {salesData.TotalSales:N0}",
+                            $"{salesData.TotalOrders} orders", successColor, true));
+                        row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                            "Total Quantity", $"{salesData.TotalQuantity:N0}",
+                            "pieces sold", primaryColor, true));
+                        row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                            "Commission", $"KES {salesData.TotalCommission:N0}",
+                            "broker fees", errorColor, false));
+                        row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                            "Loaders Fee", $"KES {salesData.TotalLoadersFee:N0}",
+                            "loading fees", errorColor, false));
+                        row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                            "Unpaid Orders", $"KES {salesData.UnpaidAmount:N0}",
+                            "outstanding", salesData.UnpaidAmount > 0 ? warningColor : successColor, false));
+                        row.RelativeItem().Padding(3).Element(e => ComposeStatsCard(e,
+                            "Net Earnings", $"KES {earnings:N0}",
+                            "after fees", earnings >= 0 ? successColor : errorColor, true));
+                    });
+
+                    col.Item().PaddingTop(8).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                });
+
+                // Content - Daily Sales Breakdown
+                page.Content().PaddingTop(10).Column(col =>
+                {
+                    col.Item().Element(e => SectionHeader(e, "Daily Sales Breakdown", primaryColor));
+
+                    if (salesData.DailySummaries.Count > 0)
+                    {
+                        col.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(columns =>
+                            {
+                                columns.ConstantColumn(70);  // Date
+                                columns.ConstantColumn(50);  // Orders
+                                columns.ConstantColumn(60);  // Qty
+                                columns.ConstantColumn(90);  // Revenue
+                                columns.ConstantColumn(80);  // Commission
+                                columns.ConstantColumn(80);  // Loaders
+                                columns.ConstantColumn(80);  // Land Rate
+                                columns.ConstantColumn(80);  // Other
+                                columns.ConstantColumn(90);  // Net
+                            });
+
+                            table.Header(header =>
+                            {
+                                header.Cell().Background(primaryColor).Padding(4).Text("Date").FontColor(Colors.White).Bold().FontSize(8);
+                                header.Cell().Background(primaryColor).Padding(4).AlignRight().Text("Orders").FontColor(Colors.White).Bold().FontSize(8);
+                                header.Cell().Background(primaryColor).Padding(4).AlignRight().Text("Qty").FontColor(Colors.White).Bold().FontSize(8);
+                                header.Cell().Background(primaryColor).Padding(4).AlignRight().Text("Revenue").FontColor(Colors.White).Bold().FontSize(8);
+                                header.Cell().Background(primaryColor).Padding(4).AlignRight().Text("Commission").FontColor(Colors.White).Bold().FontSize(8);
+                                header.Cell().Background(primaryColor).Padding(4).AlignRight().Text("Loaders").FontColor(Colors.White).Bold().FontSize(8);
+                                header.Cell().Background(primaryColor).Padding(4).AlignRight().Text("Land Rate").FontColor(Colors.White).Bold().FontSize(8);
+                                header.Cell().Background(primaryColor).Padding(4).AlignRight().Text("Other").FontColor(Colors.White).Bold().FontSize(8);
+                                header.Cell().Background(primaryColor).Padding(4).AlignRight().Text("Net").FontColor(Colors.White).Bold().FontSize(8);
+                            });
+
+                            foreach (var day in salesData.DailySummaries)
+                            {
+                                var idx = salesData.DailySummaries.IndexOf(day);
+                                var bgColor = idx % 2 == 0 ? Colors.White : Colors.Grey.Lighten4;
+                                var net = day.Revenue - day.Commission - day.LoadersFee - day.LandRateFee - day.OtherExpenses;
+
+                                table.Cell().Background(bgColor).Padding(3).Text(day.Date.ToString("dd/MM/yy")).FontSize(8);
+                                table.Cell().Background(bgColor).Padding(3).AlignRight().Text($"{day.OrderCount}").FontSize(8);
+                                table.Cell().Background(bgColor).Padding(3).AlignRight().Text($"{day.Quantity:N0}").FontSize(8);
+                                table.Cell().Background(bgColor).Padding(3).AlignRight().Text($"KES {day.Revenue:N0}").FontSize(8);
+                                table.Cell().Background(bgColor).Padding(3).AlignRight().Text($"KES {day.Commission:N0}").FontSize(8);
+                                table.Cell().Background(bgColor).Padding(3).AlignRight().Text($"KES {day.LoadersFee:N0}").FontSize(8);
+                                table.Cell().Background(bgColor).Padding(3).AlignRight().Text($"KES {day.LandRateFee:N0}").FontSize(8);
+                                table.Cell().Background(bgColor).Padding(3).AlignRight().Text($"KES {day.OtherExpenses:N0}").FontSize(8);
+                                table.Cell().Background(bgColor).Padding(3).AlignRight().Text($"KES {net:N0}").Bold().FontSize(8);
+                            }
+
+                            // Total row
+                            var totalNet = salesData.TotalSales - salesData.TotalCommission - salesData.TotalLoadersFee - salesData.TotalLandRateFee - salesData.TotalOtherExpenses;
+                            table.Cell().Background(Colors.Grey.Lighten3).Padding(4).Text("TOTAL").Bold().FontSize(9);
+                            table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text($"{salesData.TotalOrders}").Bold().FontSize(9);
+                            table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text($"{salesData.TotalQuantity:N0}").Bold().FontSize(9);
+                            table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text($"KES {salesData.TotalSales:N0}").Bold().FontSize(9);
+                            table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text($"KES {salesData.TotalCommission:N0}").Bold().FontSize(9);
+                            table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text($"KES {salesData.TotalLoadersFee:N0}").Bold().FontSize(9);
+                            table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text($"KES {salesData.TotalLandRateFee:N0}").Bold().FontSize(9);
+                            table.Cell().Background(Colors.Grey.Lighten3).Padding(4).AlignRight().Text($"KES {salesData.TotalOtherExpenses:N0}").Bold().FontSize(9);
+                            table.Cell().Background(successColor).Padding(4).AlignRight().Text($"KES {totalNet:N0}").Bold().FontColor(Colors.White).FontSize(9);
+                        });
+                    }
+                    else
+                    {
+                        col.Item().PaddingTop(20).AlignCenter().Text("No sales found for this period.")
+                            .FontSize(12).FontColor(Colors.Grey.Medium);
+                    }
+                });
+
+                // Footer
+                page.Footer().Row(row =>
+                {
+                    row.RelativeItem().Text("QDesk Sales Report")
+                        .FontSize(8).FontColor(Colors.Grey.Darken1);
+                    row.RelativeItem().AlignCenter().Text(text =>
+                    {
+                        text.DefaultTextStyle(TextStyle.Default.FontSize(8).FontColor(Colors.Grey.Darken1));
+                        text.Span("Page ");
+                        text.CurrentPageNumber();
+                        text.Span(" of ");
+                        text.TotalPages();
+                    });
+                    row.RelativeItem().AlignRight().Text($"Generated: {DateTime.Now:dd/MM/yyyy HH:mm}")
+                        .FontSize(8).FontColor(Colors.Grey.Darken1);
+                });
+            });
+        });
+
+        using var stream = new MemoryStream();
+        document.GeneratePdf(stream);
+        return stream.ToArray();
+    }
+
+    /// <summary>
+    /// Export Expenses report to PDF
+    /// </summary>
+    private async Task<byte[]> ExportExpensesPdfAsync(string? quarryId, DateTime fromDate, DateTime toDate)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var expensesData = await GetExpensesReportAsync(quarryId, fromDate, toDate);
+        var quarryName = "All Quarries";
+        if (!string.IsNullOrEmpty(quarryId))
+        {
+            var quarry = await context.Quarries.FindAsync(quarryId);
+            quarryName = quarry?.QuarryName ?? "Unknown";
+        }
+
+        var dateRange = $"{fromDate:dd MMM yyyy} - {toDate:dd MMM yyyy}";
+        var primaryColor = "#1976D2";
+        var errorColor = "#F44336";
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(10));
+
+                // Header
+                page.Header().Column(col =>
+                {
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(titleCol =>
+                        {
+                            titleCol.Item().Text("QDesk Expenses Report")
+                                .FontSize(20).Bold().FontColor(primaryColor);
+                            titleCol.Item().Text($"{quarryName}")
+                                .FontSize(12).FontColor(Colors.Grey.Darken2);
+                            titleCol.Item().Text($"Period: {dateRange} | Generated: {DateTime.Now:dd MMM yyyy HH:mm}")
+                                .FontSize(9).FontColor(Colors.Grey.Medium);
+                        });
+                    });
+
+                    col.Item().PaddingTop(8);
+
+                    // Summary Card
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Padding(5).Element(e => ComposeStatsCard(e,
+                            "Total Expenses", $"KES {expensesData.TotalExpenses:N0}",
+                            $"{expensesData.ExpenseItems.Count} items", errorColor, false));
+                    });
+
+                    col.Item().PaddingTop(8).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                });
+
+                // Content
+                page.Content().PaddingTop(15).Column(col =>
+                {
+                    col.Item().Element(e => SectionHeader(e, "Expense Details", errorColor));
+
+                    if (expensesData.ExpenseItems.Count > 0)
+                    {
+                        col.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(columns =>
+                            {
+                                columns.ConstantColumn(80);  // Date
+                                columns.RelativeColumn(3);   // Description
+                                columns.RelativeColumn(1);   // Category
+                                columns.ConstantColumn(100); // Amount
+                            });
+
+                            table.Header(header =>
+                            {
+                                header.Cell().Background(errorColor).Padding(5).Text("Date").FontColor(Colors.White).Bold();
+                                header.Cell().Background(errorColor).Padding(5).Text("Description").FontColor(Colors.White).Bold();
+                                header.Cell().Background(errorColor).Padding(5).Text("Category").FontColor(Colors.White).Bold();
+                                header.Cell().Background(errorColor).Padding(5).AlignRight().Text("Amount").FontColor(Colors.White).Bold();
+                            });
+
+                            foreach (var expense in expensesData.ExpenseItems)
+                            {
+                                var idx = expensesData.ExpenseItems.IndexOf(expense);
+                                var bgColor = idx % 2 == 0 ? Colors.White : Colors.Grey.Lighten4;
+
+                                table.Cell().Background(bgColor).Padding(4).Text(expense.Date.ToString("dd/MM/yy"));
+                                table.Cell().Background(bgColor).Padding(4).Text(expense.Description);
+                                table.Cell().Background(bgColor).Padding(4).Text(expense.Category);
+                                table.Cell().Background(bgColor).Padding(4).AlignRight().Text($"KES {expense.Amount:N0}");
+                            }
+
+                            // Total row
+                            table.Cell().ColumnSpan(3).Background(Colors.Grey.Lighten3).Padding(5).Text("TOTAL").Bold();
+                            table.Cell().Background(Colors.Grey.Lighten3).Padding(5).AlignRight().Text($"KES {expensesData.TotalExpenses:N0}").Bold();
+                        });
+                    }
+                    else
+                    {
+                        col.Item().PaddingTop(20).AlignCenter().Text("No expenses found for this period.")
+                            .FontSize(12).FontColor(Colors.Grey.Medium);
+                    }
+                });
+
+                // Footer
+                page.Footer().Row(row =>
+                {
+                    row.RelativeItem().Text("QDesk Expenses Report")
+                        .FontSize(8).FontColor(Colors.Grey.Darken1);
+                    row.RelativeItem().AlignCenter().Text(text =>
+                    {
+                        text.DefaultTextStyle(TextStyle.Default.FontSize(8).FontColor(Colors.Grey.Darken1));
+                        text.Span("Page ");
+                        text.CurrentPageNumber();
+                        text.Span(" of ");
+                        text.TotalPages();
+                    });
+                    row.RelativeItem().AlignRight().Text($"Generated: {DateTime.Now:dd/MM/yyyy HH:mm}")
+                        .FontSize(8).FontColor(Colors.Grey.Darken1);
+                });
+            });
+        });
+
+        using var stream = new MemoryStream();
+        document.GeneratePdf(stream);
+        return stream.ToArray();
+    }
+
+    #endregion
 
     #region Unpaid Orders Report Methods
 

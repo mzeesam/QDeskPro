@@ -86,6 +86,11 @@ public class Sale : BaseEntity
     public string? PaymentReference { get; set; }
 
     /// <summary>
+    /// Optional notes for this sale transaction
+    /// </summary>
+    public string? Notes { get; set; }
+
+    /// <summary>
     /// Date when payment was actually received.
     /// Null if still unpaid, equals SaleDate if paid immediately,
     /// or a later date if payment was collected after the sale.

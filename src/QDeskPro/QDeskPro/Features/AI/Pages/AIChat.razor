@@ -2,9 +2,13 @@
 @page "/ai-chat/{ConversationId}"
 @using QDeskPro.Domain.Entities
 @using QDeskPro.Domain.Services.AI
+@using QDeskPro.Features.AI.Components
+@using QDeskPro.Features.AI.Models
+@using QDeskPro.Features.AI.Services
 @using System.Security.Claims
 @using MudBlazor
 @inject IChatCompletionService ChatService
+@inject IContentParserService ContentParser
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject AuthenticationStateProvider AuthStateProvider
@@ -140,7 +144,15 @@
                                     }
                                     <MudPaper Class="@GetMessageBubbleClass(message.Role)"
                                               Elevation="0">
-                                        <MudText>@message.Content</MudText>
+                                        @if (message.Role == "user")
+                                        {
+                                            <MudText>@message.Content</MudText>
+                                        }
+                                        else
+                                        {
+                                            <ChatMessageRenderer Message="@message"
+                                                                 ToolResults="@GetToolResultsForMessage(message.Id)" />
+                                        }
                                         @if (message.TokensUsed > 0)
                                         {
                                             <MudText Typo="Typo.caption" Class="text-muted mt-1">
@@ -158,7 +170,46 @@
                             </div>
                         }
 
-                        @if (_isProcessing)
+                        @* Streaming response *@
+                        @if (_isStreaming && !string.IsNullOrEmpty(_streamingContent))
+                        {
+                            <div class="message-wrapper assistant-message mb-3">
+                                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                                    <MudAvatar Color="Color.Primary" Size="Size.Small">
+                                        <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" />
+                                    </MudAvatar>
+                                    <MudPaper Class="message-bubble assistant-bubble pa-3" Elevation="0">
+                                        <ChatMessageRenderer StreamContent="@_streamingContent"
+                                                             IsStreaming="true"
+                                                             ToolResults="@_currentToolExecutions" />
+                                    </MudPaper>
+                                </MudStack>
+                            </div>
+                        }
+
+                        @* Tool execution indicator *@
+                        @if (_isExecutingTool)
+                        {
+                            <div class="message-wrapper assistant-message mb-3">
+                                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
+                                    <MudAvatar Color="Color.Primary" Size="Size.Small">
+                                        <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" />
+                                    </MudAvatar>
+                                    <MudPaper Class="message-bubble assistant-bubble pa-3" Elevation="0">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                            <MudText Typo="Typo.body2">
+                                                <MudIcon Icon="@Icons.Material.Filled.Build" Size="Size.Small" Class="mr-1" />
+                                                Executing: @_currentToolName
+                                            </MudText>
+                                        </MudStack>
+                                    </MudPaper>
+                                </MudStack>
+                            </div>
+                        }
+
+                        @* Thinking indicator (when not streaming yet) *@
+                        @if (_isProcessing && !_isStreaming && !_isExecutingTool)
                         {
                             <div class="message-wrapper assistant-message mb-3">
                                 <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Start">
@@ -261,12 +312,20 @@
     private string? _quarryId;
     private string _inputMessage = string.Empty;
     private bool _isProcessing = false;
+    private bool _isStreaming = false;
+    private bool _isExecutingTool = false;
+    private string _currentToolName = string.Empty;
+    private string _streamingContent = string.Empty;
     private bool _loadingConversations = true;
     private ElementReference _messagesContainer;
 
     private List<AIConversation> _conversations = new();
     private AIConversation? _currentConversation;
     private List<AIMessage> _messages = new();
+
+    // Tool results storage: messageId -> list of tool results
+    private Dictionary<string, List<ToolResultData>> _messageToolResults = new();
+    private List<ToolResultData> _currentToolExecutions = new();
 
     private readonly string[] _suggestions = new[]
     {
@@ -276,6 +335,11 @@
         "Any unpaid orders?",
         "Generate daily report"
     };
+
+    private List<ToolResultData>? GetToolResultsForMessage(string messageId)
+    {
+        return _messageToolResults.TryGetValue(messageId, out var results) ? results : null;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -398,6 +462,10 @@
         var message = _inputMessage.Trim();
         _inputMessage = string.Empty;
         _isProcessing = true;
+        _streamingContent = string.Empty;
+        _currentToolExecutions = new List<ToolResultData>();
+        _isStreaming = false;
+        _isExecutingTool = false;
 
         try
         {
@@ -420,37 +488,83 @@
             await ScrollToBottomAsync();
             StateHasChanged();
 
-            // Send to AI
-            var response = await ChatService.SendMessageAsync(
+            // Use streaming API
+            var assistantMessageId = Guid.NewGuid().ToString();
+            var fullContent = new System.Text.StringBuilder();
+            var tokensUsed = 0;
+
+            await foreach (var chunk in ChatService.SendMessageStreamingAsync(
                 _currentConversation.Id,
                 message,
                 _userId,
-                _quarryId);
-
-            if (response.Success)
+                _quarryId))
             {
-                _messages.Add(new AIMessage
+                if (!string.IsNullOrEmpty(chunk.Error))
                 {
-                    Id = Guid.NewGuid().ToString(),
+                    Snackbar.Add($"AI Error: {chunk.Error}", Severity.Error);
+                    break;
+                }
+
+                if (chunk.IsToolCall)
+                {
+                    _isExecutingTool = true;
+                    _currentToolName = chunk.ToolName ?? "unknown";
+                    StateHasChanged();
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(chunk.Content))
+                {
+                    _isExecutingTool = false;
+                    _isStreaming = true;
+                    fullContent.Append(chunk.Content);
+                    _streamingContent = fullContent.ToString();
+                    StateHasChanged();
+                    await ScrollToBottomAsync();
+                }
+
+                if (chunk.IsComplete)
+                {
+                    tokensUsed = chunk.TokensUsed;
+
+                    // Store tool executions for this message
+                    if (chunk.ToolExecutions?.Count > 0)
+                    {
+                        _currentToolExecutions = chunk.ToolExecutions.Select(te => new ToolResultData
+                        {
+                            ToolName = te.ToolName,
+                            Result = te.Result
+                        }).ToList();
+
+                        _messageToolResults[assistantMessageId] = _currentToolExecutions;
+                    }
+                }
+            }
+
+            // Add final assistant message
+            if (fullContent.Length > 0)
+            {
+                _isStreaming = false;
+
+                var assistantMessage = new AIMessage
+                {
+                    Id = assistantMessageId,
                     Role = "assistant",
-                    Content = response.Message,
-                    TokensUsed = response.TokensUsed,
+                    Content = fullContent.ToString(),
+                    TokensUsed = tokensUsed,
                     Timestamp = DateTime.UtcNow
-                });
+                };
+                _messages.Add(assistantMessage);
 
                 // Update conversation in sidebar
                 _currentConversation.LastMessageAt = DateTime.UtcNow;
-                _currentConversation.TotalTokensUsed += response.TokensUsed;
+                _currentConversation.TotalTokensUsed += tokensUsed;
 
                 // Update title if it was the first message
                 if (_messages.Count == 2)
                 {
                     _currentConversation.Title = message.Length > 50 ? message[..47] + "..." : message;
                 }
-            }
-            else
-            {
-                Snackbar.Add($"AI Error: {response.Error}", Severity.Error);
             }
         }
         catch (Exception ex)
@@ -460,6 +574,9 @@
         finally
         {
             _isProcessing = false;
+            _isStreaming = false;
+            _isExecutingTool = false;
+            _streamingContent = string.Empty;
             await ScrollToBottomAsync();
         }
     }
